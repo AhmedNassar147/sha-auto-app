@@ -1,0 +1,17 @@
+/html
+/node_modules
+/screenshots
+/results
+/eng.traineddata
+/.wwebjs_auth
+/.wwebjs_cache
+/.env
+/fingerprint.json
+/patients.db
+/patientsWeeklyHistory.db
+/casesLetters.db
+/details-page-min.js
+/images/logo.jpeg
+/certs
+/scripts
+/app-images
