@@ -12,8 +12,10 @@
   "dependencies": {
     "better-sqlite3": "^13.0.3",
     "chalk": "^6.0.0",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
+    "express": "^5.2.1",
     "fast-glob": "^3.3.3",
     "ghost-cursor": "^1.4.2",
     "node-cron": "^4.6.0",
@@ -23,6 +25,7 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "puppeteer": "^25.9.0",
-    "sqlite3": "^6.0.1"
+    "sqlite3": "^6.0.1",
+    "ws": "^8.21.3"
   }
 }
