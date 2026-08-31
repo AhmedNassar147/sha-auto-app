@@ -23,7 +23,7 @@ const checkIfLoginPage = async (page) => {
     await page.waitForFunction(
       (loginPagePathName) =>
         window.location.hash.toLowerCase().includes(loginPagePathName),
-      { timeout: 10_000 },
+      { timeout: 7_000 },
       pathName,
     );
 

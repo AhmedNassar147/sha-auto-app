@@ -27,7 +27,7 @@ const credentialInputSelectorSets = [
 const usernamePasswordToggleText = "اسم المستخدم وكلمة المرور";
 const submitButtonText = "تسجيل الدخول";
 
-const FLIP_TIMEOUT_MS = 10_000;
+const FLIP_TIMEOUT_MS = 7_000;
 
 // Runs inside the page, can't close over anything defined in this module.
 // Button text isn't consistently whitespace-normalized between Nafath's two
