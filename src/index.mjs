@@ -2,6 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import fs from "node:fs";
+import https from "node:https";
 import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
