@@ -19,7 +19,6 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     sourceProvider,
     providerZone,
     referralCause,
-    caseAlertMessage,
     note,
     referralEndDateActionablAt,
     files,

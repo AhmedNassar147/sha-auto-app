@@ -11,70 +11,25 @@ import formateDateToString from "./formateDateToString.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
-import { cutoffTimeMs, LETTER_LAYOUT_NAMES } from "./constants.mjs";
-
-const getLeftMsBasedCaseMessage = (caseAlertMessage) => {
-  const match = caseAlertMessage.match(
-    /(\d+)\s*(?:minute(?:\(s\))?|mins?|min)\s+and\s+(\d+)\s*(?:second(?:\(s\))?|secs?|sec)/,
-  );
-
-  if (!match) {
-    createConsoleMessage(
-      "warn",
-      `⚠️ Could not parse time from caseAlertMessage: "${caseAlertMessage}"`,
-    );
-  }
-
-  const minsLeft = parseInt(match?.[1], 10) || 0;
-  const secsLeft = parseInt(match?.[2], 10) || 0;
-
-  const _leftMs = (minsLeft * 60 + secsLeft) * 1000;
-
-  return _leftMs;
-};
-
-const getSaudiStartAndEndDate = ({
-  referralDate,
-  caseAlertMessage,
+import {
+  ALLOWED_MINUTES_TO_REVIEW_PATIENTS,
   cutoffTimeMs,
-  detailsAPiFiresAtMS,
-  detailsAPiServerResponseTimeMS,
-  serverNow,
-  serverDate,
-}) => {
-  const currentDate = new Date();
-  const utcDate = new Date(referralDate);
+  LETTER_LAYOUT_NAMES,
+} from "./constants.mjs";
 
-  // Convert to Saudi time
-  let saStartDate = new Date(
-    utcDate.toLocaleString("en-US", { timeZone: "Asia/Riyadh" }),
-  );
+// Wasla gives an exact broadcastedAt timestamp directly on the facility/tabs
+// list row (confirmed against the real weslah.seha.sa bundle,
+// scripts/ReviewWindowTimer-DAyGxrbR.js: deadline = broadcastedAt +
+// windowMinutes * 60_000) — unlike the old GlobMed system, there's no
+// countdown message to parse and no server-clock-skew reconciliation needed,
+// since this comes straight from the list call rather than a delayed
+// per-case details fetch.
+const getWaslaCaseWindow = (broadcastedAt, cutoffTimeMs) => {
+  const referralEndTimestamp =
+    new Date(broadcastedAt).getTime() +
+    ALLOWED_MINUTES_TO_REVIEW_PATIENTS * 60 * 1000;
 
-  const Min_15 = 15 * 60 * 1000;
-  let isReferralOldDate = false;
-  const leftMsBasedMessage = getLeftMsBasedCaseMessage(caseAlertMessage);
-
-  if (saStartDate < new Date(currentDate - Min_15) && caseAlertMessage) {
-    isReferralOldDate = true;
-    const backExtraTime = Min_15 - leftMsBasedMessage;
-
-    saStartDate = new Date(
-      detailsAPiFiresAtMS - detailsAPiServerResponseTimeMS - backExtraTime,
-    );
-  }
-
-  // Clone for end date
-  const saEndDate = new Date(saStartDate);
-  saEndDate.setMilliseconds(saEndDate.getMilliseconds() + Min_15);
-
-  const endDateBasedServerDateMs =
-    serverNow && leftMsBasedMessage ? serverNow + leftMsBasedMessage : null;
-
-  // prefer server time, fall back to client time
-  const referralEndTimestamp = endDateBasedServerDateMs ?? saEndDate.getTime();
-  // const referralEndTimestamp = saEndDate.getTime();
   const timeWithUserReaction = cutoffTimeMs + 2000;
-
   const shouldCutoffTime = referralEndTimestamp > timeWithUserReaction;
 
   const referralEndDateActionableAtMS = shouldCutoffTime
@@ -82,23 +37,15 @@ const getSaudiStartAndEndDate = ({
     : referralEndTimestamp;
 
   return {
-    isReferralOldDate,
     cutoffTimeMs: shouldCutoffTime ? cutoffTimeMs : 0,
-    referralDate,
-    referralStartDate: formateDateToString(saStartDate),
-    referralEndDate: formateDateToString(referralEndTimestamp), // server-based when available, client fallback
+    broadcastedAt,
+    referralStartDate: formateDateToString(new Date(broadcastedAt)),
+    referralEndDate: formateDateToString(referralEndTimestamp),
     referralEndTimestamp,
     referralEndDateActionableAtMS,
     referralEndDateActionablAt: formateDateToString(
       referralEndDateActionableAtMS,
     ),
-    serverDate,
-    serverNow,
-    serverFormatedDate: serverNow ? formateDateToString(serverNow) : null,
-    endDateBasedServerDateMs,
-    endDateBasedServerDate: endDateBasedServerDateMs
-      ? formateDateToString(endDateBasedServerDateMs)
-      : null,
   };
 };
 
@@ -122,7 +69,6 @@ const processCollectingPatients = async ({
 
       const {
         referralId: patientReferralId,
-        referralDate,
         createdAt,
         referralReferenceId,
         patientName,
@@ -131,7 +77,8 @@ const processCollectingPatients = async ({
         providerRegion,
         referralType,
         status,
-        id: idForNavigation,
+        broadcastedAt,
+        id: navigationId,
         // https://weslah.seha.sa/facility-referrals/view/384325
       } = patient || {};
       const referralId = String(patientReferralId);
@@ -170,14 +117,8 @@ const processCollectingPatients = async ({
           1200, // base backoff ms
         )) || {};
 
-      const {
-        patientDetailsError,
-        patientInfoError,
-        attachmentsError,
-        caseAlertMessage,
-        detailsAPiFiresAtMS,
-        detailsAPiServerResponseTimeMS,
-      } = patientData || {};
+      const { patientDetailsError, patientInfoError, attachmentsError } =
+        patientData || {};
 
       const hasInternalError =
         !patientData ||
@@ -215,16 +156,17 @@ const processCollectingPatients = async ({
 
       const finalData = {
         referralId,
+        createdAt,
+        ...getWaslaCaseWindow(broadcastedAt, cutoffTimeMs),
+        referralReferenceId,
+        patientName,
+        patientNationalId,
+        referralReason,
+        providerRegion,
+        referralType,
+        status,
+        navigationId,
         transferUrl,
-        ...getSaudiStartAndEndDate({
-          referralDate,
-          detailsAPiServerResponseTimeMS,
-          detailsAPiFiresAtMS,
-          caseAlertMessage,
-          cutoffTimeMs,
-          serverDate,
-          serverNow,
-        }),
         ...patientData,
         letterType,
       };

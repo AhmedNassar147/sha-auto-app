@@ -14,6 +14,7 @@ import checkIfInDashboardPage from "./checkIfInDashboardPage.mjs";
 import openNafathLoginPortal from "./openNafathLoginPortal.mjs";
 import loginWithNafathCredentials from "./loginWithNafathCredentials.mjs";
 import getLoginErrors from "./getLoginErrors.mjs";
+import selectFirstLoginAccount from "./selectFirstLoginAccount.mjs";
 
 const MAX_RETRIES = 3;
 const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
@@ -200,6 +201,22 @@ const makeUserLoggedInOrOpenHomePage = async ({
                   `Waited ${RETURN_TO_SEHA_TIMEOUT_MS}ms`,
                   "❌ Never redirected back from Nafath",
                 );
+              } else {
+                // An account linked to multiple facilities lands on a role
+                // picker (html/session-page.html) instead of straight on
+                // the dashboard — best-effort: if it's not showing (single-
+                // facility account), this is a no-op and we fall through to
+                // the dashboard check below as normal.
+                const { success: accountSelected, message: accountMessage } =
+                  await selectFirstLoginAccount(page);
+
+                if (!accountSelected) {
+                  createConsoleMessage(
+                    "error",
+                    accountMessage,
+                    "❌ selectFirstLoginAccount failed",
+                  );
+                }
               }
             }
           }

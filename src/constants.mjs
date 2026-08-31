@@ -28,6 +28,20 @@ export const TABS_COLLECTION_TYPES = {
   DECLINED: "DECLINED",
 };
 
+// Y = ((t) => (
+//     (t[(t.Draft = 1)] = "Draft"),
+//     (t[(t.PendingAcceptance = 2)] = "PendingAcceptance"),
+//     (t[(t.Accepted = 3)] = "Accepted"),
+//     (t[(t.Rejected = 4)] = "Rejected"),
+//     (t[(t.PendingEscalation = 5)] = "PendingEscalation"),
+//     (t[(t.ConfirmedArrival = 6)] = "ConfirmedArrival"),
+//     (t[(t.Closed = 7)] = "Closed"),
+//     (t[(t.ScopeExpansion = 8)] = "ScopeExpansion"),
+//     (t[(t.ReferralTransferRequest = 9)] = "ReferralTransferRequest"),
+//     (t[(t.Withdraw = 10)] = "Withdraw"),
+//     (t[(t.PendingBroadcast = 11)] = "PendingBroadcast"),
+//     t
+
 // this is only for my orders table
 export const WASLA_STATUS_TYPES = {
   1: "Confirmed",
