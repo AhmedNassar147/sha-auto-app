@@ -16,7 +16,7 @@ import waitForWaitingCountWithInterval, {
 
 import generateFolderIfNotExisting from "./generateFolderIfNotExisting.mjs";
 
-import processSendPatientsToClient from "./processSendPatientsToClient.mjs";
+// import processSendPatientsToClient from "./processSendPatientsToClient.mjs";
 // import createAndSendWeeklyReport from "./createAndSendWeeklyReport.mjs";
 
 import {
@@ -34,8 +34,8 @@ import {
 } from "./constants.mjs";
 
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import installTelegramBotApi from "./installTelegramBotApi.mjs";
-import { deleteOldCaseFiles } from "./db.mjs";
+// import installTelegramBotApi from "./installTelegramBotApi.mjs";
+// import { deleteOldCaseFiles } from "./db.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
@@ -202,13 +202,13 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
     await patientsStore.scheduleAllInitialPatients();
 
-    sendTelegramMessage = await installTelegramBotApi(
-      TG_TOKEN,
-      patientsStore,
-      browser,
-    );
+    // sendTelegramMessage = await installTelegramBotApi(
+    //   TG_TOKEN,
+    //   patientsStore,
+    //   browser,
+    // );
 
-    // sendTelegramMessage = () => Promise.resolve();
+    sendTelegramMessage = () => Promise.resolve();
 
     // if (typeof sendTelegramMessage === "function") {
     //   patientsStore.setTelegramMessageSender(sendTelegramMessage);
