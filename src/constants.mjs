@@ -130,7 +130,7 @@ export const LOGIN_PAGE_URL = `${APP_URL}/${LOGIN_PAGE_PATH_NAME}`;
 export const HOME_PAGE_PATH_NAME = `#/Dashboard`;
 export const HOME_PAGE_URL = `${APP_URL}/${HOME_PAGE_PATH_NAME}`;
 
-const BASE_WASLA_API_URL = "https://weslah.seha.sa/api";
+export const BASE_WASLA_API_URL = "https://weslah.seha.sa/api";
 export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;
 
 export const API_URLS = {
