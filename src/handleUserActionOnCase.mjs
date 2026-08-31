@@ -4,11 +4,7 @@
  *
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import {
-  createPatientRowKey,
-  getWeeklyHistoryPatient,
-  updateWeeklyHistoryPatients,
-} from "./db.mjs";
+import { getPatient, updatePatients } from "./db.mjs";
 
 const handleUserActionOnCase = async ({
   patientsStore,
@@ -76,8 +72,7 @@ const handleUserActionOnCase = async ({
     };
   }
 
-  const rowKey = createPatientRowKey(patient);
-  const storedPatient = getWeeklyHistoryPatient(rowKey);
+  const storedPatient = getPatient(referralId);
 
   const isAnotherAction = isAccepted || isRejected || isCancelled || isNoReply;
 
@@ -100,9 +95,8 @@ const handleUserActionOnCase = async ({
 
     await patientsStore.scheduleFakeRejectProbe(referralId, false);
 
-    updateWeeklyHistoryPatients({
+    updatePatients({
       ...patient,
-      rowKey,
       isSent: "yes",
       isReceived: "yes",
       providerAction: actionNames,
@@ -144,9 +138,8 @@ const handleUserActionOnCase = async ({
       ...new Set([storedPatient?.providerAction, action].filter(Boolean)),
     ].join(" then ");
 
-    updateWeeklyHistoryPatients({
+    updatePatients({
       ...patient,
-      rowKey,
       isSent: "yes",
       isReceived: "yes",
       providerAction: `${actionNames} with late reply`,

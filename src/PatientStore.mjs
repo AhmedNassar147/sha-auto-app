@@ -21,12 +21,7 @@ import {
   generatedPdfsPathForRejection,
   FAKE_REJECT_PROBE,
 } from "./constants.mjs";
-import {
-  createPatientRowKey,
-  getWeeklyHistoryPatient,
-  insertWeeklyHistoryPatients,
-  updateWeeklyHistoryPatients,
-} from "./db.mjs";
+import { getPatient, insertPatients, updatePatients } from "./db.mjs";
 
 async function safeWritePatientData(data, retries = 3, delay = 200) {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -118,13 +113,13 @@ class PatientStore extends EventEmitter {
       if (key && !this.patientsById.has(key)) {
         const { files, ...patientData } = patient;
         this.patientsById.set(key, patientData);
-        added.push(patient);
+        added.push({ ...patient, paid: 0 });
       }
     }
 
     if (added.length) {
       this.invalidateCache();
-      insertWeeklyHistoryPatients(added);
+      insertPatients(added);
       this.emit("patientsAdded", added);
       await safeWritePatientData(this.getAllPatients());
     }
@@ -373,8 +368,7 @@ class PatientStore extends EventEmitter {
       this.invalidateCache();
       await safeWritePatientData(this.getAllPatients());
     } else if (!skipResetingPatient) {
-      const rowKey = createPatientRowKey(currentPatient);
-      const storedPatient = getWeeklyHistoryPatient(rowKey);
+      const storedPatient = getPatient(referralId);
 
       const providerAction = [
         ...new Set(
@@ -392,15 +386,13 @@ class PatientStore extends EventEmitter {
         providerAction,
         isReceived: "yes",
         isSent: "yes",
+        claimed: null,
         userActionName: isAccepting
           ? USER_ACTION_TYPES.ACCEPT
           : USER_ACTION_TYPES.REJECT,
       };
 
-      updateWeeklyHistoryPatients({
-        ...updatedPatient,
-        rowKey,
-      });
+      updatePatients(updatedPatient);
 
       this.patientsById.set(referralId, updatedPatient);
       this.invalidateCache();
@@ -478,12 +470,12 @@ class PatientStore extends EventEmitter {
         ),
       ].join(" then ");
 
-      updateWeeklyHistoryPatients({
+      updatePatients({
         ...updatedPatient,
-        rowKey: createPatientRowKey(updatedPatient),
         isSent: "yes",
         isReceived: "yes",
         providerAction: actionNames,
+        claimed: null,
       });
       this.patientsById.set(referralId, updatedPatient);
       this.invalidateCache();

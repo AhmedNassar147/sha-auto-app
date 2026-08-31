@@ -4,16 +4,13 @@
 import Database from "better-sqlite3";
 
 const patientsDbFilePath = `${process.cwd()}/patients.db`;
-const weeklyHistoryFilePath = `${process.cwd()}/patientsWeeklyHistory.db`;
 const casesLettersFilePath = `${process.cwd()}/casesLetters.db`;
 
 const db = new Database(patientsDbFilePath);
-const weeklyHistoryDb = new Database(weeklyHistoryFilePath);
 const casesLettersDb = new Database(casesLettersFilePath);
 
 // Optional but generally sensible for SQLite apps
 // db.pragma("journal_mode = WAL");
-// weeklyHistoryDb.pragma("journal_mode = WAL");
 
 (() => {
   casesLettersDb.exec(`
@@ -28,268 +25,268 @@ const casesLettersDb = new Database(casesLettersFilePath);
     ON casesFilesDb(date);
   `);
 
-  [db, weeklyHistoryDb].forEach((database) => {
-    database
-      .prepare(
-        `
-        CREATE TABLE IF NOT EXISTS patients (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          rowKey TEXT NOT NULL UNIQUE,        -- referralId-nationalId
-          referralDate TEXT NOT NULL,
-          referralId TEXT NOT NULL,
-          referenceId TEXT DEFAULT '',
-          patientName TEXT NOT NULL,
-          nationalId TEXT NOT NULL,
-          referralType TEXT,
-          referralReason TEXT,
-          sourceZone TEXT,
-          provider TEXT,
-          isSent TEXT,                        -- yes/no (kept as TEXT per your original)
-          isReceived TEXT,                    -- yes/no (kept as TEXT per your original)
-          providerAction TEXT,                -- Accept, Reject, no reply, late reply
-          payerAction TEXT,             -- confirmed or dropped
-          isAdmitted TEXT,                    -- yes/no
-          isConfirmed TEXT,                    -- yes/no
-          isRejected TEXT,                    -- yes/no
-          tabName TEXT DEFAULT '',
-          paid INTEGER DEFAULT 0,             -- 0 = false, 1 = true
-          createdAt TEXT DEFAULT (datetime('now')),
-          updatedAt TEXT
-        )
-      `,
-      )
-      .run();
+  // The old GlobMed-era table keyed patients on a rowKey
+  // (referralId-nationalId) and required a referralDate column. Wasla's
+  // referralId is already globally unique on its own (it's the Map key
+  // PatientStore uses in memory), so a table still carrying that old rowKey
+  // column is a leftover from before the Wasla migration — rebuild it fresh
+  // rather than trying to migrate columns that no longer apply. This is
+  // local dev/test data, not anything durable.
+  const hasLegacyRowKeyColumn = db
+    .prepare(`PRAGMA table_info(patients)`)
+    .all()
+    .some((column) => column.name === "rowKey");
 
-    // Indexes
-    database
-      .prepare(`CREATE INDEX IF NOT EXISTS idx_rowKey ON patients(rowKey)`)
-      .run();
-    database
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_referralId ON patients(referralId)`,
-      )
-      .run();
-    database
-      .prepare(`CREATE INDEX IF NOT EXISTS idx_paid ON patients(paid)`)
-      .run();
-  });
+  if (hasLegacyRowKeyColumn) {
+    db.exec(`DROP TABLE IF EXISTS patients`);
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS patients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      referralId TEXT NOT NULL UNIQUE,
+      referralReferenceId TEXT,
+      navigationId TEXT,
+      patientName TEXT NOT NULL,
+      patientNationalId TEXT,
+      referralType TEXT,
+      referralReason TEXT,
+      providerRegion TEXT,
+      broadcastedAt TEXT,
+      referralStartDate TEXT,
+      referralEndDate TEXT,
+      referralEndTimestamp INTEGER,
+      facilityReviewWindowMinutes INTEGER,
+      acceptanceWindowMinutes INTEGER,
+      extendScopeWindowMinutes INTEGER,
+      letterType TEXT,
+      transferUrl TEXT,
+      userActionName TEXT,                -- accept, reject, '' (current action)
+      providerAction TEXT,                -- narrative history, e.g. "accepted then cancelled"
+      claimed TEXT,                       -- yes/no, NULL until an action is taken or checkReferralSelectedStatus resolves it
+      status TEXT,                        -- portal-reported status string, NULL until known
+      isSent TEXT,                        -- yes/no
+      isReceived TEXT,                    -- yes/no
+      scheduledAt INTEGER,
+      tabName TEXT DEFAULT '',
+      paid INTEGER DEFAULT 0,             -- 0 = false, 1 = true
+      payerAction TEXT,                   -- confirmed or dropped
+      createdAt TEXT DEFAULT (datetime('now')),
+      updatedAt TEXT
+    )
+  `);
+
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_paid ON patients(paid)`).run();
+
+  // Incremental migration for columns added after the table already existed
+  // on disk - CREATE TABLE IF NOT EXISTS above is a no-op once the table is
+  // there, so newly added columns need to be patched in explicitly rather
+  // than requiring a full drop/rebuild (that's reserved for genuinely
+  // incompatible old shapes, like the legacy rowKey table above).
+  const patientsColumnNames = db
+    .prepare(`PRAGMA table_info(patients)`)
+    .all()
+    .map((column) => column.name);
+
+  const columnsToEnsure = {
+    facilityReviewWindowMinutes: "INTEGER",
+    acceptanceWindowMinutes: "INTEGER",
+    extendScopeWindowMinutes: "INTEGER",
+  };
+
+  for (const [columnName, columnType] of Object.entries(columnsToEnsure)) {
+    if (!patientsColumnNames.includes(columnName)) {
+      db.exec(`ALTER TABLE patients ADD COLUMN ${columnName} ${columnType}`);
+    }
+  }
 })();
 
 /**
  * Helpers
  */
 
-// Build a rowKey from either API-shaped or DB-shaped objects
-const createPatientRowKey = (patient) => {
-  if (!patient) return "";
-
-  if (patient.rowKey) return String(patient.rowKey);
-
-  const referralId = patient.idReferral ?? patient.referralId ?? "";
-  const nationalId =
-    patient.adherentNationalId ??
-    patient.nationalId ??
-    patient.adherentId ??
-    "";
-
-  return `${referralId}-${nationalId}`;
-};
-
-const getPatientStatement = (database) =>
-  database.prepare(`SELECT * FROM patients WHERE rowKey = ?`);
+const getPatientStatement = db.prepare(
+  `SELECT * FROM patients WHERE referralId = ?`,
+);
 
 const toDbRow = (oldRow, patient) => {
-  // Merge while supporting BOTH naming styles:
-  // - API: idReferral, ihalatyReference, adherentName, adherentNationalId, sourceProvider, assignedProvider
-  // - DB:  referralId, referenceId, patientName, nationalId, provider
   const merged = { ...(oldRow || {}), ...(patient || {}) };
 
-  const referralId = merged.idReferral ?? merged.referralId;
-  const referenceId = merged.ihalatyReference ?? merged.referenceId ?? 0;
-  const nationalId =
-    merged.adherentNationalId ?? merged.nationalId ?? merged.adherentId;
-
-  const rowKey = merged.rowKey ?? `${referralId}-${nationalId}`;
-
   return {
-    rowKey,
-    referralDate: merged.referralDate,
-    referralId,
-    referenceId,
-    patientName: merged.adherentName ?? merged.patientName,
-    nationalId,
+    referralId: merged.referralId != null ? String(merged.referralId) : null,
+    referralReferenceId: merged.referralReferenceId ?? null,
+    navigationId: merged.navigationId ?? null,
+    patientName: merged.patientName ?? null,
+    patientNationalId: merged.patientNationalId ?? null,
     referralType: merged.referralType ?? null,
     referralReason: merged.referralReason ?? null,
-    sourceZone: merged.sourceZone ?? null,
-    provider:
-      merged.sourceProvider ??
-      merged.assignedProvider ??
-      merged.provider ??
-      null,
-    tabName: merged.tabName ?? "",
-    paid: merged.paid ? 1 : 0,
+    providerRegion: merged.providerRegion ?? null,
+    broadcastedAt: merged.broadcastedAt ?? null,
+    referralStartDate: merged.referralStartDate ?? null,
+    referralEndDate: merged.referralEndDate ?? null,
+    referralEndTimestamp: merged.referralEndTimestamp ?? null,
+    facilityReviewWindowMinutes: merged.facilityReviewWindowMinutes ?? null,
+    acceptanceWindowMinutes: merged.acceptanceWindowMinutes ?? null,
+    extendScopeWindowMinutes: merged.extendScopeWindowMinutes ?? null,
+    letterType: merged.letterType ?? null,
+    transferUrl: merged.transferUrl ?? null,
+    userActionName: merged.userActionName ?? null,
+    providerAction: merged.providerAction ?? null,
+    claimed: merged.claimed ?? null,
+    status: merged.status ?? null,
     isSent: merged.isSent ?? null,
     isReceived: merged.isReceived ?? null,
-    providerAction: merged.providerAction ?? null,
+    scheduledAt: merged.scheduledAt ?? null,
+    tabName: merged.tabName ?? "",
+    paid: merged.paid ? 1 : 0,
     payerAction: merged.payerAction ?? null,
-    isAdmitted: merged.isAdmitted ?? null,
-    isRejected: merged.isRejected ?? null,
-    isConfirmed: merged.isConfirmed ?? null,
   };
 };
 
 const insertPatientSQL = `
   INSERT INTO patients (
-    rowKey,
-    referralDate,
     referralId,
-    referenceId,
+    referralReferenceId,
+    navigationId,
     patientName,
-    nationalId,
+    patientNationalId,
     referralType,
     referralReason,
-    sourceZone,
-    provider,
-    tabName,
-    paid,
+    providerRegion,
+    broadcastedAt,
+    referralStartDate,
+    referralEndDate,
+    referralEndTimestamp,
+    facilityReviewWindowMinutes,
+    acceptanceWindowMinutes,
+    extendScopeWindowMinutes,
+    letterType,
+    transferUrl,
+    userActionName,
+    providerAction,
+    claimed,
+    status,
     isSent,
     isReceived,
-    providerAction,
+    scheduledAt,
+    tabName,
+    paid,
     payerAction,
-    isAdmitted,
-    isConfirmed,
-    isRejected,
     updatedAt
   ) VALUES (
-    @rowKey,
-    @referralDate,
     @referralId,
-    @referenceId,
+    @referralReferenceId,
+    @navigationId,
     @patientName,
-    @nationalId,
+    @patientNationalId,
     @referralType,
     @referralReason,
-    @sourceZone,
-    @provider,
-    @tabName,
-    @paid,
+    @providerRegion,
+    @broadcastedAt,
+    @referralStartDate,
+    @referralEndDate,
+    @referralEndTimestamp,
+    @facilityReviewWindowMinutes,
+    @acceptanceWindowMinutes,
+    @extendScopeWindowMinutes,
+    @letterType,
+    @transferUrl,
+    @userActionName,
+    @providerAction,
+    @claimed,
+    @status,
     @isSent,
     @isReceived,
-    @providerAction,
+    @scheduledAt,
+    @tabName,
+    @paid,
     @payerAction,
-    @isAdmitted,
-    @isConfirmed,
-    @isRejected,
     datetime('now')
   )
-  ON CONFLICT(rowKey) DO UPDATE SET
-    referralDate      = COALESCE(excluded.referralDate, referralDate),
-    referralId        = COALESCE(excluded.referralId, referralId),
-    referenceId       = COALESCE(excluded.referenceId, referenceId),
-    patientName       = COALESCE(excluded.patientName, patientName),
-    nationalId        = COALESCE(excluded.nationalId, nationalId),
-    referralType      = COALESCE(excluded.referralType, referralType),
-    referralReason    = COALESCE(excluded.referralReason, referralReason),
-    sourceZone        = COALESCE(excluded.sourceZone, sourceZone),
-    provider          = COALESCE(excluded.provider, provider),
-    tabName           = COALESCE(excluded.tabName, tabName),
-    paid              = COALESCE(excluded.paid, paid),
-    isSent            = COALESCE(excluded.isSent, isSent),
-    isReceived        = COALESCE(excluded.isReceived, isReceived),
-    providerAction    = COALESCE(excluded.providerAction, providerAction),
-    payerAction       = COALESCE(excluded.payerAction, payerAction),
-    isAdmitted        = COALESCE(excluded.isAdmitted, isAdmitted),
-    isConfirmed       = COALESCE(excluded.isConfirmed, isConfirmed),
-    isRejected        = COALESCE(excluded.isRejected, isRejected),
-    updatedAt         = datetime('now')
+  ON CONFLICT(referralId) DO UPDATE SET
+    referralReferenceId  = COALESCE(excluded.referralReferenceId, referralReferenceId),
+    navigationId          = COALESCE(excluded.navigationId, navigationId),
+    patientName           = COALESCE(excluded.patientName, patientName),
+    patientNationalId     = COALESCE(excluded.patientNationalId, patientNationalId),
+    referralType          = COALESCE(excluded.referralType, referralType),
+    referralReason        = COALESCE(excluded.referralReason, referralReason),
+    providerRegion        = COALESCE(excluded.providerRegion, providerRegion),
+    broadcastedAt         = COALESCE(excluded.broadcastedAt, broadcastedAt),
+    referralStartDate     = COALESCE(excluded.referralStartDate, referralStartDate),
+    referralEndDate       = COALESCE(excluded.referralEndDate, referralEndDate),
+    referralEndTimestamp  = COALESCE(excluded.referralEndTimestamp, referralEndTimestamp),
+    facilityReviewWindowMinutes = COALESCE(excluded.facilityReviewWindowMinutes, facilityReviewWindowMinutes),
+    acceptanceWindowMinutes     = COALESCE(excluded.acceptanceWindowMinutes, acceptanceWindowMinutes),
+    extendScopeWindowMinutes    = COALESCE(excluded.extendScopeWindowMinutes, extendScopeWindowMinutes),
+    letterType            = COALESCE(excluded.letterType, letterType),
+    transferUrl           = COALESCE(excluded.transferUrl, transferUrl),
+    userActionName        = COALESCE(excluded.userActionName, userActionName),
+    providerAction        = COALESCE(excluded.providerAction, providerAction),
+    claimed               = COALESCE(excluded.claimed, claimed),
+    status                = COALESCE(excluded.status, status),
+    isSent                = COALESCE(excluded.isSent, isSent),
+    isReceived            = COALESCE(excluded.isReceived, isReceived),
+    scheduledAt           = COALESCE(excluded.scheduledAt, scheduledAt),
+    tabName               = COALESCE(excluded.tabName, tabName),
+    paid                  = COALESCE(excluded.paid, paid),
+    payerAction           = COALESCE(excluded.payerAction, payerAction),
+    updatedAt             = datetime('now')
 `;
 
 const updatePatientSQL = `
   UPDATE patients SET
-    referralDate = @referralDate,
-    referralId = @referralId,
-    referenceId = @referenceId,
+    referralReferenceId = @referralReferenceId,
+    navigationId = @navigationId,
     patientName = @patientName,
-    nationalId = @nationalId,
+    patientNationalId = @patientNationalId,
     referralType = @referralType,
     referralReason = @referralReason,
-    sourceZone = @sourceZone,
-    provider = @provider,
-    tabName = @tabName,
-    paid = @paid,
+    providerRegion = @providerRegion,
+    broadcastedAt = @broadcastedAt,
+    referralStartDate = @referralStartDate,
+    referralEndDate = @referralEndDate,
+    referralEndTimestamp = @referralEndTimestamp,
+    facilityReviewWindowMinutes = @facilityReviewWindowMinutes,
+    acceptanceWindowMinutes = @acceptanceWindowMinutes,
+    extendScopeWindowMinutes = @extendScopeWindowMinutes,
+    letterType = @letterType,
+    transferUrl = @transferUrl,
+    userActionName = @userActionName,
+    providerAction = @providerAction,
+    claimed = @claimed,
+    status = @status,
     isSent = @isSent,
     isReceived = @isReceived,
-    providerAction = @providerAction,
+    scheduledAt = @scheduledAt,
+    tabName = @tabName,
+    paid = @paid,
     payerAction = @payerAction,
-    isAdmitted = @isAdmitted,
-    isConfirmed = @isConfirmed,
-    isRejected = @isRejected,
     updatedAt = datetime('now')
-  WHERE rowKey = @rowKey
+  WHERE referralId = @referralId
 `;
 
-const deletePatientSQL = `DELETE FROM patients WHERE rowKey = ?`;
+const deletePatientSQL = `DELETE FROM patients WHERE referralId = ?`;
 const allPatientsSQL = `SELECT * FROM patients`;
-
-const ensureColumn = (database, table, colName, colDef) => {
-  const cols = database.prepare(`PRAGMA table_info(${table})`).all();
-  const has = cols.some((c) => c.name === colName);
-  if (!has) {
-    database
-      .prepare(`ALTER TABLE ${table} ADD COLUMN ${colName} ${colDef}`)
-      .run();
-  }
-};
-
-const migratePatientsTable = (database) => {
-  ensureColumn(database, "patients", "isSent", "TEXT");
-  ensureColumn(database, "patients", "isReceived", "TEXT");
-  ensureColumn(database, "patients", "providerAction", "TEXT");
-  ensureColumn(database, "patients", "payerAction", "TEXT");
-  ensureColumn(database, "patients", "isAdmitted", "TEXT");
-  ensureColumn(database, "patients", "isRejected", "TEXT");
-  ensureColumn(database, "patients", "isConfirmed", "TEXT");
-};
-
-migratePatientsTable(db);
-migratePatientsTable(weeklyHistoryDb);
 
 const allPatientsStatement = db.prepare(allPatientsSQL);
 const insertStatement = db.prepare(insertPatientSQL);
 const updateStatement = db.prepare(updatePatientSQL);
 const deleteStatement = db.prepare(deletePatientSQL);
 
-const allWeeklyPatientsStatement = weeklyHistoryDb.prepare(allPatientsSQL);
-const insertWeeklyStatement = weeklyHistoryDb.prepare(insertPatientSQL);
-const updateWeeklyStatement = weeklyHistoryDb.prepare(updatePatientSQL);
-const deleteWeeklyStatement = weeklyHistoryDb.prepare(deletePatientSQL);
-
-const processInsertionOrUpdateOnRecord = (
-  database,
-  patient,
-  sqlStatement,
-  isUpdate,
-) => {
+const processInsertionOrUpdateOnRecord = (patient, sqlStatement, isUpdate) => {
   if (!patient) return null;
 
   let oldRow = null;
-  if (isUpdate) {
-    const rowKey = createPatientRowKey(patient);
-    if (rowKey) oldRow = getPatientStatement(database).get(rowKey) || null;
+  if (isUpdate && patient.referralId) {
+    oldRow = getPatientStatement.get(String(patient.referralId)) || null;
   }
 
   const dbRow = toDbRow(oldRow, patient);
 
   // Minimal sanity checks for NOT NULL columns
-  if (
-    !dbRow.rowKey ||
-    !dbRow.referralDate ||
-    !dbRow.referralId ||
-    !dbRow.patientName ||
-    !dbRow.nationalId
-  ) {
+  if (!dbRow.referralId || !dbRow.patientName) {
     throw new Error(
-      `Missing required patient fields. rowKey=${dbRow.rowKey}, referralDate=${dbRow.referralDate}, referralId=${dbRow.referralId}, patientName=${dbRow.patientName}, nationalId=${dbRow.nationalId}`,
+      `Missing required patient fields. referralId=${dbRow.referralId}, patientName=${dbRow.patientName}`,
     );
   }
 
@@ -300,7 +297,7 @@ const processInsertionOrUpdateOnRecord = (
  * Public API (insert / update / delete)
  */
 
-const __insertPatients = (database, insertStatement) => (oneOrMorePatients) => {
+const insertPatients = (oneOrMorePatients) => {
   const patients = (
     Array.isArray(oneOrMorePatients) ? oneOrMorePatients : [oneOrMorePatients]
   ).filter(Boolean);
@@ -308,81 +305,66 @@ const __insertPatients = (database, insertStatement) => (oneOrMorePatients) => {
 
   if (patients.length === 1) {
     return processInsertionOrUpdateOnRecord(
-      database,
       patients[0],
       insertStatement,
       false,
     );
   }
 
-  const trx = database.transaction((items) =>
+  const trx = db.transaction((items) =>
     items.map((p) =>
-      processInsertionOrUpdateOnRecord(database, p, insertStatement, false),
+      processInsertionOrUpdateOnRecord(p, insertStatement, false),
     ),
   );
   return trx(patients);
 };
 
-const __updatePatients = (database, updateStatement) => (oneOrMorePatients) => {
+const updatePatients = (oneOrMorePatients) => {
   const patients = (
     Array.isArray(oneOrMorePatients) ? oneOrMorePatients : [oneOrMorePatients]
   ).filter(Boolean);
   if (!patients.length) return;
 
   if (patients.length === 1) {
-    return processInsertionOrUpdateOnRecord(
-      database,
-      patients[0],
-      updateStatement,
-      true,
-    );
+    return processInsertionOrUpdateOnRecord(patients[0], updateStatement, true);
   }
 
-  const trx = database.transaction((items) =>
+  const trx = db.transaction((items) =>
     items.map((p) =>
-      processInsertionOrUpdateOnRecord(database, p, updateStatement, true),
+      processInsertionOrUpdateOnRecord(p, updateStatement, true),
     ),
   );
   return trx(patients);
 };
 
-const __deletePatients = (database, deleteStatement) => (patientIds) => {
-  const ids = (Array.isArray(patientIds) ? patientIds : [patientIds]).filter(
+const deletePatients = (referralIds) => {
+  const ids = (Array.isArray(referralIds) ? referralIds : [referralIds]).filter(
     Boolean,
   );
   if (!ids.length) return;
 
   if (ids.length === 1) {
-    return deleteStatement.run(ids[0]);
+    return deleteStatement.run(String(ids[0]));
   }
 
-  const trx = database.transaction((items) =>
-    items.map((id) => deleteStatement.run(id)),
+  const trx = db.transaction((items) =>
+    items.map((id) => deleteStatement.run(String(id))),
   );
   return trx(ids);
 };
 
-const insertPatients = __insertPatients(db, insertStatement);
-const updatePatients = __updatePatients(db, updateStatement);
-const deletePatients = __deletePatients(db, deleteStatement);
-
-const insertWeeklyHistoryPatients = __insertPatients(
-  weeklyHistoryDb,
-  insertWeeklyStatement,
-);
-const updateWeeklyHistoryPatients = __updatePatients(
-  weeklyHistoryDb,
-  updateWeeklyStatement,
-);
-const deleteWeeklyHistoryPatients = __deletePatients(
-  weeklyHistoryDb,
-  deleteWeeklyStatement,
-);
-const getWeeklyHistoryPatient = (rowKey) =>
-  getPatientStatement(weeklyHistoryDb).get(rowKey) || null;
+const getPatient = (referralId) =>
+  getPatientStatement.get(String(referralId)) || null;
 
 const getOldestPatient = () =>
   db.prepare(`SELECT * FROM patients ORDER BY id ASC LIMIT 1`).get() || null;
+
+const getCasesWithEmptyClaimStatusStatement = db.prepare(
+  `SELECT * FROM patients WHERE claimed IS NULL`,
+);
+
+const getCasesWithEmptyClaimStatus = () =>
+  getCasesWithEmptyClaimStatusStatement.all();
 
 const upsertCaseFile = (referralId, action, tgFileId) => {
   const stmt = casesLettersDb.prepare(`
@@ -446,19 +428,13 @@ const deleteOldCaseFiles = () => {
 };
 
 export {
-  createPatientRowKey,
   db,
   allPatientsStatement,
   insertPatients,
   updatePatients,
   deletePatients,
-  weeklyHistoryDb,
-  allWeeklyPatientsStatement,
-  insertWeeklyHistoryPatients,
-  updateWeeklyHistoryPatients,
-  deleteWeeklyHistoryPatients,
-  toDbRow,
-  getWeeklyHistoryPatient,
+  getPatient,
+  getCasesWithEmptyClaimStatus,
   getOldestPatient,
   upsertCaseFile,
   getCaseFile,

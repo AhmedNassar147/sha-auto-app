@@ -23,6 +23,7 @@ import { API_URLS, baseWaslaHeaders } from "./constants.mjs";
  * @param {number} [options.pageSize=100]
  * @param {string} [options.sortField="CreatedDate"]
  * @param {"ASC" | "DESC"} [options.sortDirection="DESC"]
+ * @param {string} [options.searchReferralID]
  * @returns {Promise<{
  *   success: boolean,
  *   patients: object[],

@@ -8,14 +8,7 @@ import { unlink } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import {
-  createPatientRowKey,
-  getCaseFile,
-  getWeeklyHistoryPatient,
-  updateWeeklyHistoryPatients,
-  upsertCaseFile,
-} from "./db.mjs";
-import getMimeType from "./getMimeType.mjs";
+import { getCaseFile, upsertCaseFile } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
 import compressPdfGentlly from "./compressPdfGentlly.mjs";

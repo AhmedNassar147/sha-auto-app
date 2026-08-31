@@ -25,7 +25,7 @@ const providerFileUrl = toBase64(providerLogo);
 
 const htmlLayouts = {
   [LETTER_LAYOUT_TYPES.STANDARD]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -187,7 +187,7 @@ const htmlLayouts = {
         <tr class="section-title"><td colspan="4">بيانات المريض</td></tr>
         <tr>
           <td><strong>اسم المريض:</strong> ${patientName}</td>
-          <td><strong>رقم الإثبات:</strong> ${nationalId}</td>
+          <td><strong>رقم الإثبات:</strong> ${patientNationalId}</td>
           <td><strong>الجنسية:</strong> ${nationality || "SAUDI"}</td>
           <td><strong>رقم التواصل:</strong> ${mobileNumber || ""}</td>
         </tr>
@@ -282,7 +282,7 @@ const htmlLayouts = {
   `;
   },
   [LETTER_LAYOUT_TYPES.MODERN]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -462,7 +462,7 @@ const htmlLayouts = {
       <div class="card-title">بيانات المريض</div>
       <div class="grid-2">
         <div><span class="item-label">اسم المريض:</span> ${patientName}</div>
-        <div><span class="item-label">رقم الإثبات:</span> ${nationalId}</div>
+        <div><span class="item-label">رقم الإثبات:</span> ${patientNationalId}</div>
         <div><span class="item-label">الجنسية:</span> ${nationality}</div>
         <div><span class="item-label">رقم التواصل:</span> ${mobileNumber}</div>
       </div>
@@ -556,7 +556,7 @@ const htmlLayouts = {
 `;
   },
   [LETTER_LAYOUT_TYPES.FORMAL]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -857,7 +857,7 @@ const htmlLayouts = {
 
                     <td>
                       <span class="field-label">رقم الإثبات</span>
-                      <div class="field-value">${nationalId || ""}</div>
+                      <div class="field-value">${patientNationalId || ""}</div>
                     </td>
                   </tr>
 
@@ -1098,7 +1098,7 @@ const htmlLayouts = {
     `;
   },
   [LETTER_LAYOUT_TYPES.ELEGANT]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -1447,7 +1447,7 @@ const htmlLayouts = {
 
                 <div class="info-item">
                   <span class="info-label">رقم الإثبات</span>
-                  <span class="info-value">${nationalId || ""}</span>
+                  <span class="info-value">${patientNationalId || ""}</span>
                 </div>
 
                 <div class="info-item">
@@ -1666,7 +1666,7 @@ const htmlLayouts = {
     `;
   },
   [LETTER_LAYOUT_TYPES.CORPORATE]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -2093,7 +2093,7 @@ const htmlLayouts = {
                 <span class="data-label">رقم الإثبات</span>
 
                 <div class="data-value">
-                  ${nationalId || ""}
+                  ${patientNationalId || ""}
                 </div>
               </div>
 
@@ -2350,7 +2350,7 @@ const htmlLayouts = {
   `;
   },
   [LETTER_LAYOUT_TYPES.EXECUTIVE]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -2895,7 +2895,7 @@ const htmlLayouts = {
                 <span class="information-label">رقم الإثبات</span>
 
                 <div class="information-value">
-                  ${nationalId || ""}
+                  ${patientNationalId || ""}
                 </div>
               </div>
 
@@ -3167,7 +3167,7 @@ const htmlLayouts = {
   `;
   },
   [LETTER_LAYOUT_TYPES.PREMIUM]: ({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,
@@ -3552,7 +3552,7 @@ const htmlLayouts = {
                 <div class="data-item">
                   <span class="data-label">رقم الإثبات</span>
                   <span class="data-value">
-                    ${nationalId || ""}
+                    ${patientNationalId || ""}
                   </span>
                 </div>
 
@@ -3790,10 +3790,14 @@ const htmlLayouts = {
 };
 
 const generateAcceptanceLetterHtml = ({
-  nationalId,
+  patientNationalId,
   nationality,
   patientName,
-  requestDate: _requestDate,
+  // The Wasla list row has no `requestDate` field - `createdAt` is what the
+  // portal's own UI labels "referralDate" (FacilityReferralsPage-B_XHVj97.js
+  // accessorKey "createdAt", header "referralDate"), so that's the closest
+  // confirmed match for "the date this referral was requested".
+  createdAt: _requestDate,
   referralId,
   specialty,
   subSpecialty,
@@ -3807,7 +3811,11 @@ const generateAcceptanceLetterHtml = ({
   letterType,
   __reasonName__,
 }) => {
-  const [date] = _requestDate.split("T");
+  const requestDateSource =
+    typeof _requestDate === "string" && _requestDate.includes("T")
+      ? _requestDate
+      : new Date().toISOString();
+  const [date] = requestDateSource.split("T");
   const [year, month, day] = date.split("-");
   const requestDate = `${day}/${month}/${year}`;
 
@@ -3817,7 +3825,7 @@ const generateAcceptanceLetterHtml = ({
   const htmlCreator = htmlLayouts[_letterType];
 
   return htmlCreator({
-    nationalId,
+    patientNationalId,
     nationality,
     patientName,
     requestDate,

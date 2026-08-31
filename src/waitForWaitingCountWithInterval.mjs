@@ -13,7 +13,7 @@ import speakText from "./speakText.mjs";
 import createReloadAndCheckIfShouldCreateNewPage from "./createReloadAndCheckIfShouldCreateNewPage.mjs";
 import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
 import sleep from "./sleep.mjs";
-// import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
+import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
 import {
   pauseController,
   pause,
@@ -217,42 +217,42 @@ const waitForWaitingCountWithInterval = async ({
         continue;
       }
 
-      // const nonClaimableCasesSize = patientsStore.getNonClaimableCasesSize();
+      const nonClaimableCasesSize = patientsStore.getNonClaimableCasesSize();
 
-      // if (nonClaimableCasesSize && page) {
-      //   createConsoleMessage(
-      //     "info",
-      //     `⏳ There are (${nonClaimableCasesSize}) cases that need to be checked`,
-      //   );
-      //   const haveCasesCheckedAndNeedsUpdate =
-      //     await checkReferralSelectedStatus(
-      //       page,
-      //       patientsStore,
-      //       sendTelegramMessage,
-      //     );
+      if (nonClaimableCasesSize && page) {
+        createConsoleMessage(
+          "info",
+          `⏳ There are (${nonClaimableCasesSize}) cases that need to be checked`,
+        );
+        const haveCasesCheckedAndNeedsUpdate =
+          await checkReferralSelectedStatus(
+            frame,
+            patientsStore,
+            sendTelegramMessage,
+          );
 
-      //   if (haveCasesCheckedAndNeedsUpdate) {
-      //     const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
-      //       page,
-      //       "accepted cases checked and needs update,",
-      //       1000,
-      //     );
+        if (haveCasesCheckedAndNeedsUpdate) {
+          const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
+            page,
+            "accepted cases checked and needs update,",
+            1000,
+          );
 
-      //     if (shouldCreateNewPage) {
-      //       page = null;
-      //       cursor = null;
-      //     }
+          if (shouldCreateNewPage) {
+            page = null;
+            cursor = null;
+          }
 
-      //     continue;
-      //   }
+          continue;
+        }
 
-      //   const waitTime = 1500 + Math.random() * 3000;
-      //   createConsoleMessage(
-      //     "info",
-      //     `📋 sleep for ${waitTime / 1000}s after checking accepted case status ...`,
-      //   );
-      //   await pausableSleep(waitTime);
-      // }
+        const waitTime = 1500 + Math.random() * 3000;
+        createConsoleMessage(
+          "info",
+          `📋 sleep for ${waitTime / 1000}s after checking accepted case status ...`,
+        );
+        await pausableSleep(waitTime);
+      }
 
       const patientsLength = totalRowsCount;
 
@@ -295,13 +295,10 @@ const waitForWaitingCountWithInterval = async ({
 
       apiHadData = true;
 
-      console.log(JSON.stringify(patients, null, 2));
-
-      await pausableSleep(1000_000);
-
       const newPatientAdded = await processCollectingPatients({
         browser,
         page,
+        frame,
         patientsStore,
         patients,
       });

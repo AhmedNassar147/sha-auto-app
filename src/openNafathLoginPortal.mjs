@@ -17,6 +17,15 @@ import { nafathLoginLinkSelector, NAFATH_HOSTNAME } from "./constants.mjs";
 const REDIRECT_SCREEN_TIMEOUT_MS = 20_000;
 const SSO_REDIRECT_TIMEOUT_MS = 40_000;
 
+// html/page-after-login-with-nafath-button.html: the interstitial has its
+// own countdown ("... خلال 1 ثواني") that auto-redirects via JS, plus this
+// manual link as a fallback for when that doesn't fire. It has no href
+// (a React onClick, not a real anchor) - clicking it immediately rather
+// than waiting out the timer saves time in an app where every second of
+// the acceptance window matters, and gives us an active step instead of
+// depending on a timer we don't control.
+const manualRedirectLinkSelector = ".iam-redirct a.btn.btn-primary";
+
 /**
  * Clicks the Nafath login link and waits through the interstitial + the
  * server-side SAML redirect chain until the browser actually lands on
@@ -67,6 +76,15 @@ const openNafathLoginPortal = async (page) => {
     );
     return { success: false, message: "redirect screen did not appear" };
   }
+
+  // Best-effort: don't fail the flow if it's missing or the page has
+  // already moved on by the time we look for it - the auto-redirect timer
+  // is still there as a fallback either way.
+  await page
+    .evaluate((selector) => {
+      document.querySelector(selector)?.click();
+    }, manualRedirectLinkSelector)
+    .catch(() => {});
 
   // waitForFunction survives the frame's execution context being torn down
   // mid-poll by the actual cross-origin navigation below — a manual

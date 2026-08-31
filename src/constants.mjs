@@ -1,3 +1,8 @@
+/*
+ *
+ * Constants
+ *
+ */
 export const cwd = process.cwd();
 
 export const siteCodeConfigFile = `${cwd}/sitecode_config.json`;
@@ -22,10 +27,6 @@ export const NAFATH_HOSTNAME = "iam.gov.sa";
 export const TABS_COLLECTION_TYPES = {
   PENDING: "PENDING",
   MY_ACCEPT: "MY_ACCEPT",
-  CONFIRMED: "CONFIRMED",
-  ADMITTED: "ADMITTED",
-  DISCHARGED: "DISCHARGED",
-  DECLINED: "DECLINED",
 };
 
 // Y = ((t) => (
@@ -52,6 +53,9 @@ export const WASLA_STATUS_TYPES = {
   6: "RejectedByCNHI",
   7: "AnotherFacilityApproved",
 };
+
+export const CLAIMED_STATUS_CODES = [1, 4];
+export const WAITING_ACCEPTANCE_STATUS_CODES = 3;
 
 export const PATIENT_SECTIONS_STATUS = {
   [TABS_COLLECTION_TYPES.PENDING]: {
@@ -103,9 +107,6 @@ export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 export const cutoffTimeMs = 22_000;
 export const searchIfAcceptacneButtonShownMS = 22_000;
 
-export const EFFECTIVE_REVIEW_DURATION_MS =
-  ALLOWED_MINUTES_TO_REVIEW_PATIENTS * 60 * 1000;
-
 export const USER_MESSAGES = {
   alreadyScheduledAccept: "Already scheduled for acceptance.",
   alreadyScheduledReject: "Already scheduled for rejection.",
@@ -155,6 +156,7 @@ export const API_URLS = {
   CASEE_DOWNLOAD_ATTACHMENT: `${baseReferraAPiUrl}/download-attachment`,
   ACCEPT_CASE: `${baseReferraAPiUrl}/accept`,
   REJECT: `${baseReferraAPiUrl}/reject`,
+  DISTRIBUTION_WINDOWS_URL: `${BASE_WASLA_API_URL}/lookup/distribution-windows`,
 };
 
 export const baseWaslaHeaders = {

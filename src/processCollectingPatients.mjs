@@ -11,11 +11,8 @@ import formateDateToString from "./formateDateToString.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
-import {
-  ALLOWED_MINUTES_TO_REVIEW_PATIENTS,
-  cutoffTimeMs,
-  LETTER_LAYOUT_NAMES,
-} from "./constants.mjs";
+import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
+import { cutoffTimeMs, LETTER_LAYOUT_NAMES } from "./constants.mjs";
 
 // Wasla gives an exact broadcastedAt timestamp directly on the facility/tabs
 // list row (confirmed against the real weslah.seha.sa bundle,
@@ -23,11 +20,13 @@ import {
 // windowMinutes * 60_000) — unlike the old GlobMed system, there's no
 // countdown message to parse and no server-clock-skew reconciliation needed,
 // since this comes straight from the list call rather than a delayed
-// per-case details fetch.
-const getWaslaCaseWindow = (broadcastedAt, cutoffTimeMs) => {
+// per-case details fetch. windowMinutes itself comes from
+// getWaslaDistributionWindows (facilityReviewWindowMinutes), matching how
+// the portal's own countdown badge (SubmissionValidityCell-DF_QRL2y.js)
+// derives it, rather than a hardcoded constant.
+const getWaslaCaseWindow = (broadcastedAt, cutoffTimeMs, windowMinutes) => {
   const referralEndTimestamp =
-    new Date(broadcastedAt).getTime() +
-    ALLOWED_MINUTES_TO_REVIEW_PATIENTS * 60 * 1000;
+    new Date(broadcastedAt).getTime() + windowMinutes * 60 * 1000;
 
   const timeWithUserReaction = cutoffTimeMs + 2000;
   const shouldCutoffTime = referralEndTimestamp > timeWithUserReaction;
@@ -53,6 +52,7 @@ const processCollectingPatients = async ({
   browser,
   patientsStore,
   page,
+  frame,
   patients,
 }) => {
   const { USE_NTFY_AS_CASE_PROVIDER, LETTER_TYPE } = process.env;
@@ -61,6 +61,12 @@ const processCollectingPatients = async ({
 
   try {
     const patientsLength = patients?.length ?? 0;
+
+    const {
+      facilityReviewWindowMinutes,
+      acceptanceWindowMinutes,
+      extendScopeWindowMinutes,
+    } = await getWaslaDistributionWindows(frame);
 
     let index = 0;
 
@@ -157,7 +163,14 @@ const processCollectingPatients = async ({
       const finalData = {
         referralId,
         createdAt,
-        ...getWaslaCaseWindow(broadcastedAt, cutoffTimeMs),
+        ...getWaslaCaseWindow(
+          broadcastedAt,
+          cutoffTimeMs,
+          facilityReviewWindowMinutes,
+        ),
+        facilityReviewWindowMinutes,
+        acceptanceWindowMinutes,
+        extendScopeWindowMinutes,
         referralReferenceId,
         patientName,
         patientNationalId,

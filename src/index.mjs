@@ -39,7 +39,7 @@ import {
 
 import createConsoleMessage from "./createConsoleMessage.mjs";
 // import installTelegramBotApi from "./installTelegramBotApi.mjs";
-// import { deleteOldCaseFiles } from "./db.mjs";
+import { deleteOldCaseFiles, getCasesWithEmptyClaimStatus } from "./db.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
@@ -196,12 +196,11 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
       true,
     );
 
-    // const nonClaimableCases = await getCasesWithEmptyClaimStatus();
+    const nonClaimableCases = getCasesWithEmptyClaimStatus();
 
     const patientsStore = new PatientStore(
       collectedPatients || [],
-      [],
-      // nonClaimableCases,
+      nonClaimableCases,
     );
 
     await patientsStore.scheduleAllInitialPatients();
@@ -233,28 +232,24 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
       }))();
 
     // cleanup old case letter files from db
-    // cron.schedule(
-    //   "0 3 * * *",
-    //   async () => {
-    //     createConsoleMessage("✅ cases letters files cleanup", "info");
+    cron.schedule(
+      "0 3 * * *",
+      async () => {
+        createConsoleMessage("info", "✅ cases letters files cleanup");
 
-    //     try {
-    //       const result = deleteOldCaseFiles();
+        try {
+          const result = deleteOldCaseFiles();
 
-    //       createConsoleMessage(
-    //         `✅ cases letters files cleanup done, ${result.changes} files deleted.`,
-    //         "info",
-    //       );
-    //     } catch (err) {
-    //       createConsoleMessage(
-    //         err.message || err,
-    //         "error",
-    //         "cases letters files cleanup",
-    //       );
-    //     }
-    //   },
-    //   { timezone: "Asia/Riyadh" },
-    // );
+          createConsoleMessage(
+            "info",
+            `✅ cases letters files cleanup done, ${result.changes} files deleted.`,
+          );
+        } catch (err) {
+          createConsoleMessage("error", err, "cases letters files cleanup");
+        }
+      },
+      { timezone: "Asia/Riyadh" },
+    );
 
     // // weekly Summary cron
     // cron.schedule(

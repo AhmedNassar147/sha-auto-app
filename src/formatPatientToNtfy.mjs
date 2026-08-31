@@ -9,24 +9,35 @@ const formatPatientToNtfy = (patient) => {
   const {
     referralId,
     patientName,
+    patientNationalId,
+    referralType,
+    providerRegion,
+    referralReason,
+    referralEndDateActionablAt,
+    cutoffTimeMs,
+    referralEndDate,
+    transferUrl,
+    facilityReviewWindowMinutes,
+    acceptanceWindowMinutes,
+    extendScopeWindowMinutes,
+    // Not on the Wasla list-row shape - still unconfirmed whether/where the
+    // per-case details API (getWaslaPatientReferralDataFromAPI, not wired
+    // in yet) will surface these. Kept so this formatter doesn't need
+    // another pass once that's confirmed; safe() prints "" until then.
     mobileNumber,
     nationality,
-    nationalId,
-    referralType,
     gender,
     maritalStatus,
     hijriDOB,
     specialty,
     subSpecialty,
     sourceProvider,
-    providerZone,
-    referralCause,
     note,
-    referralEndDateActionablAt,
-    cutoffTimeMs,
-    referralEndDate,
-    transferUrl,
   } = patient;
+
+  const referralReasonText = Array.isArray(referralReason)
+    ? referralReason.join(" - ")
+    : referralReason;
 
   const { BRANCH_NAME, CLIENT_ID, USE_NTFY_AS_CASE_PROVIDER } = process.env;
 
@@ -55,13 +66,16 @@ const formatPatientToNtfy = (patient) => {
     `🕐 Actionable At: ${safe(referralEndDateActionablAt)}\n` +
     `🕐 Cutoff Time: ${cutoffLabel}\n` +
     `🕐 Ends At: ${safe(referralEndDate)}\n` +
+    `🪟 Review Window: ${safe(facilityReviewWindowMinutes)} min\n` +
+    `🪟 Acceptance Window: ${safe(acceptanceWindowMinutes)} min\n` +
+    `🪟 Extend Scope Window: ${safe(extendScopeWindowMinutes)} min\n` +
     `🔗 Client: ${safe(clientOrBranchName)}\n\n` +
     `🔗 Report: ${safe(transferUrl)}\n\n` +
     `────────────────────────\n\n` +
     `👤 Name: ${safe(patientName)}\n` +
     `📱 Mobile: ${safe(mobileNumber)}\n` +
     `🌐 Nationality: ${safe(nationality)}\n` +
-    `🆔 National ID: ${safe(nationalId)}\n` +
+    `🆔 National ID: ${safe(patientNationalId)}\n` +
     `🧑‍⚕️ Gender: ${safe(gender)}\n` +
     `❤️ Marital Status: ${safe(maritalStatus)}\n` +
     `📅 Hijri DOB: ${safe(hijriDOB)}\n` +
@@ -69,8 +83,8 @@ const formatPatientToNtfy = (patient) => {
     `🩺 Specialty: ${safe(specialty)}\n` +
     `🔬 Sub-Specialty: ${safe(subSpecialty)}\n` +
     `🏥 Provider: ${safe(sourceProvider)}\n` +
-    `📍 Zone: ${safe(providerZone)}\n` +
-    `📝 Reason: ${safe(referralCause)}\n` +
+    `📍 Zone: ${safe(providerRegion)}\n` +
+    `📝 Reason: ${safe(referralReasonText)}\n` +
     `🧾 Cause Note: ${safe(note)}`;
 
   return message;
