@@ -14,24 +14,40 @@ const legacyErrorSelector = ".validation-summary-errors ul li";
 const nafathToastErrorDescriptionSelector =
   '[data-scope="toast"][data-part="root"][data-type="error"] [data-part="description"]';
 
+// Nafath's other (server-rendered) UI shows errors inline instead of via a
+// toast — e.g. "اسم المستخدم او كلمة المرور غير صحيح" in #errorMessage (see
+// html/new-nafath-login-error.html). This one is part of the rendered page
+// rather than a transient toast, so — unlike the one above — it doesn't
+// auto-dismiss and stays checkable well after the submit that triggered it.
+const nafathInlineErrorSelector = "#errorMessage";
+
 /**
  * Extracts login error messages shown in the DOM after form submission —
- * both the legacy ASP.NET validation-summary list and Nafath's error toast.
+ * the legacy ASP.NET validation-summary list, Nafath's Chakra error toast,
+ * and Nafath's server-rendered inline error.
  * @param {import('puppeteer').Page} page - Puppeteer page instance.
  * @returns {Promise<string[]>} Array of error messages.
  */
 const getLoginErrors = async (page) => {
   try {
-    const [legacyErrors, nafathErrors] = await Promise.all([
-      page.$$eval(legacyErrorSelector, (items) =>
-        items.map((li) => li?.textContent?.trim()).filter(Boolean),
-      ),
-      page.$$eval(nafathToastErrorDescriptionSelector, (items) =>
-        items.map((el) => el?.textContent?.trim()).filter(Boolean),
-      ),
-    ]);
+    const [legacyErrors, nafathToastErrors, nafathInlineErrors] =
+      await Promise.all([
+        page.$$eval(legacyErrorSelector, (items) =>
+          items.map((li) => li?.textContent?.trim()).filter(Boolean),
+        ),
+        page.$$eval(nafathToastErrorDescriptionSelector, (items) =>
+          items.map((el) => el?.textContent?.trim()).filter(Boolean),
+        ),
+        page.$$eval(nafathInlineErrorSelector, (items) =>
+          items.map((el) => el?.textContent?.trim()).filter(Boolean),
+        ),
+      ]);
 
-    return [...legacyErrors, ...nafathErrors].filter(Boolean);
+    return [
+      ...legacyErrors,
+      ...nafathToastErrors,
+      ...nafathInlineErrors,
+    ].filter(Boolean);
   } catch (error) {
     createConsoleMessage("error", error, "getLoginErrors");
     return [];
