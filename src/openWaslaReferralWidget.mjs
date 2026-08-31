@@ -7,9 +7,9 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import {
   WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR,
   WASLA_REFERRAL_IFRAME_TIMEOUT_MS,
+  sidebarMenuItemSelector,
 } from "./constants.mjs";
 
-const sidebarMenuItemSelector = ".ant-layout-sider-children ul > li";
 const submenuTitleSelector = ".ant-menu-submenu-title";
 const submenuPopupItemSelector = ".ant-menu-sub > li";
 const waslaItemTexts = ["وصلة", "connection"];

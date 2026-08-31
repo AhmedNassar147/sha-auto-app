@@ -88,7 +88,7 @@ export const navigateToNewDetailsPage = async ({
         } catch {}
         targetWindow.history.pushState(
           {
-            usr: { idReferral: referralId, type: "Referral" },
+            usr: { referralId: referralId, type: "Referral" },
             key: routerKey,
             idx: targetWindow.history.state?.idx + 1 || 1,
           },

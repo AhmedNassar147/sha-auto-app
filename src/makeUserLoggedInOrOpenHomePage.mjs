@@ -3,36 +3,50 @@
  * helper: `makeUserLoggedInOrOpenHomePage`.
  *
  */
-import { createCursor } from "ghost-cursor";
+import { GhostCursor } from "ghost-cursor";
 import checkIfLoginPage from "./checkIfLoginPage.mjs";
 import sleep from "./sleep.mjs";
-import waitForHomeLink from "./waitForHomeLink.mjs";
 import gotToLoginPage from "./gotToLoginPage.mjs";
 import shouldCloseAppWhenLogin from "./shouldCloseAppWhenLogin.mjs";
-import { homePageTableSelector } from "./constants.mjs";
+import { NAFATH_HOSTNAME, LOGIN_PAGE_PATH_NAME } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import patchBundleFromPage from "./patchBundleFromPage.mjs";
-import getIdProviderFromSession from "./getIdProviderFromSession.mjs";
-import updateEnvFile from "./updateEnvFile.mjs";
+import checkIfInDashboardPage from "./checkIfInDashboardPage.mjs";
+import openNafathLoginPortal from "./openNafathLoginPortal.mjs";
+import loginWithNafathCredentials from "./loginWithNafathCredentials.mjs";
 
 const MAX_RETRIES = 3;
-const loginButtonSelector = 'button[name="Input.Button"][value="login"]';
+const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
+const loginPathName = LOGIN_PAGE_PATH_NAME.toLowerCase();
 
-const checkHomePageFullyLoaded = async (page) => {
-  try {
-    await waitForHomeLink(page, 20_000);
-    await page.waitForSelector(homePageTableSelector, {
-      timeout: 20_000,
-    });
-    return true;
-  } catch (err) {
-    await page.screenshot({
-      path: `screenshots/check-not-in-home-error-${Date.now()}.png`,
-    });
-    return false;
-  }
-};
-
+/**
+ * Ensures a page is logged into seha.sa and sitting on the dashboard,
+ * driving the full Nafath SSO flow (openNafathLoginPortal ->
+ * loginWithNafathCredentials) when the login page is showing. Retries the
+ * whole attempt up to MAX_RETRIES times on any thrown error.
+ *
+ * @param {object} params
+ * @param {import("puppeteer").Browser} params.browser - Used to open a new
+ *   page when `currentPage` isn't supplied.
+ * @param {import("ghost-cursor").GhostCursor} [params.cursor] - Reused when
+ *   provided alongside `currentPage`; otherwise a new one is created unless
+ *   `noCursor` is set.
+ * @param {import("puppeteer").Page} [params.currentPage] - Reuse an existing
+ *   page instead of opening a new one.
+ * @param {string} [params.startingPageUrl] - Skip the login page entirely
+ *   and go straight here on the first attempt (retries still go through
+ *   gotToLoginPage). Only honored when `retries === 0`.
+ * @param {boolean} [params.noCursor] - Skip creating a ghost-cursor.
+ * @param {boolean} [params.noBundleCheck] - Suppress the "is in home page"
+ *   success log.
+ * @returns {Promise<{
+ *   newPage: import("puppeteer").Page,
+ *   newCursor?: import("ghost-cursor").GhostCursor,
+ *   isLoggedIn: boolean,
+ *   isErrorAboutLockedOut?: boolean,
+ *   isErrorAboutCannotBringToFront?: boolean,
+ *   shouldCloseApp?: boolean,
+ * }>}
+ */
 const makeUserLoggedInOrOpenHomePage = async ({
   browser,
   cursor: _cursor,
@@ -42,7 +56,6 @@ const makeUserLoggedInOrOpenHomePage = async ({
   noBundleCheck,
 }) => {
   const userName = process.env.CLIENT_NAME;
-  const password = process.env.CLIENT_PASSWORD;
 
   let page = currentPage || (await browser.newPage());
 
@@ -52,11 +65,11 @@ const makeUserLoggedInOrOpenHomePage = async ({
     cursor =
       _cursor && currentPage
         ? _cursor
-        : createCursor(
-            page,
-            { x: 180 + Math.random(), y: 250 + Math.random() * 20 },
-            false,
-          );
+        : new GhostCursor(page, {
+            performRandomMoves: false,
+            start: { x: 180 + Math.random(), y: 250 + Math.random() * 20 },
+            visible: false,
+          });
   }
 
   let retries = 0;
@@ -78,11 +91,7 @@ const makeUserLoggedInOrOpenHomePage = async ({
         const pageUrl = page.url();
 
         if (pageUrl.toLowerCase().includes(startingPageUrl.toLowerCase())) {
-          await page.waitForSelector(homePageTableSelector, {
-            timeout: 20_000,
-          });
-
-          hasEnteredStartingPage = true;
+          hasEnteredStartingPage = await checkIfInDashboardPage(page);
         }
       }
 
@@ -108,38 +117,53 @@ const makeUserLoggedInOrOpenHomePage = async ({
             };
           }
 
-          await page.focus("#Input_Username");
-          await page.keyboard.type(userName, {
-            delay: 100 + Math.random() * 20,
-          });
+          const { success: reachedNafath, message: nafathPortalMessage } =
+            await openNafathLoginPortal(page);
 
-          await page.focus("#Input_Password");
-          await page.keyboard.type(password, {
-            delay: 100 + Math.random() * 20,
-          });
-
-          await sleep(120 + Math.random() * 100);
-          await page.click(loginButtonSelector);
-
-          try {
-            await page.waitForNavigation({
-              waitUntil: ["load", "networkidle2"],
-              timeout: 8_000,
-            });
-          } catch (error) {
+          if (!reachedNafath) {
             createConsoleMessage(
               "error",
-              error.message,
-              `🛑 AFTER SUBMITTING LOGIN ...`,
+              nafathPortalMessage,
+              "❌ openNafathLoginPortal failed",
             );
+          } else {
+            const {
+              success: credentialsSubmitted,
+              message: credentialsMessage,
+            } = await loginWithNafathCredentials(page);
+
+            if (!credentialsSubmitted) {
+              createConsoleMessage(
+                "error",
+                credentialsMessage,
+                "❌ loginWithNafathCredentials failed",
+              );
+            } else {
+              // Nafath redirects back to seha.sa once it accepts the
+              // credentials — waitForFunction survives that cross-origin
+              // navigation tearing down the execution context mid-poll,
+              // unlike a manual evaluate()-based poll.
+              await page
+                .waitForFunction(
+                  (hostname) => !location.hostname.includes(hostname),
+                  { timeout: RETURN_TO_SEHA_TIMEOUT_MS },
+                  NAFATH_HOSTNAME,
+                )
+                .catch((error) => {
+                  createConsoleMessage(
+                    "error",
+                    error.message,
+                    "❌ Never redirected back from Nafath",
+                  );
+                });
+            }
           }
         }
 
-        const currentPageUrl = page.url();
-
-        const isStillInLoginPage = currentPageUrl
+        const isStillInLoginPage = page
+          .url()
           .toLowerCase()
-          .includes("/account/login");
+          .includes(loginPathName);
 
         if (isStillInLoginPage) {
           const { shouldCloseApp, isErrorAboutLockedOut } =
@@ -167,24 +191,11 @@ const makeUserLoggedInOrOpenHomePage = async ({
       }
 
       const isHomeLoaded =
-        hasEnteredStartingPage || (await checkHomePageFullyLoaded(page));
+        hasEnteredStartingPage || (await checkIfInDashboardPage(page));
 
       if (isHomeLoaded) {
         if (!noBundleCheck) {
           createConsoleMessage("info", `✅ User ${userName} is in home page.`);
-          await patchBundleFromPage(page);
-        }
-
-        if (!process.env.ID_PROVIDER) {
-          const idProvider = await getIdProviderFromSession(page);
-
-          if (idProvider) {
-            updateEnvFile({ ID_PROVIDER: idProvider });
-            createConsoleMessage(
-              "info",
-              `✅ Cached ID_PROVIDER=${idProvider} from session.`,
-            );
-          }
         }
 
         return {

@@ -120,8 +120,21 @@ const processCollectingPatients = async ({
     for (const patient of patients) {
       index++;
 
-      const { idReferral, referralDate } = patient || {};
-      const referralId = String(idReferral);
+      const {
+        referralId: patientReferralId,
+        referralDate,
+        createdAt,
+        referralReferenceId,
+        patientName,
+        patientNationalId,
+        referralReason,
+        providerRegion,
+        referralType,
+        status,
+        id: idForNavigation,
+        // https://weslah.seha.sa/facility-referrals/view/384325
+      } = patient || {};
+      const referralId = String(patientReferralId);
 
       if (!referralId) {
         createConsoleMessage("warn", `⏩ skipping patient without referralId`);

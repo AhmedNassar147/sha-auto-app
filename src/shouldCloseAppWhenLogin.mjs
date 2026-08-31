@@ -5,6 +5,7 @@
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getLoginErrors from "./getLoginErrors.mjs";
+import { screenshotsFolderDirectory } from "./constants.mjs";
 
 const shouldCloseAppWhenLogin = async (page) => {
   const errors = await getLoginErrors(page);
@@ -23,7 +24,7 @@ const shouldCloseAppWhenLogin = async (page) => {
     const shouldCloseApp = errorsLength > 1 || !isErrorAboutLockedOut;
 
     await page.screenshot({
-      path: `screenshots/login-error-${Date.now()}.png`,
+      path: `${screenshotsFolderDirectory}/login-error-${Date.now()}.png`,
     });
 
     return {

@@ -67,7 +67,7 @@ async function waitUntilCanTakeActionByWindow({
               "Cache-Control": "no-store",
               Pragma: "no-cache",
             },
-            body: JSON.stringify({ idReferral: referralId }),
+            body: JSON.stringify({ referralId: referralId }),
             cache: "no-store",
             credentials: "include",
           });

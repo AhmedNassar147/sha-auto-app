@@ -15,6 +15,10 @@ export const COLLECTD_PATIENTS_FULL_FILE_PATH = `${waitingPatientsFolderDirector
 export const WASLA_REFERRAL_IFRAME_TIMEOUT_MS = 20_000;
 export const WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR = "#contentIframe";
 
+export const sidebarMenuItemSelector = ".ant-layout-sider-children ul > li";
+export const nafathLoginLinkSelector = 'a[data-testid="nafath-login-link"]';
+export const NAFATH_HOSTNAME = "iam.gov.sa";
+
 export const TABS_COLLECTION_TYPES = {
   PENDING: "PENDING",
   MY_ACCEPT: "MY_ACCEPT",
@@ -22,6 +26,17 @@ export const TABS_COLLECTION_TYPES = {
   ADMITTED: "ADMITTED",
   DISCHARGED: "DISCHARGED",
   DECLINED: "DECLINED",
+};
+
+// this is only for my orders table
+export const WASLA_STATUS_TYPES = {
+  1: "Confirmed",
+  2: "Rejected",
+  3: "WaitingAcceptance",
+  4: "ConfirmedArrival",
+  5: "Withdrawn",
+  6: "RejectedByCNHI",
+  7: "AnotherFacilityApproved",
 };
 
 export const PATIENT_SECTIONS_STATUS = {
@@ -39,24 +54,24 @@ export const PATIENT_SECTIONS_STATUS = {
     tab: 2,
     categoryReference: "accepted",
   },
-  // [TABS_COLLECTION_TYPES.CONFIRMED]: {
-  //   targetText: "Confirmed Referrals",
-  //   foundCountText: "confirmed referrals requests",
-  //   noCountText: "No confirmed referrals requests found",
-  //   categoryReference: "confirmed",
-  // },
-  // [TABS_COLLECTION_TYPES.ADMITTED]: {
-  //   targetText: "Admitted Requests",
-  //   foundCountText: "Admitted referrals requests",
-  //   noCountText: "No Admitted referrals found",
-  //   categoryReference: "admitted",
-  // },
-  // [TABS_COLLECTION_TYPES.DISCHARGED]: {
-  //   targetText: "Discharged Requests",
-  //   foundCountText: "Discharged Requests requests",
-  //   noCountText: "No Discharged Requests found",
-  //   categoryReference: "discharged",
-  // },
+  [TABS_COLLECTION_TYPES.CONFIRMED]: {
+    targetText: "Confirmed Referrals",
+    foundCountText: "confirmed referrals requests",
+    noCountText: "No confirmed referrals requests found",
+    categoryReference: "confirmed",
+  },
+  [TABS_COLLECTION_TYPES.ADMITTED]: {
+    targetText: "Admitted Requests",
+    foundCountText: "Admitted referrals requests",
+    noCountText: "No Admitted referrals found",
+    categoryReference: "admitted",
+  },
+  [TABS_COLLECTION_TYPES.DISCHARGED]: {
+    targetText: "Discharged Requests",
+    foundCountText: "Discharged Requests requests",
+    noCountText: "No Discharged Requests found",
+    categoryReference: "discharged",
+  },
   [TABS_COLLECTION_TYPES.DECLINED]: {
     targetText: "Declined Referrals",
     foundCountText: "Declined referrals requests",
@@ -108,8 +123,12 @@ export const CONFIRMATION_TYPES = {
 };
 
 export const APP_URL = "https://seha.sa";
-const LOGIN_PAGE_URL = `${APP_URL}/#/account/login`;
-export const HOME_PAGE_URL = `${APP_URL}/#/Dashboard`;
+
+export const LOGIN_PAGE_PATH_NAME = `#/account/login`;
+export const LOGIN_PAGE_URL = `${APP_URL}/${LOGIN_PAGE_PATH_NAME}`;
+
+export const HOME_PAGE_PATH_NAME = `#/Dashboard`;
+export const HOME_PAGE_URL = `${APP_URL}/${HOME_PAGE_PATH_NAME}`;
 
 const BASE_WASLA_API_URL = "https://weslah.seha.sa/api";
 export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;

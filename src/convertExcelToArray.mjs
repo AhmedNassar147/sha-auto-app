@@ -19,7 +19,7 @@ const convertExcelToArray = async (filePath) => {
       empty,
       order,
       referralDate,
-      idReferral,
+      referralId,
       ihalatyReference,
       adherentName,
       adherentNationalId,
@@ -31,7 +31,7 @@ const convertExcelToArray = async (filePath) => {
 
     finalData.push({
       referralDate,
-      idReferral,
+      referralId,
       ihalatyReference,
       adherentName,
       adherentNationalId,
@@ -46,7 +46,7 @@ const convertExcelToArray = async (filePath) => {
 
   const data = await readJsonFile(
     "D:/work/future/clone-icare/automize-icare/results/las-referral-summary.json",
-    true
+    true,
   );
 
   // insertPatients([...finalData, ...data]);
@@ -54,7 +54,7 @@ const convertExcelToArray = async (filePath) => {
 
 (async () => {
   await convertExcelToArray(
-    "D:/work/future/clone-icare/automize-icare/results/last update up to 2072025.xlsx"
+    "D:/work/future/clone-icare/automize-icare/results/last update up to 2072025.xlsx",
   );
 })();
 

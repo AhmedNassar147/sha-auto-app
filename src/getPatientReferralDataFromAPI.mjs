@@ -18,14 +18,14 @@ const urls = [
 
 const getPatientReferralDataFromAPI = async (
   page,
-  idReferral,
+  referralId,
   skippAttachments,
 ) => {
   const results = await page.evaluate(
     async ({
       urls: _urls,
       baseWaslaHeaders,
-      idReferral,
+      referralId,
       BASE_WASLA_API_URL,
       skippAttachments,
     }) => {
@@ -40,7 +40,7 @@ const getPatientReferralDataFromAPI = async (
             const res = await fetch(url, {
               method: "POST",
               headers: baseWaslaHeaders,
-              body: JSON.stringify({ idReferral }),
+              body: JSON.stringify({ referralId }),
             });
 
             const finishedDateMS = new Date().getTime();
@@ -256,7 +256,7 @@ const getPatientReferralDataFromAPI = async (
               const name = parts.join(".");
 
               return {
-                fileName: `${idReferral}_${saveName(_specialty)}_${saveName(name)}`,
+                fileName: `${referralId}_${saveName(_specialty)}_${saveName(name)}`,
                 extension: extension,
                 fileBase64: base64,
                 idAttachment,
@@ -284,7 +284,7 @@ const getPatientReferralDataFromAPI = async (
     {
       urls,
       baseWaslaHeaders,
-      idReferral,
+      referralId,
       BASE_WASLA_API_URL,
       skippAttachments,
     },
@@ -305,7 +305,7 @@ export default getPatientReferralDataFromAPI;
 // const responsex = await fetch("https://referralprogram.globemedsaudi.com/referrals/details", {
 //                 method: "POST",
 //               headers: baseWaslaHeaders,
-//               body: JSON.stringify({ idReferral: "352923" }),
+//               body: JSON.stringify({ referralId: "352923" }),
 // })
 
 // const datax = await responsex.json();

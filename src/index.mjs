@@ -214,10 +214,10 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
     //   patientsStore.setTelegramMessageSender(sendTelegramMessage);
     // }
 
-    patientsStore.on(
-      "patientsAdded",
-      processSendPatientsToClient(patientsStore, sendTelegramMessage),
-    );
+    // patientsStore.on(
+    //   "patientsAdded",
+    //   processSendPatientsToClient(patientsStore, sendTelegramMessage),
+    // );
 
     // Background collector
     (async () =>
@@ -354,29 +354,29 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
     wss.on("close", () => clearInterval(pingInterval));
 
-    patientsStore.on(
-      "patientAccepted",
-      handleCaseAcceptanceOrRejection({
-        browser,
-        actionType: USER_ACTION_TYPES.ACCEPT,
-        broadcast,
-        sendTelegramMessage,
-        continueFetchingPatientsIfPaused,
-        patientStore: patientsStore,
-      }),
-    );
+    // patientsStore.on(
+    //   "patientAccepted",
+    //   handleCaseAcceptanceOrRejection({
+    //     browser,
+    //     actionType: USER_ACTION_TYPES.ACCEPT,
+    //     broadcast,
+    //     sendTelegramMessage,
+    //     continueFetchingPatientsIfPaused,
+    //     patientStore: patientsStore,
+    //   }),
+    // );
 
-    patientsStore.on(
-      "patientRejected",
-      handleCaseAcceptanceOrRejection({
-        browser,
-        actionType: USER_ACTION_TYPES.REJECT,
-        broadcast,
-        sendTelegramMessage,
-        continueFetchingPatientsIfPaused,
-        patientStore: patientsStore,
-      }),
-    );
+    // patientsStore.on(
+    //   "patientRejected",
+    //   handleCaseAcceptanceOrRejection({
+    //     browser,
+    //     actionType: USER_ACTION_TYPES.REJECT,
+    //     broadcast,
+    //     sendTelegramMessage,
+    //     continueFetchingPatientsIfPaused,
+    //     patientStore: patientsStore,
+    //   }),
+    // );
 
     // patientsStore.on(
     //   FAKE_REJECT_PROBE,

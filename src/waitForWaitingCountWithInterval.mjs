@@ -6,7 +6,9 @@
 import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs";
 import processCollectingPatients from "./processCollectingPatients.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import fetchPatientsFromAPI from "./fetchPatientsFromAPI.mjs";
+import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
+import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
+import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import speakText from "./speakText.mjs";
 import createReloadAndCheckIfShouldCreateNewPage from "./createReloadAndCheckIfShouldCreateNewPage.mjs";
 import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
@@ -20,10 +22,11 @@ import {
 import {
   PATIENT_SECTIONS_STATUS,
   TABS_COLLECTION_TYPES,
+  WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR,
 } from "./constants.mjs";
 
 const INTERVAL = 70_000;
-const NOT_LOGGED_SLEEP_TIME = 25_000;
+const NOT_LOGGED_SLEEP_TIME = 20_000;
 const LOCKED_OUT_SLEEP_TIME = 30 * 60_000;
 
 const pausableSleep = async (ms) => {
@@ -41,8 +44,7 @@ const waitForWaitingCountWithInterval = async ({
 
   let apiHadData = false;
 
-  const { targetText, categoryReference, tab } =
-    PATIENT_SECTIONS_STATUS[collectionTabType];
+  const { targetText, tab } = PATIENT_SECTIONS_STATUS[collectionTabType];
 
   const isPending = collectionTabType === TABS_COLLECTION_TYPES.PENDING;
 
@@ -53,13 +55,10 @@ const waitForWaitingCountWithInterval = async ({
       INTERVAL,
     );
 
-  const requestBody = JSON.stringify({
+  const requestBody = {
     pageSize: isPending ? 100 : 5,
-    pageNumber: 1,
     tab,
-    sortField: "CreatedDate",
-    sortDirection: "DESC",
-  });
+  };
 
   // if (!patientsStore.hasReloadListener()) {
   //   patientsStore.on("forceReloadHomePage", async () => {
@@ -157,13 +156,55 @@ const waitForWaitingCountWithInterval = async ({
         continue;
       }
 
+      const isWidgetOpen = await page.$(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR);
+
+      if (!isWidgetOpen) {
+        const { success: widgetOpened, message: widgetMessage } =
+          await openWaslaReferralWidget({ page, cursor });
+
+        if (!widgetOpened) {
+          createConsoleMessage(
+            "error",
+            widgetMessage,
+            "❌ openWaslaReferralWidget failed",
+          );
+          await pausableSleep(NOT_LOGGED_SLEEP_TIME);
+          continue;
+        }
+      }
+
+      const {
+        success: frameReady,
+        frame,
+        message: frameMessage,
+      } = await getWaslaReferralFrame(page);
+
+      if (!frameReady) {
+        createConsoleMessage(
+          "error",
+          frameMessage,
+          "❌ getWaslaReferralFrame failed",
+        );
+        await pausableSleep(NOT_LOGGED_SLEEP_TIME);
+        continue;
+      }
+
       createConsoleMessage("info", `🌀 Fetching ${targetText} collection ...`);
-      const { patients, message, success } = await fetchPatientsFromAPI(
-        page,
-        requestBody,
-      );
+      const { patients, message, success, totalRowsCount, needsLogin } =
+        await getWaslaCasesFromAPI(frame, requestBody);
 
       if (!success || message) {
+        if (needsLogin) {
+          createConsoleMessage(
+            "warn",
+            `success=${success} message=${message}`,
+            "🔑 needsLogin — forcing a fresh login next iteration",
+          );
+          page = null;
+          cursor = null;
+          continue;
+        }
+
         const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
           page,
           `success=${success} message=${message}`,
@@ -213,7 +254,7 @@ const waitForWaitingCountWithInterval = async ({
       //   await pausableSleep(waitTime);
       // }
 
-      const patientsLength = patients.length ?? 0;
+      const patientsLength = totalRowsCount;
 
       if (!patientsLength) {
         createConsoleMessage(
@@ -254,6 +295,10 @@ const waitForWaitingCountWithInterval = async ({
 
       apiHadData = true;
 
+      console.log(JSON.stringify(patients, null, 2));
+
+      await pausableSleep(1000_000);
+
       const newPatientAdded = await processCollectingPatients({
         browser,
         page,
@@ -262,7 +307,7 @@ const waitForWaitingCountWithInterval = async ({
       });
 
       const patientsInStore = patientsStore.getAllPatients();
-      const patientsIds = patients.map(({ idReferral }) => String(idReferral));
+      const patientsIds = patients.map(({ referralId }) => String(referralId));
 
       let hasPatientsRemoved = false;
 
