@@ -13,10 +13,42 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import checkIfInDashboardPage from "./checkIfInDashboardPage.mjs";
 import openNafathLoginPortal from "./openNafathLoginPortal.mjs";
 import loginWithNafathCredentials from "./loginWithNafathCredentials.mjs";
+import getLoginErrors from "./getLoginErrors.mjs";
 
 const MAX_RETRIES = 3;
 const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
+const RETURN_TO_SEHA_POLL_MS = 500;
 const loginPathName = LOGIN_PAGE_PATH_NAME.toLowerCase();
+
+/**
+ * Polls after a Nafath credential submission for whichever happens first:
+ * redirected away from Nafath (success), or a login error appearing on the
+ * page (Nafath rejected the credentials). Polling — rather than a single
+ * fixed-timeout wait — is what lets this catch Nafath's Chakra error toast,
+ * which auto-dismisses after ~3.3s; a check made only after a long wait
+ * would already be too late to see it.
+ *
+ * @param {import("puppeteer").Page} page
+ * @returns {Promise<{ redirectedAway: boolean, loginErrors: string[] }>}
+ */
+const waitForNafathOutcome = async (page) => {
+  const deadline = Date.now() + RETURN_TO_SEHA_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    if (!page.url().toLowerCase().includes(NAFATH_HOSTNAME)) {
+      return { redirectedAway: true, loginErrors: [] };
+    }
+
+    const loginErrors = await getLoginErrors(page);
+    if (loginErrors.length) {
+      return { redirectedAway: false, loginErrors };
+    }
+
+    await sleep(RETURN_TO_SEHA_POLL_MS);
+  }
+
+  return { redirectedAway: false, loginErrors: [] };
+};
 
 /**
  * Ensures a page is logged into seha.sa and sitting on the dashboard,
@@ -139,23 +171,36 @@ const makeUserLoggedInOrOpenHomePage = async ({
                 "❌ loginWithNafathCredentials failed",
               );
             } else {
-              // Nafath redirects back to seha.sa once it accepts the
-              // credentials — waitForFunction survives that cross-origin
-              // navigation tearing down the execution context mid-poll,
-              // unlike a manual evaluate()-based poll.
-              await page
-                .waitForFunction(
-                  (hostname) => !location.hostname.includes(hostname),
-                  { timeout: RETURN_TO_SEHA_TIMEOUT_MS },
-                  NAFATH_HOSTNAME,
-                )
-                .catch((error) => {
-                  createConsoleMessage(
-                    "error",
-                    error.message,
-                    "❌ Never redirected back from Nafath",
-                  );
-                });
+              const { redirectedAway, loginErrors } =
+                await waitForNafathOutcome(page);
+
+              if (loginErrors.length) {
+                // Wrong/rejected credentials won't fix themselves on retry —
+                // resubmitting the same ones repeatedly risks getting the
+                // Nafath account locked out from repeated failed attempts,
+                // so this is fatal, not retryable.
+                createConsoleMessage(
+                  "error",
+                  loginErrors.join(", "),
+                  "❌ Nafath rejected the credentials",
+                );
+
+                return {
+                  newPage: page,
+                  newCursor: cursor,
+                  isLoggedIn: false,
+                  isErrorAboutLockedOut: false,
+                  shouldCloseApp: true,
+                };
+              }
+
+              if (!redirectedAway) {
+                createConsoleMessage(
+                  "error",
+                  `Waited ${RETURN_TO_SEHA_TIMEOUT_MS}ms`,
+                  "❌ Never redirected back from Nafath",
+                );
+              }
             }
           }
         }
