@@ -17,6 +17,7 @@
  *
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
+import { screenshotsFolderDirectory } from "./constants.mjs";
 
 const credentialInputSelectorSets = [
   { username: "#username", password: "#password" },
@@ -29,15 +30,27 @@ const submitButtonText = "تسجيل الدخول";
 const FLIP_TIMEOUT_MS = 10_000;
 
 // Runs inside the page, can't close over anything defined in this module.
+// Button text isn't consistently whitespace-normalized between Nafath's two
+// known UI variants (e.g. an icon tag with vs. without a following space),
+// so both this and findButtonWithText below collapse whitespace before
+// comparing rather than relying on an exact match.
 const clickButtonByText = (text) => {
   const button = [...document.querySelectorAll("button")].find(
-    (item) => item.textContent?.trim() === text,
+    (item) => item.textContent?.replace(/\s+/g, " ").trim() === text,
   );
 
   button?.click();
 
   return !!button;
 };
+
+// Same lookup as clickButtonByText, but read-only — used to wait for a
+// button to actually exist before clicking it, since the page can still be
+// mid-render right after openNafathLoginPortal hands off.
+const findButtonWithText = (text) =>
+  [...document.querySelectorAll("button")].some(
+    (item) => item.textContent?.replace(/\s+/g, " ").trim() === text,
+  );
 
 /**
  * Flips Nafath's SSO login form to username/password mode and submits
@@ -49,6 +62,24 @@ const clickButtonByText = (text) => {
 const loginWithNafathCredentials = async (page) => {
   const userName = process.env.CLIENT_NAME;
   const password = process.env.CLIENT_PASSWORD;
+
+  try {
+    await page.waitForFunction(
+      findButtonWithText,
+      { timeout: FLIP_TIMEOUT_MS },
+      usernamePasswordToggleText,
+    );
+  } catch (error) {
+    await page.screenshot({
+      path: `${screenshotsFolderDirectory}/nafath-toggle-not-found-${Date.now()}.png`,
+    });
+    createConsoleMessage(
+      "error",
+      `❌ "${usernamePasswordToggleText}" toggle button never appeared: ${error.message}`,
+      "loginWithNafathCredentials",
+    );
+    return { success: false, message: "username/password toggle not found" };
+  }
 
   const toggledView = await page.evaluate(
     clickButtonByText,
@@ -117,7 +148,7 @@ const loginWithNafathCredentials = async (page) => {
     await page.waitForFunction(
       (text) => {
         const button = [...document.querySelectorAll("button")].find(
-          (item) => item.textContent?.trim() === text,
+          (item) => item.textContent?.replace(/\s+/g, " ").trim() === text,
         );
         return !!button && !button.disabled;
       },

@@ -18,7 +18,7 @@ import waitForHomeLink from "./waitForHomeLink.mjs";
  * @returns {Promise<boolean>}
  */
 const checkIfInDashboardPage = async (page) => {
-  const isDashboardUrl = await waitForHomeLink(page, 15_000);
+  const isDashboardUrl = await waitForHomeLink(page, 10_000);
 
   if (!isDashboardUrl) return false;
 
