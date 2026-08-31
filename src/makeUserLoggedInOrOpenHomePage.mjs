@@ -15,6 +15,7 @@ import openNafathLoginPortal from "./openNafathLoginPortal.mjs";
 import loginWithNafathCredentials from "./loginWithNafathCredentials.mjs";
 import getLoginErrors from "./getLoginErrors.mjs";
 import selectFirstLoginAccount from "./selectFirstLoginAccount.mjs";
+import confirmNafathTransition from "./confirmNafathTransition.mjs";
 
 const MAX_RETRIES = 3;
 const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
@@ -202,6 +203,23 @@ const makeUserLoggedInOrOpenHomePage = async ({
                   "❌ Never redirected back from Nafath",
                 );
               } else {
+                // Nafath shows its own "تأكيد الانتقال" confirmation page
+                // (html/intgal-after-code.html) right after leaving
+                // iam.gov.sa, before ever reaching seha.sa — best-effort:
+                // if it's not showing, this is a no-op.
+                const {
+                  success: transitionConfirmed,
+                  message: transitionMessage,
+                } = await confirmNafathTransition(page);
+
+                if (!transitionConfirmed) {
+                  createConsoleMessage(
+                    "error",
+                    transitionMessage,
+                    "❌ confirmNafathTransition failed",
+                  );
+                }
+
                 // An account linked to multiple facilities lands on a role
                 // picker (html/session-page.html) instead of straight on
                 // the dashboard — best-effort: if it's not showing (single-
