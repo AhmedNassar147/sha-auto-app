@@ -31,8 +31,6 @@ const getSehaSessionExpiry = async (page) => {
         const base64 = payloadSegment.replace(/-/g, "+").replace(/_/g, "/");
         const json = atob(base64);
         const payload = JSON.parse(json);
-        console.log("getSehaSessionExpiry: payload:", payload);
-
         return typeof payload?.exp === "number" ? payload.exp * 1000 : null;
       } catch {
         return null;

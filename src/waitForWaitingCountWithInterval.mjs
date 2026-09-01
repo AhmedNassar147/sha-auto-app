@@ -32,6 +32,7 @@ const NOT_LOGGED_SLEEP_TIME = 15_000;
 const LOCKED_OUT_SLEEP_TIME = 30 * 60_000;
 const HOURLY_REFRESH_MS = 60 * 60_000;
 const SESSION_EXPIRY_SAFETY_MARGIN_MS = 5 * 60_000;
+const SESSION_EXPIRY_WARNING_THRESHOLD_MS = 15 * 60_000;
 
 const pausableSleep = async (ms) => {
   await pauseController.waitIfPaused();
@@ -321,6 +322,21 @@ const waitForWaitingCountWithInterval = async ({
         // missing/unparseable, so the hourly timer still applies as an
         // upper bound either way: whichever deadline is sooner wins.
         const sessionExpiresAtMs = await getSehaSessionExpiry(page);
+
+        if (sessionExpiresAtMs != null) {
+          const msRemaining = sessionExpiresAtMs - Date.now();
+          const minutesRemaining = Math.round(msRemaining / 60_000);
+          const expiresAtLabel = new Date(sessionExpiresAtMs).toLocaleTimeString(
+            "en-GB",
+            { hour12: false },
+          );
+
+          createConsoleMessage(
+            msRemaining <= SESSION_EXPIRY_WARNING_THRESHOLD_MS ? "warn" : "info",
+            `🔐 seha.sa session token expires at ${expiresAtLabel} (in ${minutesRemaining} min)`,
+          );
+        }
+
         const hourlyDeadline = lastPageRefreshAt + HOURLY_REFRESH_MS;
         const expiryDeadline =
           sessionExpiresAtMs != null

@@ -4,6 +4,8 @@
  *
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
+import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
+import sleep from "./sleep.mjs";
 import {
   WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR,
   WASLA_REFERRAL_IFRAME_TIMEOUT_MS,
@@ -14,7 +16,10 @@ const submenuTitleSelector = ".ant-menu-submenu-title";
 const submenuPopupItemSelector = ".ant-menu-sub > li";
 const waslaItemTexts = ["وصلة", "connection"];
 
-const POPUP_TIMEOUT_MS = 8_000;
+// Sized per-attempt, not for the whole wait - see the retry loop below.
+const POPUP_TIMEOUT_MS = 3_000;
+const POPUP_OPEN_ATTEMPTS = 3;
+const POPUP_RETRY_DELAY_MS = 800;
 
 /**
  * AntD only opens this flyout on real hover state, plain page.hover()
@@ -78,40 +83,67 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
       `❌ Could not find the services sidebar menu item.`,
       "openWaslaReferralWidget",
     );
+    await captureFailureArtifacts(page, "services-menu-item-not-found");
     return { success: false, message: "services menu item not found" };
   }
 
   const t0 = Date.now();
 
-  if (cursor) {
-    // moveSpeed is deliberately high here (default GhostCursor pacing costs
-    // ~900ms for this move, measured live) - the hover is actually triggered
-    // by the manual dispatchHoverEvents call right after, not by the cursor
-    // reaching the element, so this move only needs to be fast cover for the
-    // pointer having "arrived" rather than a slow, fully human-paced path.
-    await cursor
-      .move(servicesMenuItemSelector, { moveSpeed: 250 })
-      .catch(() => {});
+  // Right after a fresh dashboard load, the sidebar can exist in the DOM
+  // (hence the page.$ check above passing) while the SPA is still finishing
+  // its own mount/hydration - a hover dispatched into that gap doesn't
+  // register with AntD's flyout logic at all (confirmed live: the popup
+  // never opened on the very first attempt right after landing on a fresh
+  // #/Dashboard, then opened normally on the next full retry ~15s later).
+  // Re-dispatching a few times, a beat apart, catches that settle window
+  // without permanently slowing down the common case where it's already
+  // ready and opens on the first attempt.
+  let popupOpened = false;
+  let lastPopupError;
+  let popupOpenAttempts = 0;
+
+  for (let attempt = 1; attempt <= POPUP_OPEN_ATTEMPTS; attempt++) {
+    popupOpenAttempts = attempt;
+
+    if (cursor) {
+      // moveSpeed is deliberately high here (default GhostCursor pacing
+      // costs ~900ms for this move, measured live) - the hover is actually
+      // triggered by the manual dispatchHoverEvents call right after, not
+      // by the cursor reaching the element, so this move only needs to be
+      // fast cover for the pointer having "arrived" rather than a slow,
+      // fully human-paced path.
+      await cursor
+        .move(servicesMenuItemSelector, { moveSpeed: 250 })
+        .catch(() => {});
+    }
+
+    await page.evaluate(dispatchHoverEvents, [
+      servicesMenuItemSelector,
+      servicesMenuTitleSelector,
+    ]);
+
+    try {
+      await page.waitForSelector(submenuPopupItemSelector, {
+        visible: true,
+        timeout: POPUP_TIMEOUT_MS,
+      });
+      popupOpened = true;
+      break;
+    } catch (error) {
+      lastPopupError = error;
+      if (attempt < POPUP_OPEN_ATTEMPTS) {
+        await sleep(POPUP_RETRY_DELAY_MS);
+      }
+    }
   }
 
-  const t1 = Date.now();
-
-  await page.evaluate(dispatchHoverEvents, [
-    servicesMenuItemSelector,
-    servicesMenuTitleSelector,
-  ]);
-
-  try {
-    await page.waitForSelector(submenuPopupItemSelector, {
-      visible: true,
-      timeout: POPUP_TIMEOUT_MS,
-    });
-  } catch (error) {
+  if (!popupOpened) {
     createConsoleMessage(
       "error",
-      `❌ Services submenu popup did not open: ${error.message}`,
+      `❌ Services submenu popup did not open after ${popupOpenAttempts} attempts: ${lastPopupError?.message}`,
       "openWaslaReferralWidget",
     );
+    await captureFailureArtifacts(page, "services-submenu-not-opened");
     return { success: false, message: "services submenu did not open" };
   }
 
@@ -138,6 +170,7 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
       `❌ Could not find "waslaItemTexts=${waslaItemTexts.join(", ")}" to click.`,
       "openWaslaReferralWidget",
     );
+    await captureFailureArtifacts(page, "wasla-item-not-found");
     return { success: false, message: "wasla items not found" };
   }
 
@@ -153,6 +186,7 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
       `❌ Wasla widget iframe did not appear: ${error.message}`,
       "openWaslaReferralWidget",
     );
+    await captureFailureArtifacts(page, "wasla-iframe-not-appeared");
     return { success: false, message: "wasla iframe did not appear" };
   }
 
@@ -160,7 +194,7 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
 
   createConsoleMessage(
     "success",
-    `✅ Wasla widget opened. timings(ms): cursorMove=${t1 - t0} hoverToPopupOpen=${t2 - t1} clickWasla=${t3 - t2} popupClickToIframe=${t4 - t3} total=${t4 - t0}`,
+    `✅ Wasla widget opened. timings(ms): hoverToPopupOpen=${t2 - t0} (attempts=${popupOpenAttempts}) clickWasla=${t3 - t2} popupClickToIframe=${t4 - t3} total=${t4 - t0}`,
     "openWaslaReferralWidget",
   );
 
