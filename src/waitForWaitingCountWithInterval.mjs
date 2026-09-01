@@ -153,10 +153,11 @@ const waitForWaitingCountWithInterval = async ({
         continue;
       }
 
-      if (!isLoggedIn) {
-        await pausableSleep(NOT_LOGGED_SLEEP_TIME);
-        continue;
-      }
+      // if (!isLoggedIn) {
+      // createConsoleMessage("info", `isWidgetOpen ${isWidgetOpen}`);
+      //   await pausableSleep(NOT_LOGGED_SLEEP_TIME);
+      //   continue;
+      // }
 
       const isWidgetOpen = await page.$(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR);
 
