@@ -203,7 +203,6 @@ const waitForWaitingCountWithInterval = async ({
           );
           page = null;
           cursor = null;
-          continue;
         }
 
         const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
