@@ -176,6 +176,17 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
       userDataDir: profilePath,
       protocolTimeout: 190_000,
       ignoreDefaultArgs: ["--enable-automation"],
+      // Chrome talks to Puppeteer over its stdio pipes instead of a
+      // WebSocket, and self-exits the instant those pipes close - which
+      // happens automatically whenever this Node process dies, for any
+      // reason (graceful exit, a crash, or this process getting killed
+      // directly without its children being targeted too). Reproduced and
+      // confirmed in isolation: without this, killing just the Node process
+      // leaves Chrome running as an orphan, since WebSocket transport gives
+      // Chrome no way to notice the controlling process is gone. This is an
+      // OS-level guarantee, independent of whether any of our own
+      // SIGINT/SIGTERM handlers below ever get a chance to run.
+      pipe: true,
       args: [
         "--start-maximized",
         "--disable-blink-features=AutomationControlled", // Prevent `navigator.webdriver = true`
@@ -411,6 +422,17 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
     });
     process.on("SIGTERM", () => {
       void shutdown("SIGTERM");
+    });
+    // nodemon's documented convention for "clean up before I respawn you"
+    // is SIGUSR2, not SIGINT/SIGTERM - kept for portability to POSIX
+    // platforms where nodemon actually delivers it. On Windows it's a
+    // no-op: Node here can't even send SIGUSR2 (process.kill throws
+    // ERR_UNKNOWN_SIGNAL for it), and nodemon's own source force-kills the
+    // whole process tree via `taskkill /T /F` for a Windows restart instead
+    // of signaling - see the `pipe: true` launch option above, which is
+    // what actually prevents an orphaned Chrome on this platform.
+    process.on("SIGUSR2", () => {
+      void shutdown("SIGUSR2");
     });
 
     // Optional: catch fatals and shut down cleanly
