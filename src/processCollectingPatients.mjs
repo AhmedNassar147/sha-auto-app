@@ -73,6 +73,8 @@ const processCollectingPatients = async ({
     for (const patient of patients) {
       index++;
 
+      createConsoleMessage("info", patient, "patient");
+
       const {
         referralId: patientReferralId,
         createdAt,

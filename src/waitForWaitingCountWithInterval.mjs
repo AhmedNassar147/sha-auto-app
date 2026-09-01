@@ -15,6 +15,7 @@ import closePageSafely from "./closePageSafely.mjs";
 import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
 import sleep from "./sleep.mjs";
 import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
+import getSehaSessionExpiry from "./getSehaSessionExpiry.mjs";
 import {
   pauseController,
   pause,
@@ -29,6 +30,8 @@ import {
 const INTERVAL = 70_000;
 const NOT_LOGGED_SLEEP_TIME = 15_000;
 const LOCKED_OUT_SLEEP_TIME = 30 * 60_000;
+const HOURLY_REFRESH_MS = 60 * 60_000;
+const SESSION_EXPIRY_SAFETY_MARGIN_MS = 5 * 60_000;
 
 const pausableSleep = async (ms) => {
   await pauseController.waitIfPaused();
@@ -41,20 +44,31 @@ const waitForWaitingCountWithInterval = async ({
   patientsStore,
   sendTelegramMessage,
 }) => {
+  const shouldTrackLoginTiming = process.env.TRACK_LOGIN_TIMMING === "1";
+
   let page, cursor;
 
   let apiHadData = false;
+  let lastPageRefreshAt = Date.now();
 
   const { targetText, tab } = PATIENT_SECTIONS_STATUS[collectionTabType];
 
   const isPending = collectionTabType === TABS_COLLECTION_TYPES.PENDING;
 
-  const reloadAndCheckIfShouldCreateNewPage =
+  const _reloadAndCheckIfShouldCreateNewPage =
     createReloadAndCheckIfShouldCreateNewPage(
       pauseController,
       pausableSleep,
       INTERVAL,
     );
+
+  // Every reload (whatever triggered it) resets the hourly-staleness timer
+  // below, so the periodic refresh only ever fires after a genuinely idle
+  // hour with no other reload already covering it.
+  const reloadAndCheckIfShouldCreateNewPage = async (...args) => {
+    lastPageRefreshAt = Date.now();
+    return _reloadAndCheckIfShouldCreateNewPage(...args);
+  };
 
   const requestBody = {
     pageSize: isPending ? 100 : 5,
@@ -161,15 +175,22 @@ const waitForWaitingCountWithInterval = async ({
 
       const isWidgetOpen = await page.$(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR);
 
-      createConsoleMessage("info", `isWidgetOpen ${isWidgetOpen}`);
+      if (shouldTrackLoginTiming) {
+        createConsoleMessage("info", `isWidgetOpen ${isWidgetOpen}`);
+      }
 
       if (!isWidgetOpen) {
         const { success: widgetOpened, message: widgetMessage } =
           await openWaslaReferralWidget({ page, cursor });
 
-        createConsoleMessage("info", `widgetMessage ${widgetMessage}`);
+        if (shouldTrackLoginTiming) {
+          createConsoleMessage(
+            "info",
+            `widgetOpened ${widgetOpened} widgetMessage ${widgetMessage}`,
+          );
+        }
 
-        if (widgetMessage) {
+        if (!widgetOpened || widgetMessage) {
           createConsoleMessage(
             "error",
             widgetMessage,
@@ -185,11 +206,6 @@ const waitForWaitingCountWithInterval = async ({
         frame,
         message: frameMessage,
       } = await getWaslaReferralFrame(page);
-
-      createConsoleMessage(
-        "info",
-        `frameReady ${frameReady} frameMessage ${frameMessage}`,
-      );
 
       if (!frameReady) {
         createConsoleMessage(
@@ -281,6 +297,49 @@ const waitForWaitingCountWithInterval = async ({
           const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
             page,
             "🛑 cleared patients store and files",
+            0,
+          );
+
+          if (shouldCreateNewPage) {
+            page = null;
+            cursor = null;
+          }
+          continue;
+        }
+
+        // Nothing to collect and no other reload already fired this hour -
+        // the page can otherwise sit open indefinitely with a stale session
+        // that we won't notice until an API call starts failing. Only
+        // reload here, on the genuinely idle path, never while patients are
+        // actually being collected/processed above.
+        //
+        // seha.sa's own JWTUserToken (localStorage on this page, see
+        // getSehaSessionExpiry.mjs) carries a real exp claim, so when it's
+        // readable we refresh a few minutes ahead of that exact deadline
+        // instead of guessing - but the token expiring isn't the only way
+        // the session can go stale server-side, and the token can also be
+        // missing/unparseable, so the hourly timer still applies as an
+        // upper bound either way: whichever deadline is sooner wins.
+        const sessionExpiresAtMs = await getSehaSessionExpiry(page);
+        const hourlyDeadline = lastPageRefreshAt + HOURLY_REFRESH_MS;
+        const expiryDeadline =
+          sessionExpiresAtMs != null
+            ? sessionExpiresAtMs - SESSION_EXPIRY_SAFETY_MARGIN_MS
+            : Infinity;
+        const nextRefreshDeadline = Math.min(hourlyDeadline, expiryDeadline);
+
+        if (Date.now() >= nextRefreshDeadline) {
+          const reason =
+            expiryDeadline < hourlyDeadline
+              ? "🔄 session token nearing expiry"
+              : "🔄 hourly refresh";
+          createConsoleMessage(
+            "info",
+            `${reason}: no patients to collect, refreshing page to avoid a stale session`,
+          );
+          const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
+            page,
+            reason,
             0,
           );
 
