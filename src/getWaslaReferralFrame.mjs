@@ -33,6 +33,7 @@ const IFRAME_POLL_MS = 300;
  * @returns {Promise<{ success: boolean, frame?: import("puppeteer").Frame, message?: string }>}
  */
 const getWaslaReferralFrame = async (page) => {
+  const t0 = Date.now();
   const deadline = Date.now() + WASLA_REFERRAL_IFRAME_TIMEOUT_MS;
 
   try {
@@ -48,6 +49,7 @@ const getWaslaReferralFrame = async (page) => {
     return { success: false, message: "wasla iframe did not appear" };
   }
 
+  const t1 = Date.now();
   let navigatedFrame = null;
 
   while (Date.now() < deadline) {
@@ -70,9 +72,10 @@ const getWaslaReferralFrame = async (page) => {
         .catch(() => false);
 
       if (hasAuthToken) {
+        const t2 = Date.now();
         createConsoleMessage(
           "success",
-          `✅ Wasla widget frame ready.`,
+          `✅ Wasla widget frame ready. timings(ms): iframeAppear=${t1 - t0} authTokenWait=${t2 - t1} total=${t2 - t0}`,
           "getWaslaReferralFrame",
         );
         return { success: true, frame };
@@ -85,7 +88,7 @@ const getWaslaReferralFrame = async (page) => {
   if (navigatedFrame) {
     createConsoleMessage(
       "warn",
-      `⚠️ Wasla widget frame navigated but auth token was never confirmed in localStorage; proceeding anyway.`,
+      `⚠️ Wasla widget frame navigated but auth token was never confirmed in localStorage after ${Date.now() - t0}ms; proceeding anyway.`,
       "getWaslaReferralFrame",
     );
     return { success: true, frame: navigatedFrame };
