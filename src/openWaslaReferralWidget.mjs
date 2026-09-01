@@ -81,6 +81,8 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     return { success: false, message: "services menu item not found" };
   }
 
+  const t0 = Date.now();
+
   if (cursor) {
     // moveSpeed is deliberately high here (default GhostCursor pacing costs
     // ~900ms for this move, measured live) - the hover is actually triggered
@@ -89,6 +91,8 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     // pointer having "arrived" rather than a slow, fully human-paced path.
     await cursor.move(servicesMenuItemSelector, { moveSpeed: 200 }).catch(() => {});
   }
+
+  const t1 = Date.now();
 
   await page.evaluate(dispatchHoverEvents, [
     servicesMenuItemSelector,
@@ -108,6 +112,8 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     );
     return { success: false, message: "services submenu did not open" };
   }
+
+  const t2 = Date.now();
 
   const waslaItemClicked = await page.evaluate(
     ({ submenuPopupItemSelector, waslaItemTexts }) => {
@@ -133,6 +139,8 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     return { success: false, message: "wasla items not found" };
   }
 
+  const t3 = Date.now();
+
   try {
     await page.waitForSelector(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR, {
       timeout: WASLA_REFERRAL_IFRAME_TIMEOUT_MS,
@@ -146,9 +154,11 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     return { success: false, message: "wasla iframe did not appear" };
   }
 
+  const t4 = Date.now();
+
   createConsoleMessage(
     "success",
-    `✅ Wasla widget opened.`,
+    `✅ Wasla widget opened. timings(ms): cursorMove=${t1 - t0} hoverToPopupOpen=${t2 - t1} clickWasla=${t3 - t2} popupClickToIframe=${t4 - t3} total=${t4 - t0}`,
     "openWaslaReferralWidget",
   );
 
