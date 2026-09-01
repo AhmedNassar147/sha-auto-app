@@ -27,7 +27,7 @@ import {
 } from "./constants.mjs";
 
 const INTERVAL = 70_000;
-const NOT_LOGGED_SLEEP_TIME = 20_000;
+const NOT_LOGGED_SLEEP_TIME = 15_000;
 const LOCKED_OUT_SLEEP_TIME = 30 * 60_000;
 
 const pausableSleep = async (ms) => {
@@ -153,11 +153,11 @@ const waitForWaitingCountWithInterval = async ({
         continue;
       }
 
-      // if (!isLoggedIn) {
-      // createConsoleMessage("info", `isWidgetOpen ${isWidgetOpen}`);
-      //   await pausableSleep(NOT_LOGGED_SLEEP_TIME);
-      //   continue;
-      // }
+      if (!isLoggedIn) {
+        createConsoleMessage("info", `isLoggedIn ${isLoggedIn}`);
+        await pausableSleep(NOT_LOGGED_SLEEP_TIME);
+        continue;
+      }
 
       const isWidgetOpen = await page.$(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR);
 

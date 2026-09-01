@@ -78,9 +78,22 @@ const makeUserLoggedInOrOpenHomePage = async ({
   let retries = 0;
 
   while (retries <= MAX_RETRIES) {
+    const tStart = Date.now();
+    createConsoleMessage(
+      "info",
+      `attempt #${retries + 1} start, currentPage=${!!currentPage} startingPageUrl=${startingPageUrl} url=${page.url()}`,
+      "makeUserLoggedInOrOpenHomePage",
+    );
+
     try {
       if ((!currentPage && !startingPageUrl) || retries > 0) {
+        const tGotoLogin0 = Date.now();
         await gotToLoginPage(page);
+        createConsoleMessage(
+          "info",
+          `gotToLoginPage done in ${Date.now() - tGotoLogin0}ms, url=${page.url()}`,
+          "makeUserLoggedInOrOpenHomePage",
+        );
       }
 
       let hasEnteredStartingPage = false;
@@ -99,7 +112,13 @@ const makeUserLoggedInOrOpenHomePage = async ({
       }
 
       if (!hasEnteredStartingPage) {
+        const tCheckLoginPage0 = Date.now();
         const isLoginPage = await checkIfLoginPage(page);
+        createConsoleMessage(
+          "info",
+          `checkIfLoginPage=${isLoginPage} in ${Date.now() - tCheckLoginPage0}ms`,
+          "makeUserLoggedInOrOpenHomePage",
+        );
 
         if (isLoginPage) {
           try {
@@ -120,8 +139,14 @@ const makeUserLoggedInOrOpenHomePage = async ({
             };
           }
 
+          const tNafathPortal0 = Date.now();
           const { success: reachedNafath, message: nafathPortalMessage } =
             await openNafathLoginPortal(page, sendTelegramMessage);
+          createConsoleMessage(
+            "info",
+            `openNafathLoginPortal reachedNafath=${reachedNafath} in ${Date.now() - tNafathPortal0}ms`,
+            "makeUserLoggedInOrOpenHomePage",
+          );
 
           if (!reachedNafath) {
             createConsoleMessage(
@@ -130,11 +155,17 @@ const makeUserLoggedInOrOpenHomePage = async ({
               "❌ openNafathLoginPortal failed",
             );
           } else {
+            const tNafathLogin0 = Date.now();
             const {
               success: nafathLoginSucceeded,
               message: nafathLoginMessage,
               shouldCloseApp: shouldCloseAppFromNafath,
             } = await loginWithNafathCredentials(page, sendTelegramMessage);
+            createConsoleMessage(
+              "info",
+              `loginWithNafathCredentials nafathLoginSucceeded=${nafathLoginSucceeded} in ${Date.now() - tNafathLogin0}ms`,
+              "makeUserLoggedInOrOpenHomePage",
+            );
 
             if (shouldCloseAppFromNafath) {
               return {
@@ -186,8 +217,14 @@ const makeUserLoggedInOrOpenHomePage = async ({
         }
       }
 
+      const tDashboardCheck0 = Date.now();
       const isHomeLoaded =
         hasEnteredStartingPage || (await checkIfInDashboardPage(page));
+      createConsoleMessage(
+        "info",
+        `checkIfInDashboardPage isHomeLoaded=${isHomeLoaded} (hasEnteredStartingPage=${hasEnteredStartingPage}) in ${Date.now() - tDashboardCheck0}ms, attempt total ${Date.now() - tStart}ms`,
+        "makeUserLoggedInOrOpenHomePage",
+      );
 
       if (isHomeLoaded) {
         if (!noBundleCheck) {
