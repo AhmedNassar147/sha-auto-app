@@ -21,15 +21,23 @@ const nafathToastErrorDescriptionSelector =
 // auto-dismiss and stays checkable well after the submit that triggered it.
 const nafathInlineErrorSelector = "#errorMessage";
 
-// Puppeteer throws this from $$eval/evaluate whenever a real navigation
-// tears down the page's execution context mid-call — which, for this
-// function, is routinely the case: it's called on a poll loop specifically
-// while waiting for Nafath to navigate away. That's the success condition,
-// not a failure, so it's treated as "nothing to report this tick" rather
-// than logged as an error - unlike any other unexpected failure here, which
-// still gets logged normally.
+// Puppeteer/CDP throws one of several different messages from $$eval/
+// evaluate whenever a real navigation races the call mid-flight — which,
+// for this function, is routinely the case: it's called on a poll loop
+// specifically while waiting for Nafath to navigate away, so a navigation
+// landing mid-call is the success condition, not a failure. Confirmed live
+// so far: "Execution context was destroyed" (a plain navigation tearing
+// down the context), and "Argument should belong to the same JavaScript
+// world as target object" (a stale handle from the pre-navigation context
+// getting reused after our own auto-click of the "انتقال" proceed button
+// triggered one) — same underlying race, different CDP wording depending
+// on exactly which internal step got interrupted. Treated as "nothing to
+// report this tick" rather than logged as an error - unlike any other
+// unexpected failure here, which still gets logged normally. This is
+// inherently a little whack-a-mole (new CDP wording could surface later);
+// widen the pattern rather than assume the list above is exhaustive.
 const isTransientNavigationError = (error) =>
-  /Execution context was destroyed|Execution context is not available|Cannot find context with specified id/.test(
+  /Execution context was destroyed|Execution context is not available|Cannot find context with specified id|same JavaScript world|Target closed|Session closed|Most likely the (page|frame) has been closed/.test(
     error?.message || "",
   );
 
