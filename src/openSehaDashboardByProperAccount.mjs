@@ -19,6 +19,15 @@
  * plain li.ant-menu-item directly at the top level instead, with no
  * submenu to expand — this function handles both shapes.
  *
+ * The submenu title click is a toggle, and the submenu has been observed
+ * live both already-open (aria-expanded="true") and closed
+ * (aria-expanded="false") at the moment this runs — clicking an
+ * already-open one collapses it instead, hiding the very role items being
+ * waited for next and failing the whole flow (captured live in
+ * results/errors/select-seha-account-failed-*). So the title is only
+ * clicked when aria-expanded is "false"; an already-open submenu is left
+ * alone.
+ *
  * Which entries to click at each level is configurable via the
  * SEHA_ACCOUNT_PICKER_ORDER env var — a comma-separated pair of
  * 1-based indexes, e.g. "1,2" picks the 1st facility then the 2nd role
@@ -28,6 +37,7 @@
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import { HOME_PAGE_PATH_NAME } from "./constants.mjs";
+import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 
 const roleMenuSelector = ".group_menu_roles";
 const dashboardPathName = HOME_PAGE_PATH_NAME.toLowerCase();
@@ -89,7 +99,12 @@ const openSehaDashboardByProperAccount = async (page) => {
     if (!item) return null;
 
     if (item.classList.contains("ant-menu-submenu")) {
-      item.querySelector(".ant-menu-submenu-title")?.click();
+      const title = item.querySelector(".ant-menu-submenu-title");
+      // Toggle - only click if it isn't already expanded, or clicking
+      // would collapse it instead.
+      if (title?.getAttribute("aria-expanded") !== "true") {
+        title?.click();
+      }
       return "submenu";
     }
 
@@ -103,6 +118,7 @@ const openSehaDashboardByProperAccount = async (page) => {
       `❌ Role picker appeared but facility item #${facilityIndex + 1} (SEHA_ACCOUNT_PICKER_ORDER) was not found.`,
       "openSehaDashboardByProperAccount",
     );
+    await captureFailureArtifacts(page, "select-seha-facility-not-found");
     return { success: false, message: "configured facility item not found" };
   }
 
@@ -127,6 +143,7 @@ const openSehaDashboardByProperAccount = async (page) => {
         `❌ Facility submenu opened but no role item was found inside it.`,
         "openSehaDashboardByProperAccount",
       );
+      await captureFailureArtifacts(page, "select-seha-account-failed");
       return { success: false, message: "configured nested role item not found" };
     }
 
@@ -138,6 +155,7 @@ const openSehaDashboardByProperAccount = async (page) => {
         `❌ Failed to click role item #${roleIndex + 1}: ${error.message}`,
         "openSehaDashboardByProperAccount",
       );
+      await captureFailureArtifacts(page, "select-seha-role-click-failed");
       return { success: false, message: "failed to click nested role item" };
     }
   }
@@ -154,6 +172,7 @@ const openSehaDashboardByProperAccount = async (page) => {
       `❌ Did not redirect to dashboard after selecting account: ${error.message}`,
       "openSehaDashboardByProperAccount",
     );
+    await captureFailureArtifacts(page, "select-seha-dashboard-redirect-failed");
     return { success: false, message: "dashboard redirect did not happen" };
   }
 
