@@ -11,6 +11,7 @@ import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import speakText from "./speakText.mjs";
 import createReloadAndCheckIfShouldCreateNewPage from "./createReloadAndCheckIfShouldCreateNewPage.mjs";
+import closePageSafely from "./closePageSafely.mjs";
 import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
 import sleep from "./sleep.mjs";
 import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
@@ -201,6 +202,7 @@ const waitForWaitingCountWithInterval = async ({
             `success=${success} message=${message}`,
             "🔑 needsLogin — forcing a fresh login next iteration",
           );
+          await closePageSafely(page);
           page = null;
           cursor = null;
         }

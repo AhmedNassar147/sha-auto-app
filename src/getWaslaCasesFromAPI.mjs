@@ -112,10 +112,16 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
           needsLogin: false,
         };
       } catch (error) {
+        // A bare fetch() throw (e.g. "Failed to fetch") means the request
+        // never got an HTTP response at all - network blip, frame torn down
+        // mid-request, etc. That's not evidence the session expired (unlike
+        // the !res.ok branch above, which did get a response and can reject
+        // it), so don't force a fresh login off of it - let the caller just
+        // retry.
         return {
           success: false,
           patients: [],
-          needsLogin: true,
+          needsLogin: false,
           message: error?.message || String(error),
           totalRowsCount: 0,
         };

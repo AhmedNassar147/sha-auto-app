@@ -4,6 +4,7 @@
  *
  */
 import createConsoleMessage from "./createConsoleMessage.mjs";
+import closePageSafely from "./closePageSafely.mjs";
 
 const createReloadAndCheckIfShouldCreateNewPage =
   (pauseController, pausableSleep, INTERVAL) =>
@@ -37,6 +38,12 @@ const createReloadAndCheckIfShouldCreateNewPage =
       await page.reload({ waitUntil: "domcontentloaded" });
     } catch (err) {
       const intervalTime = _interval + Math.random() * 11_000;
+
+      // page.reload() failed - the page is likely dead/unusable, and the
+      // caller is about to discard its reference (page = null) and open a
+      // fresh one next iteration. Close it here first, otherwise it's left
+      // behind as an orphaned tab instead of being replaced.
+      await closePageSafely(page);
       await pausableSleep(intervalTime);
 
       createConsoleMessage(
