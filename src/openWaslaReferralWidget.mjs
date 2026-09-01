@@ -82,7 +82,12 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
   }
 
   if (cursor) {
-    await cursor.move(servicesMenuItemSelector).catch(() => {});
+    // moveSpeed is deliberately high here (default GhostCursor pacing costs
+    // ~900ms for this move, measured live) - the hover is actually triggered
+    // by the manual dispatchHoverEvents call right after, not by the cursor
+    // reaching the element, so this move only needs to be fast cover for the
+    // pointer having "arrived" rather than a slow, fully human-paced path.
+    await cursor.move(servicesMenuItemSelector, { moveSpeed: 200 }).catch(() => {});
   }
 
   await page.evaluate(dispatchHoverEvents, [
