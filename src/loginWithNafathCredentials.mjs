@@ -80,7 +80,15 @@ const usernamePasswordToggleText = "اسم المستخدم وكلمة المر�
 const submitButtonText = "تسجيل الدخول";
 
 const FLIP_TIMEOUT_MS = 7_000;
+// Sized for the username/password path - Nafath responds near-instantly
+// there (accept or reject), no human step involved.
 const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
+// Once a verification code is shown, a human has to physically unlock
+// their phone, open the Nafath app, and tap the right number - that needs
+// far more realistic time than the fast-path window above. Applied from
+// the moment the code appears, not from submit, since detecting it can
+// itself eat a few seconds of the fast-path window.
+const APP_APPROVAL_GRACE_MS = 90_000;
 const RETURN_TO_SEHA_POLL_MS = 500;
 
 // Runs inside the page, can't close over anything defined in this module.
@@ -202,7 +210,7 @@ const reportVerificationCode = async (
  * }>}
  */
 const waitForNafathOutcome = async (page, sendTelegramMessage) => {
-  const deadline = Date.now() + RETURN_TO_SEHA_TIMEOUT_MS;
+  let deadline = Date.now() + RETURN_TO_SEHA_TIMEOUT_MS;
 
   let verificationCode;
   let reportPromise = Promise.resolve();
@@ -225,6 +233,10 @@ const waitForNafathOutcome = async (page, sendTelegramMessage) => {
       if (code) {
         verificationCode = code;
         reportPromise = reportVerificationCode(code, sendTelegramMessage);
+        // A human now has to physically approve this on their phone -
+        // extend the deadline to a realistic reaction window instead of
+        // the short fast-path one meant for an instant server response.
+        deadline = Math.max(deadline, Date.now() + APP_APPROVAL_GRACE_MS);
       }
     }
 
@@ -292,7 +304,10 @@ const loginWithNafathCredentials = async (page, sendTelegramMessage) => {
   }
 
   if (!redirectedAway) {
-    const message = `Never redirected back from Nafath (waited ${RETURN_TO_SEHA_TIMEOUT_MS}ms)`;
+    const waitedMs = verificationCode
+      ? RETURN_TO_SEHA_TIMEOUT_MS + APP_APPROVAL_GRACE_MS
+      : RETURN_TO_SEHA_TIMEOUT_MS;
+    const message = `Never redirected back from Nafath (waited up to ${waitedMs}ms)`;
 
     createConsoleMessage("error", message, "❌ loginWithNafathCredentials");
     await captureFailureArtifacts(page, "nafath-never-redirected");
