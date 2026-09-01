@@ -21,6 +21,18 @@ const nafathToastErrorDescriptionSelector =
 // auto-dismiss and stays checkable well after the submit that triggered it.
 const nafathInlineErrorSelector = "#errorMessage";
 
+// Puppeteer throws this from $$eval/evaluate whenever a real navigation
+// tears down the page's execution context mid-call — which, for this
+// function, is routinely the case: it's called on a poll loop specifically
+// while waiting for Nafath to navigate away. That's the success condition,
+// not a failure, so it's treated as "nothing to report this tick" rather
+// than logged as an error - unlike any other unexpected failure here, which
+// still gets logged normally.
+const isTransientNavigationError = (error) =>
+  /Execution context was destroyed|Execution context is not available|Cannot find context with specified id/.test(
+    error?.message || "",
+  );
+
 /**
  * Extracts login error messages shown in the DOM after form submission —
  * the legacy ASP.NET validation-summary list, Nafath's Chakra error toast,
@@ -49,7 +61,9 @@ const getLoginErrors = async (page) => {
       ...nafathInlineErrors,
     ].filter(Boolean);
   } catch (error) {
-    createConsoleMessage("error", error, "getLoginErrors");
+    if (!isTransientNavigationError(error)) {
+      createConsoleMessage("error", error, "getLoginErrors");
+    }
     return [];
   }
 };
