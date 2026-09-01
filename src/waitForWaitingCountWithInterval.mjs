@@ -160,11 +160,13 @@ const waitForWaitingCountWithInterval = async ({
 
       const isWidgetOpen = await page.$(WASLA_REFERRAL_CONTENT_IFRAME_SELECTOR);
 
+      createConsoleMessage("info", `isWidgetOpen ${isWidgetOpen}`);
+
       if (!isWidgetOpen) {
         const { success: widgetOpened, message: widgetMessage } =
           await openWaslaReferralWidget({ page, cursor });
 
-        if (!widgetOpened) {
+        if (widgetMessage) {
           createConsoleMessage(
             "error",
             widgetMessage,

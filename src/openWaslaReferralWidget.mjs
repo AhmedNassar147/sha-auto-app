@@ -89,7 +89,9 @@ const openWaslaReferralWidget = async ({ page, cursor }) => {
     // by the manual dispatchHoverEvents call right after, not by the cursor
     // reaching the element, so this move only needs to be fast cover for the
     // pointer having "arrived" rather than a slow, fully human-paced path.
-    await cursor.move(servicesMenuItemSelector, { moveSpeed: 200 }).catch(() => {});
+    await cursor
+      .move(servicesMenuItemSelector, { moveSpeed: 250 })
+      .catch(() => {});
   }
 
   const t1 = Date.now();
