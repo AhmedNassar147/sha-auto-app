@@ -38,6 +38,7 @@
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import { HOME_PAGE_PATH_NAME } from "./constants.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
+import sleep from "./sleep.mjs";
 
 const roleMenuSelector = ".group_menu_roles";
 const dashboardPathName = HOME_PAGE_PATH_NAME.toLowerCase();
@@ -45,6 +46,7 @@ const dashboardPathName = HOME_PAGE_PATH_NAME.toLowerCase();
 const APPEAR_TIMEOUT_MS = 10_000;
 const NESTED_ITEM_TIMEOUT_MS = 5_000;
 const DASHBOARD_REDIRECT_TIMEOUT_MS = 30_000;
+const DASHBOARD_REDIRECT_POLL_MS = 2_000;
 
 /**
  * Parses SEHA_ACCOUNT_PICKER_ORDER (e.g. "1,2") into 0-based
@@ -160,16 +162,44 @@ const openSehaDashboardByProperAccount = async (page) => {
     }
   }
 
-  try {
-    await page.waitForFunction(
-      (pathName) => window.location.hash.toLowerCase().includes(pathName),
-      { timeout: DASHBOARD_REDIRECT_TIMEOUT_MS },
-      dashboardPathName,
-    );
-  } catch (error) {
+  // Polled manually (rather than a single waitForFunction) so a failure
+  // here shows what the URL actually did over the wait, not just that it
+  // never reached #/Dashboard - a prior live failure left no way to tell
+  // whether the click silently didn't register at all, or the page was
+  // navigating somewhere else/slowly the whole time.
+  const redirectDeadline = Date.now() + DASHBOARD_REDIRECT_TIMEOUT_MS;
+  let lastObservedUrl = page.url();
+  let redirectedToDashboard = lastObservedUrl
+    .toLowerCase()
+    .includes(dashboardPathName);
+
+  createConsoleMessage(
+    "info",
+    `⏳ Waiting for dashboard redirect, starting url=${lastObservedUrl}`,
+    "openSehaDashboardByProperAccount",
+  );
+
+  while (!redirectedToDashboard && Date.now() < redirectDeadline) {
+    await sleep(DASHBOARD_REDIRECT_POLL_MS);
+
+    const currentUrl = page.url();
+
+    if (currentUrl !== lastObservedUrl) {
+      createConsoleMessage(
+        "info",
+        `↪️ URL changed while waiting for dashboard redirect: ${lastObservedUrl} -> ${currentUrl}`,
+        "openSehaDashboardByProperAccount",
+      );
+      lastObservedUrl = currentUrl;
+    }
+
+    redirectedToDashboard = currentUrl.toLowerCase().includes(dashboardPathName);
+  }
+
+  if (!redirectedToDashboard) {
     createConsoleMessage(
       "error",
-      `❌ Did not redirect to dashboard after selecting account: ${error.message}`,
+      `❌ Did not redirect to dashboard after selecting account (last observed url=${lastObservedUrl})`,
       "openSehaDashboardByProperAccount",
     );
     await captureFailureArtifacts(page, "select-seha-dashboard-redirect-failed");

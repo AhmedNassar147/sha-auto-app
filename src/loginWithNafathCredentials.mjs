@@ -373,7 +373,11 @@ const loginWithNafathCredentials = async (page, sendTelegramMessage) => {
   // html/session-page.html) instead of straight on the dashboard —
   // best-effort: if it's not showing (single-facility account), this is a
   // no-op and the caller falls through to its own dashboard check as
-  // normal.
+  // normal. openSehaDashboardByProperAccount already captures its own
+  // correctly-labeled artifact for whichever of its failure branches hits
+  // (facility not found, role not found, click failed, or redirect never
+  // happened) - capturing again here would just be a redundant, mislabeled
+  // duplicate of whatever it already saved.
   const { success: accountSelected, message: accountMessage } =
     await openSehaDashboardByProperAccount(page);
 
@@ -383,7 +387,6 @@ const loginWithNafathCredentials = async (page, sendTelegramMessage) => {
       accountMessage,
       "❌ openSehaDashboardByProperAccount failed",
     );
-    await captureFailureArtifacts(page, "select-seha-account-failed");
   }
 
   return { success: true, verificationCode };
