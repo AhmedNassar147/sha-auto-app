@@ -166,6 +166,8 @@ const waitForWaitingCountWithInterval = async ({
         const { success: widgetOpened, message: widgetMessage } =
           await openWaslaReferralWidget({ page, cursor });
 
+        createConsoleMessage("info", `widgetMessage ${widgetMessage}`);
+
         if (widgetMessage) {
           createConsoleMessage(
             "error",
@@ -182,6 +184,11 @@ const waitForWaitingCountWithInterval = async ({
         frame,
         message: frameMessage,
       } = await getWaslaReferralFrame(page);
+
+      createConsoleMessage(
+        "info",
+        `frameReady ${frameReady} frameMessage ${frameMessage}`,
+      );
 
       if (!frameReady) {
         createConsoleMessage(
