@@ -114,6 +114,28 @@ const readVerificationCode = () => {
 };
 
 // Runs inside the page, can't close over anything defined in this module.
+// The same "انتقال" (Proceed) transition-confirmation button
+// confirmNafathTransition.mjs looks for after leaving iam.gov.sa can also
+// show up WHILE STILL on iam.gov.sa (seen live at
+// https://www.iam.gov.sa/sso/redirect, right after ID submission) - so it's
+// checked for on every poll tick here too, not just once after redirect.
+// Matched the same way confirmNafathTransition does: aria-label first,
+// falling back to visible text.
+const clickProceedButtonIfShown = () => {
+  const buttons = [...document.querySelectorAll("button")];
+  const proceedButton =
+    buttons.find((button) => button.getAttribute("aria-label") === "انتقال") ||
+    buttons.find(
+      (button) => button.textContent.replace(/\s+/g, " ").trim() === "انتقال",
+    );
+
+  if (!proceedButton) return false;
+
+  proceedButton.click();
+  return true;
+};
+
+// Runs inside the page, can't close over anything defined in this module.
 // Button text isn't consistently whitespace-normalized between Nafath's two
 // known UI variants (e.g. an icon tag with vs. without a following space),
 // so both this and findButtonWithText below collapse whitespace before
@@ -192,14 +214,18 @@ const reportVerificationCode = async (
  * Polls after a Nafath credential submission for whichever happens first:
  * redirected away from Nafath (success), or a login error appearing on the
  * page (Nafath rejected the credentials) — and, along the way, the
- * two-digit verification-code screen, if Nafath shows one. All three are
- * checked on every pass rather than the code being waited out first, since
- * waiting on it exclusively would delay error detection long enough for
- * Nafath's Chakra error toast to auto-dismiss (~3.3s) before it's ever
- * checked, risking a rejected submission going undetected. The code is
- * reported (spoken + Telegram) as soon as it's seen, without pausing the
- * rest of the poll — the human has to react to it while this keeps
- * watching for the actual outcome.
+ * two-digit verification-code screen, if Nafath shows one, and an "انتقال"
+ * proceed button, if Nafath shows one of those too (seen live at
+ * https://www.iam.gov.sa/sso/redirect, right after ID submission — a
+ * separate occurrence from the one confirmNafathTransition.mjs handles
+ * after already leaving iam.gov.sa). All of these are checked on every
+ * pass rather than the code being waited out first, since waiting on it
+ * exclusively would delay error detection long enough for Nafath's Chakra
+ * error toast to auto-dismiss (~3.3s) before it's ever checked, risking a
+ * rejected submission going undetected. The code is reported (spoken +
+ * Telegram) and the proceed button is clicked as soon as either is seen,
+ * without pausing the rest of the poll — the human has to react to the
+ * code while this keeps watching for the actual outcome.
  *
  * @param {import("puppeteer").Page} page
  * @param {(message: string) => Promise<any>} [sendTelegramMessage]
@@ -238,6 +264,18 @@ const waitForNafathOutcome = async (page, sendTelegramMessage) => {
         // the short fast-path one meant for an instant server response.
         deadline = Math.max(deadline, Date.now() + APP_APPROVAL_GRACE_MS);
       }
+    }
+
+    const proceedClicked = await page
+      .evaluate(clickProceedButtonIfShown)
+      .catch(() => false);
+
+    if (proceedClicked) {
+      createConsoleMessage(
+        "success",
+        `✅ Clicked "انتقال" proceed button while still on iam.gov.sa.`,
+        "loginWithNafathCredentials",
+      );
     }
 
     await sleep(RETURN_TO_SEHA_POLL_MS);
