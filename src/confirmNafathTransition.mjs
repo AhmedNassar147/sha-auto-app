@@ -7,7 +7,7 @@
  * Transition") - "أنت على وشك الانتقال إلى النفاذ الوطني الموحد <-> Seha" -
  * with an "انتقال" (Proceed) button and an "إلغاء" (Cancel) button. Clicking
  * "انتقال" continues on to seha.sa (eventually landing on the role picker
- * from selectFirstLoginAccount.mjs, or straight on the dashboard).
+ * from openSehaDashboardByProperAccount.mjs, or straight on the dashboard).
  *
  * The button's class (css-8z521n) is a Chakra/Emotion-generated hash that
  * isn't guaranteed to stay the same across builds/sessions, so it's never

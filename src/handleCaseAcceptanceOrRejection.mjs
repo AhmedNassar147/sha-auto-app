@@ -366,6 +366,7 @@ const handleCaseAcceptanceOrRejection =
         startingPageUrl: HOME_PAGE_URL,
         noCursor: true,
         noBundleCheck: true,
+        sendTelegramMessage,
       });
 
       await navigateToNewDetailsPage({

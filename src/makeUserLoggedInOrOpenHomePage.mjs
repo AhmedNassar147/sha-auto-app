@@ -8,49 +8,14 @@ import checkIfLoginPage from "./checkIfLoginPage.mjs";
 import sleep from "./sleep.mjs";
 import gotToLoginPage from "./gotToLoginPage.mjs";
 import shouldCloseAppWhenLogin from "./shouldCloseAppWhenLogin.mjs";
-import { NAFATH_HOSTNAME, LOGIN_PAGE_PATH_NAME } from "./constants.mjs";
+import { LOGIN_PAGE_PATH_NAME } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import checkIfInDashboardPage from "./checkIfInDashboardPage.mjs";
 import openNafathLoginPortal from "./openNafathLoginPortal.mjs";
 import loginWithNafathCredentials from "./loginWithNafathCredentials.mjs";
-import getLoginErrors from "./getLoginErrors.mjs";
-import selectFirstLoginAccount from "./selectFirstLoginAccount.mjs";
-import confirmNafathTransition from "./confirmNafathTransition.mjs";
 
 const MAX_RETRIES = 3;
-const RETURN_TO_SEHA_TIMEOUT_MS = 20_000;
-const RETURN_TO_SEHA_POLL_MS = 500;
 const loginPathName = LOGIN_PAGE_PATH_NAME.toLowerCase();
-
-/**
- * Polls after a Nafath credential submission for whichever happens first:
- * redirected away from Nafath (success), or a login error appearing on the
- * page (Nafath rejected the credentials). Polling — rather than a single
- * fixed-timeout wait — is what lets this catch Nafath's Chakra error toast,
- * which auto-dismisses after ~3.3s; a check made only after a long wait
- * would already be too late to see it.
- *
- * @param {import("puppeteer").Page} page
- * @returns {Promise<{ redirectedAway: boolean, loginErrors: string[] }>}
- */
-const waitForNafathOutcome = async (page) => {
-  const deadline = Date.now() + RETURN_TO_SEHA_TIMEOUT_MS;
-
-  while (Date.now() < deadline) {
-    if (!page.url().toLowerCase().includes(NAFATH_HOSTNAME)) {
-      return { redirectedAway: true, loginErrors: [] };
-    }
-
-    const loginErrors = await getLoginErrors(page);
-    if (loginErrors.length) {
-      return { redirectedAway: false, loginErrors };
-    }
-
-    await sleep(RETURN_TO_SEHA_POLL_MS);
-  }
-
-  return { redirectedAway: false, loginErrors: [] };
-};
 
 /**
  * Ensures a page is logged into seha.sa and sitting on the dashboard,
@@ -72,6 +37,9 @@ const waitForNafathOutcome = async (page) => {
  * @param {boolean} [params.noCursor] - Skip creating a ghost-cursor.
  * @param {boolean} [params.noBundleCheck] - Suppress the "is in home page"
  *   success log.
+ * @param {(message: string) => Promise<any>} [params.sendTelegramMessage] -
+ *   Forwarded to loginWithNafathCredentials to report a Nafath
+ *   verification code, if one shows up mid-login.
  * @returns {Promise<{
  *   newPage: import("puppeteer").Page,
  *   newCursor?: import("ghost-cursor").GhostCursor,
@@ -88,6 +56,7 @@ const makeUserLoggedInOrOpenHomePage = async ({
   startingPageUrl,
   noCursor,
   noBundleCheck,
+  sendTelegramMessage,
 }) => {
   const userName = process.env.CLIENT_NAME;
 
@@ -152,7 +121,7 @@ const makeUserLoggedInOrOpenHomePage = async ({
           }
 
           const { success: reachedNafath, message: nafathPortalMessage } =
-            await openNafathLoginPortal(page);
+            await openNafathLoginPortal(page, sendTelegramMessage);
 
           if (!reachedNafath) {
             createConsoleMessage(
@@ -162,80 +131,27 @@ const makeUserLoggedInOrOpenHomePage = async ({
             );
           } else {
             const {
-              success: credentialsSubmitted,
-              message: credentialsMessage,
-            } = await loginWithNafathCredentials(page);
+              success: nafathLoginSucceeded,
+              message: nafathLoginMessage,
+              shouldCloseApp: shouldCloseAppFromNafath,
+            } = await loginWithNafathCredentials(page, sendTelegramMessage);
 
-            if (!credentialsSubmitted) {
+            if (shouldCloseAppFromNafath) {
+              return {
+                newPage: page,
+                newCursor: cursor,
+                isLoggedIn: false,
+                isErrorAboutLockedOut: false,
+                shouldCloseApp: true,
+              };
+            }
+
+            if (!nafathLoginSucceeded) {
               createConsoleMessage(
                 "error",
-                credentialsMessage,
+                nafathLoginMessage,
                 "❌ loginWithNafathCredentials failed",
               );
-            } else {
-              const { redirectedAway, loginErrors } =
-                await waitForNafathOutcome(page);
-
-              if (loginErrors.length) {
-                // Wrong/rejected credentials won't fix themselves on retry —
-                // resubmitting the same ones repeatedly risks getting the
-                // Nafath account locked out from repeated failed attempts,
-                // so this is fatal, not retryable.
-                createConsoleMessage(
-                  "error",
-                  loginErrors.join(", "),
-                  "❌ Nafath rejected the credentials",
-                );
-
-                return {
-                  newPage: page,
-                  newCursor: cursor,
-                  isLoggedIn: false,
-                  isErrorAboutLockedOut: false,
-                  shouldCloseApp: true,
-                };
-              }
-
-              if (!redirectedAway) {
-                createConsoleMessage(
-                  "error",
-                  `Waited ${RETURN_TO_SEHA_TIMEOUT_MS}ms`,
-                  "❌ Never redirected back from Nafath",
-                );
-              } else {
-                // Nafath shows its own "تأكيد الانتقال" confirmation page
-                // (html/intgal-after-code.html) right after leaving
-                // iam.gov.sa, before ever reaching seha.sa — best-effort:
-                // if it's not showing, this is a no-op.
-                const {
-                  success: transitionConfirmed,
-                  message: transitionMessage,
-                } = await confirmNafathTransition(page);
-
-                if (!transitionConfirmed) {
-                  createConsoleMessage(
-                    "error",
-                    transitionMessage,
-                    "❌ confirmNafathTransition failed",
-                  );
-                }
-
-                // An account linked to multiple facilities lands on a role
-                // picker (html/session-page.html) instead of straight on
-                // the dashboard — best-effort: if it's not showing (single-
-                // facility account), this is a no-op and we fall through to
-                // the dashboard check below as normal.
-                const { success: accountSelected, message: accountMessage } =
-                  await selectFirstLoginAccount(page);
-
-                if (!accountSelected) {
-                  createConsoleMessage(
-                    "error",
-                    accountMessage,
-                    "❌ selectFirstLoginAccount failed",
-                  );
-                }
-              }
             }
           }
         }

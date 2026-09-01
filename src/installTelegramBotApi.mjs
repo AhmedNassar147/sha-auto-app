@@ -19,13 +19,8 @@ import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs
 import getPatientReferralDataFromAPI from "./getPatientReferralDataFromAPI.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import closePageSafely from "./closePageSafely.mjs";
-import getExtraTimeBasedLogs from "./getExtraTimeBasedLogs.mjs";
 import notifyUserWithNewCase from "./notifyUserWithNewCase.mjs";
-import {
-  migrateCaseLogTimings,
-  readLogsAsArray,
-} from "./summarizeLogsAfterAcceptance.mjs";
-import createAndSendInvoiceReport from "./createAndSendInvoiceReport.mjs";
+// import createAndSendInvoiceReport from "./createAndSendInvoiceReport.mjs";
 import formatPatientToTelegramOrWA from "./formatPatientToTelegramOrWA.mjs";
 import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
@@ -82,27 +77,11 @@ const COMMANDS = {
     description: "pull latest code from master and restart the server",
     command: "update_code",
   },
-  getCasesStatus: {
-    value: /\/get_cases_status\s+([1-9]\d*)$/,
-    description:
-      "Long press → get last amount of accepted cases status, Example: /get_cases_status 1 OR /get_cases_status 2",
-    command: "get_cases_status",
-  },
   getReferralLetter: {
     value: /\/letter (.+)/,
     description:
       "Long press → get letter, Example: /letter a 12345 OR /letter r 12345 OR /letter r 12345 reason",
     command: "letter",
-  },
-  testNextCaseExtraTime: {
-    value: /\/test_next_case_extra_time/,
-    description: "get extra time for next case",
-    command: "test_next_case_extra_time",
-  },
-  migrateLogs: {
-    value: /\/migrate_logs/,
-    description: "migrate logs",
-    command: "migrate_logs",
   },
   getInvoiceFile: {
     value: /\/invoice(?:\s+(.*))?$/,
@@ -1051,6 +1030,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           startingPageUrl: HOME_PAGE_URL,
           noCursor: true,
           noBundleCheck: true,
+          sendTelegramMessage,
         });
 
       if (isErrorAboutLockedOut) {
@@ -1128,296 +1108,69 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     );
   });
 
-  safeOnText(COMMANDS.testNextCaseExtraTime.value, async (msg) => {
-    const { unAuthorizedMessage, chatId } = getIfNotAuthorizedMessage(msg);
+  // safeOnText(COMMANDS.getInvoiceFile.value, async (msg, match) => {
+  //   const { unAuthorizedMessage, chatId, msgId } = getIfNotAuthorizedMessage(
+  //     msg,
+  //     true,
+  //   );
 
-    if (unAuthorizedMessage) {
-      await sendBotMessage(chatId, unAuthorizedMessage);
-      return;
-    }
+  //   if (unAuthorizedMessage) {
+  //     await sendBotMessage(chatId, unAuthorizedMessage, {
+  //       reply_to_message_id: msgId,
+  //     });
+  //     return;
+  //   }
 
-    const { ENABLE_AUTO_WAITING, WAIT_FOR_ACCEPT_MS } = process.env;
-    const current = Number(WAIT_FOR_ACCEPT_MS);
-    const isAutoWaitingActive = ENABLE_AUTO_WAITING === "1";
+  //   const args = (match?.[1] || "").split(/\s+/).filter(Boolean);
 
-    const formatResult = (title, result) =>
-      `${title} → extra \`${result.computedExtraWait}ms\` → *\`${current + result.computedExtraWait}ms\`*\n` +
-      `${result.computedExtraBotMessages.join("\n") || "No messages"}`;
+  //   const allowedArgs = ["-f", "-s"];
+  //   const invalidArgs = args.filter((arg) => !allowedArgs.includes(arg));
 
-    const firstGoingToAccept = patientsStore.getFirstGoingToAccept(true);
+  //   if (invalidArgs.length) {
+  //     await sendBotMessage(
+  //       chatId,
+  //       `⛔ Invalid arguments: ${invalidArgs.join(", ")}\n\nAllowed:\n/invoice\n/invoice -f\n/invoice -f -s`,
+  //       {
+  //         reply_to_message_id: msgId,
+  //       },
+  //     );
 
-    const { referralId, referralEndTimestamp } = {
-      referralId: "test",
-      referralEndTimestamp: Date.now(),
-      ...(firstGoingToAccept || {}),
-    };
+  //     return;
+  //   }
 
-    const zeroResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      baseWaitingTime: current,
-    });
+  //   const isFinal = args.includes("-f");
+  //   const skipValidation = args.includes("-s");
 
-    const negativeResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: -1000,
-      baseWaitingTime: current,
-    });
+  //   if (skipValidation && !isFinal) {
+  //     await sendBotMessage(
+  //       chatId,
+  //       `⛔ "-s" can only be used with "-f"\n\nExamples:\n/invoice -f\n/invoice -f -s`,
+  //       {
+  //         reply_to_message_id: msgId,
+  //       },
+  //     );
 
-    const normalRttResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      rtt: 70,
-      baseWaitingTime: current,
-    });
+  //     return;
+  //   }
 
-    const rtt95Result = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      rtt: 95,
-      baseWaitingTime: current,
-    });
+  //   try {
+  //     await sendBotMessage(chatId, `✅ Preparing Invoice Report....`, {
+  //       reply_to_message_id: msgId,
+  //     });
 
-    const rtt130Result = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      rtt: 130,
-      baseWaitingTime: current,
-    });
+  //     const { message, files } = await createAndSendInvoiceReport(
+  //       browser,
+  //       !isFinal,
+  //       skipValidation,
+  //     );
 
-    const normalRttWithNegativeResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: -1000,
-      rtt: 70,
-      baseWaitingTime: current,
-    });
-
-    const rtt130WithNegativeResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: -1000,
-      rtt: 130,
-      baseWaitingTime: current,
-    });
-
-    const normalBackendDelayResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      extraBackendDelayMs: 1000,
-      baseWaitingTime: current,
-    });
-
-    const highBackendDelayResult = await getExtraTimeBasedLogs({
-      referralId,
-      referralEndTimestamp,
-      diff: 0,
-      extraBackendDelayMs: 2000,
-      baseWaitingTime: current,
-    });
-
-    await sendBotMessage(
-      chatId,
-      `🧪 *Next Case Extra Time Test Results*\n` +
-        `────────────────────────\n\n` +
-        `*⚙️ current waitingTime* → \`${current}ms\`\n\n` +
-        `*📍 Auto waiting* → \`${isAutoWaitingActive ? "Enabled" : "Disabled"}\`\n\n` +
-        `*📍 is Using Real Patient* → \`${referralId === "test" ? "No" : "Yes"}\`\n\n` +
-        `${formatResult("📊 Stable diff=0", zeroResult)}\n\n` +
-        `${formatResult("📉 Negative diff<0", negativeResult)}\n\n` +
-        `${formatResult("📶 RTT normal 70ms", normalRttResult)}\n\n` +
-        `${formatResult("📶 RTT 95ms", rtt95Result)}\n\n` +
-        `${formatResult("📶 RTT 130ms", rtt130Result)}\n\n` +
-        `${formatResult("📶 RTT normal with diff<0", normalRttWithNegativeResult)}\n\n` +
-        `${formatResult("📶 RTT 130ms with diff<0", rtt130WithNegativeResult)}\n\n` +
-        `${formatResult("🖥️ Backend delay normal 1000ms", normalBackendDelayResult)}\n\n` +
-        `${formatResult("🖥️ Backend delay high 2000ms", highBackendDelayResult)}`,
-    );
-  });
-
-  safeOnText(COMMANDS.getInvoiceFile.value, async (msg, match) => {
-    const { unAuthorizedMessage, chatId, msgId } = getIfNotAuthorizedMessage(
-      msg,
-      true,
-    );
-
-    if (unAuthorizedMessage) {
-      await sendBotMessage(chatId, unAuthorizedMessage, {
-        reply_to_message_id: msgId,
-      });
-      return;
-    }
-
-    const args = (match?.[1] || "").split(/\s+/).filter(Boolean);
-
-    const allowedArgs = ["-f", "-s"];
-    const invalidArgs = args.filter((arg) => !allowedArgs.includes(arg));
-
-    if (invalidArgs.length) {
-      await sendBotMessage(
-        chatId,
-        `⛔ Invalid arguments: ${invalidArgs.join(", ")}\n\nAllowed:\n/invoice\n/invoice -f\n/invoice -f -s`,
-        {
-          reply_to_message_id: msgId,
-        },
-      );
-
-      return;
-    }
-
-    const isFinal = args.includes("-f");
-    const skipValidation = args.includes("-s");
-
-    if (skipValidation && !isFinal) {
-      await sendBotMessage(
-        chatId,
-        `⛔ "-s" can only be used with "-f"\n\nExamples:\n/invoice -f\n/invoice -f -s`,
-        {
-          reply_to_message_id: msgId,
-        },
-      );
-
-      return;
-    }
-
-    try {
-      await sendBotMessage(chatId, `✅ Preparing Invoice Report....`, {
-        reply_to_message_id: msgId,
-      });
-
-      const { message, files } = await createAndSendInvoiceReport(
-        browser,
-        !isFinal,
-        skipValidation,
-      );
-
-      await sendTelegramMessage(message, files, null, chatId, true);
-    } catch (error) {
-      await sendBotMessage(chatId, `⛔ Error: ${error?.message || error}`, {
-        reply_to_message_id: msgId,
-      });
-    }
-  });
-
-  safeOnText(COMMANDS.getCasesStatus.value, async (msg, match) => {
-    const { unAuthorizedMessage, chatId, msgId } =
-      getIfNotAuthorizedMessage(msg);
-
-    if (unAuthorizedMessage) {
-      await sendBotMessage(chatId, unAuthorizedMessage, {
-        reply_to_message_id: msgId,
-      });
-      return;
-    }
-
-    const numberOfCases = Number(match?.[1]);
-
-    if (!Number.isInteger(numberOfCases) || numberOfCases < 1) {
-      await sendBotMessage(
-        chatId,
-        `⛔ Invalid number of cases. Please provide a valid number. Example: /get_cases_status 1`,
-        {
-          reply_to_message_id: msgId,
-        },
-      );
-      return;
-    }
-
-    try {
-      const allCasesLogsData = await readLogsAsArray();
-      const selectedCases = allCasesLogsData.slice(-numberOfCases);
-
-      if (!selectedCases.length) {
-        await sendBotMessage(chatId, `⛔ No cases found in logs.`, {
-          reply_to_message_id: msgId,
-        });
-        return;
-      }
-
-      const message = [
-        `📊 *Last ${selectedCases.length} Case Status${selectedCases.length > 1 ? "es" : ""}*`,
-        ``,
-        ...selectedCases.map((item, index) => {
-          const {
-            referralId,
-            claimed,
-            status,
-            extraWaitMessage,
-            extraBackendDelayMs,
-            delta,
-            tookMS,
-            rtt,
-            diff,
-            waitTime,
-            extraWait,
-            referralEndDate,
-          } = item;
-
-          return [
-            `#${index + 1}`,
-            `🆔 Case: \`${referralId}\``,
-            referralEndDate !== undefined
-              ? `📊 date: \`${referralEndDate}\``
-              : null,
-            diff !== undefined ? `📊 Diff: \`${diff}\`` : null,
-            `📊 Delay: \`${extraBackendDelayMs || 0}\``,
-            rtt !== undefined ? `📶 RTT (ms): \`${rtt}\`` : null,
-            tookMS !== undefined ? `⏱️ Took (ms): \`${tookMS}\`` : null,
-            `⏱️ Wait Time: \`${waitTime}_${extraWait || 0}\``,
-            `📋 Status: \`${status || "unknown"}\``,
-            `🏁 Claimed: \`${claimed || "unknown"}\``,
-            delta !== undefined ? `🔁 delta after accept: \`${delta}\`` : null,
-            extraWaitMessage
-              ? [
-                  `⏱️ waitingStatus:`,
-                  ...extraWaitMessage
-                    .split("_AND_")
-                    .filter(Boolean)
-                    .map((item) => `  • ${item}`),
-                ].join("\n")
-              : null,
-          ]
-            .filter(Boolean)
-            .join("\n");
-        }),
-      ].join("\n\n");
-
-      await sendBotMessage(chatId, message, {
-        reply_to_message_id: msgId,
-      });
-    } catch (error) {
-      await sendBotMessage(chatId, `⛔ Error: ${error?.message || error}`, {
-        reply_to_message_id: msgId,
-      });
-    }
-  });
-
-  safeOnText(COMMANDS.migrateLogs.value, async (msg) => {
-    const { unAuthorizedMessage, chatId, msgId } =
-      getIfNotAuthorizedMessage(msg);
-
-    if (unAuthorizedMessage) {
-      await sendBotMessage(chatId, unAuthorizedMessage);
-      return;
-    }
-
-    try {
-      await migrateCaseLogTimings();
-      await sendBotMessage(chatId, `✅ Timings Logs migrated Successfully.`, {
-        reply_to_message_id: msgId,
-      });
-    } catch (error) {
-      await sendBotMessage(chatId, `⛔ Error: ${error?.message || error}`, {
-        reply_to_message_id: msgId,
-      });
-    }
-  });
+  //     await sendTelegramMessage(message, files, null, chatId, true);
+  //   } catch (error) {
+  //     await sendBotMessage(chatId, `⛔ Error: ${error?.message || error}`, {
+  //       reply_to_message_id: msgId,
+  //     });
+  //   }
+  // });
 
   safeOnText(COMMANDS.updateCode.value, async (msg) => {
     const { unAuthorizedMessage, chatId } = getIfNotAuthorizedMessage(msg);

@@ -32,13 +32,13 @@ import {
   generatedPdfsPathForRejection,
   screenshotsFolderDirectory,
   generatedSummaryFolderPath,
+  errorsFolderDirectory,
   TABS_COLLECTION_TYPES,
   APP_URL,
   FAKE_REJECT_PROBE,
 } from "./constants.mjs";
-
 import createConsoleMessage from "./createConsoleMessage.mjs";
-// import installTelegramBotApi from "./installTelegramBotApi.mjs";
+import installTelegramBotApi from "./installTelegramBotApi.mjs";
 import { deleteOldCaseFiles, getCasesWithEmptyClaimStatus } from "./db.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
@@ -161,6 +161,7 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
       generateFolderIfNotExisting(generatedPdfsPathForRejection),
       generateFolderIfNotExisting(htmlFilesPath),
       generateFolderIfNotExisting(generatedSummaryFolderPath),
+      generateFolderIfNotExisting(errorsFolderDirectory),
       // generateFolderIfNotExisting(pollLogsFolderPath),
       // ensureCaseTimingLogsFile(),
       // checkSiteCodeConfig(),
@@ -205,13 +206,13 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
     await patientsStore.scheduleAllInitialPatients();
 
-    // sendTelegramMessage = await installTelegramBotApi(
-    //   TG_TOKEN,
-    //   patientsStore,
-    //   browser,
-    // );
+    sendTelegramMessage = await installTelegramBotApi(
+      TG_TOKEN,
+      patientsStore,
+      browser,
+    );
 
-    sendTelegramMessage = () => Promise.resolve();
+    // sendTelegramMessage = () => Promise.resolve();
 
     // if (typeof sendTelegramMessage === "function") {
     //   patientsStore.setTelegramMessageSender(sendTelegramMessage);

@@ -100,6 +100,7 @@ const waitForWaitingCountWithInterval = async ({
         browser,
         cursor,
         currentPage: page,
+        sendTelegramMessage,
       });
 
       page = newPage;
