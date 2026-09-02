@@ -15,10 +15,9 @@
 import { WASLA_STATUS_TYPES } from "./constants.mjs";
 
 const COLUMN_LABELS = {
-  id: "ID",
+  navigationId: "Navigation ID",
   referralId: "Referral ID",
   referralReferenceId: "Reference ID",
-  navigationId: "Navigation ID",
   patientName: "Patient Name",
   patientNationalId: "National ID",
   referralDate: "Referral Date",
@@ -33,17 +32,17 @@ const COLUMN_LABELS = {
   referralStartDate: "Start Date",
   referralEndDate: "End Date",
   referralEndTimestamp: "End Timestamp",
+  letterType: "Letter Type",
+  isSent: "Sent",
+  payerAction: "Payer Action",
+  isReceived: "Received",
+  paid: "Paid",
+  scheduledAt: "Scheduled At",
   facilityReviewWindowMinutes: "Review Window (min)",
   acceptanceWindowMinutes: "Acceptance Window (min)",
   extendScopeWindowMinutes: "Extend Scope Window (min)",
-  letterType: "Letter Type",
   transferUrl: "Transfer",
-  isSent: "Sent",
-  isReceived: "Received",
-  scheduledAt: "Scheduled At",
   tabName: "Tab",
-  paid: "Paid",
-  payerAction: "Payer Action",
   createdAt: "Saved At",
   updatedAt: "Updated At",
 };
@@ -102,7 +101,8 @@ const escapeHtml = (value) =>
 
 const badgeClassFor = (value) => {
   const v = String(value).toLowerCase();
-  if (["accept", "accepted", "yes", "success"].includes(v)) return "badge-green";
+  if (["accept", "accepted", "yes", "success"].includes(v))
+    return "badge-green";
   if (["reject", "rejected", "no", "failed"].includes(v)) return "badge-red";
   return "badge-neutral";
 };
@@ -184,7 +184,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     --bg: #0f1420;
     --panel: #161d2e;
     --panel-border: #262f45;
-    --text: #e6e9f2;
+    --text: #ffffff;
     --muted: #8b93a7;
     --accent: #4f8cff;
     --row-alt: #131a29;
@@ -222,7 +222,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
   }
   .field input, .field select {
     background: var(--panel);
-    border: 1px solid var(--panel-border);
+    border: 1px solid var(--text);
     color: var(--text);
     border-radius: 8px;
     padding: 8px 10px;
@@ -268,7 +268,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     position: sticky;
     top: 0;
     background: #1a2136;
-    color: var(--muted);
+    color: var(--text);
     text-align: left;
     padding: 10px 12px;
     font-weight: 600;
