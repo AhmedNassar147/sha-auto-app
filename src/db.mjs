@@ -383,13 +383,6 @@ const getCasesWithEmptyClaimStatusStatement = db.prepare(
 const getCasesWithEmptyClaimStatus = () =>
   getCasesWithEmptyClaimStatusStatement.all();
 
-const getDistinctStatusesStatement = db.prepare(
-  `SELECT DISTINCT status FROM patients WHERE status IS NOT NULL AND status != '' ORDER BY status ASC`,
-);
-
-const getDistinctStatuses = () =>
-  getDistinctStatusesStatement.all().map((row) => row.status);
-
 // Column allowlist for the /db admin page filters - kept explicit (rather
 // than accepting arbitrary column names from the request) since these
 // build into raw SQL clause text below, not just bound parameter values.
@@ -410,6 +403,7 @@ const FILTERABLE_LIKE_COLUMNS = [
  *   date from facility/tabs' `createdAt` field, stored under the
  *   `referralDate` column (see toDbRow above) - distinct from this table's
  *   own `createdAt` column, which is just row-insertion bookkeeping.
+ * @param {string} [filters.paid] - "1" (Yes) or "0" (No). Exact match.
  * @param {number} [filters.limit=500] - Clamped to [1, 2000].
  * @returns {object[]}
  */
@@ -419,6 +413,7 @@ const getPatientsFiltered = ({
   navigationId,
   status,
   referralDate,
+  paid,
   limit = 500,
 } = {}) => {
   const values = { referralId, patientNationalId, navigationId };
@@ -434,13 +429,26 @@ const getPatientsFiltered = ({
   }
 
   if (status) {
-    clauses.push(`status = @status`);
+    // The status column holds WASLA_STATUS_TYPES numeric codes, but a
+    // plain JS number bound through better-sqlite3 can land in the TEXT
+    // column as e.g. "1.0" rather than "1" (confirmed live) - comparing as
+    // numbers rather than exact strings works regardless of that
+    // formatting, and regardless of whatever a given row's existing
+    // representation already is.
+    clauses.push(`CAST(status AS REAL) = CAST(@status AS REAL)`);
     params.status = status;
   }
 
   if (referralDate) {
     clauses.push(`referralDate LIKE @referralDate`);
     params.referralDate = `${referralDate}%`;
+  }
+
+  // paid is a real 0/No value, not "unset" - can't use a plain truthy
+  // check here or the "No" filter would silently do nothing.
+  if (paid !== undefined && paid !== null && paid !== "") {
+    clauses.push(`paid = @paid`);
+    params.paid = Number(paid) ? 1 : 0;
   }
 
   const whereSQL = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -521,7 +529,6 @@ export {
   deletePatients,
   getPatient,
   getCasesWithEmptyClaimStatus,
-  getDistinctStatuses,
   getPatientsFiltered,
   getOldestPatient,
   upsertCaseFile,

@@ -7,11 +7,46 @@
  * GET /db route. Renders every column of the `patients` table (db.mjs) for
  * whatever rows the caller already fetched, plus a plain GET filter form
  * (referralId/patientNationalId/navigationId as partial matches, status as
- * an exact match against whatever distinct values actually exist in the
- * table) that reloads the same page with new query params rather than
- * calling out to a separate API endpoint.
+ * an exact match against the fixed WASLA_STATUS_TYPES codes) that reloads
+ * the same page with new query params rather than calling out to a
+ * separate API endpoint.
  *
  */
+import { WASLA_STATUS_TYPES } from "./constants.mjs";
+
+const COLUMN_LABELS = {
+  id: "ID",
+  referralId: "Referral ID",
+  referralReferenceId: "Reference ID",
+  navigationId: "Navigation ID",
+  patientName: "Patient Name",
+  patientNationalId: "National ID",
+  referralDate: "Referral Date",
+  status: "Status",
+  userActionName: "Action",
+  claimed: "Claimed",
+  providerAction: "Provider Action",
+  referralType: "Referral Type",
+  referralReason: "Reason",
+  providerRegion: "Region",
+  broadcastedAt: "Broadcasted At",
+  referralStartDate: "Start Date",
+  referralEndDate: "End Date",
+  referralEndTimestamp: "End Timestamp",
+  facilityReviewWindowMinutes: "Review Window (min)",
+  acceptanceWindowMinutes: "Acceptance Window (min)",
+  extendScopeWindowMinutes: "Extend Scope Window (min)",
+  letterType: "Letter Type",
+  transferUrl: "Transfer",
+  isSent: "Sent",
+  isReceived: "Received",
+  scheduledAt: "Scheduled At",
+  tabName: "Tab",
+  paid: "Paid",
+  payerAction: "Payer Action",
+  createdAt: "Saved At",
+  updatedAt: "Updated At",
+};
 
 const COLUMNS = [
   "id",
@@ -47,8 +82,9 @@ const COLUMNS = [
   "updatedAt",
 ];
 
+// "status" is handled separately in renderCell (needs the WASLA_STATUS_TYPES
+// code->label mapping first), so it's deliberately not in this set.
 const STATUS_BADGE_COLUMNS = new Set([
-  "status",
   "userActionName",
   "claimed",
   "isSent",
@@ -75,6 +111,14 @@ const renderCell = (column, value) => {
   if (value === null || value === undefined || value === "") {
     return '<span class="empty-cell">—</span>';
   }
+  if (column === "status") {
+    const label = WASLA_STATUS_TYPES[value] ?? value;
+    return `<span class="badge ${badgeClassFor(label)}">${escapeHtml(label)}</span>`;
+  }
+  if (column === "paid") {
+    const label = Number(value) === 1 ? "Yes" : "No";
+    return `<span class="badge ${badgeClassFor(label)}">${label}</span>`;
+  }
   if (STATUS_BADGE_COLUMNS.has(column)) {
     return `<span class="badge ${badgeClassFor(value)}">${escapeHtml(value)}</span>`;
   }
@@ -97,35 +141,36 @@ const renderRows = (rows) => {
     .join("");
 };
 
-const renderStatusOptions = (statuses, selectedStatus) =>
+const renderStatusOptions = (selectedStatus) =>
   `<option value="">All statuses</option>` +
-  statuses
+  Object.entries(WASLA_STATUS_TYPES)
     .map(
-      (status) =>
-        `<option value="${escapeHtml(status)}"${status === selectedStatus ? " selected" : ""}>${escapeHtml(status)}</option>`,
+      ([code, label]) =>
+        `<option value="${code}"${code === String(selectedStatus) ? " selected" : ""}>${escapeHtml(label)}</option>`,
     )
     .join("");
 
 /**
  * @param {object} params
  * @param {object[]} params.rows - Already-fetched rows to render.
- * @param {string[]} params.statuses - Distinct status values, for the filter dropdown.
  * @param {object} [params.filters]
  * @param {string} [params.filters.referralId]
  * @param {string} [params.filters.patientNationalId]
  * @param {string} [params.filters.navigationId]
- * @param {string} [params.filters.status]
+ * @param {string} [params.filters.status] - A WASLA_STATUS_TYPES code.
  * @param {string} [params.filters.referralDate] - "YYYY-MM-DD", labeled
  *   "Referral Date" in the UI.
+ * @param {string} [params.filters.paid] - "1" (Yes) or "0" (No).
  * @returns {string}
  */
-const renderDbPage = ({ rows, statuses, filters = {} }) => {
+const renderDbPage = ({ rows, filters = {} }) => {
   const {
     referralId = "",
     patientNationalId = "",
     navigationId = "",
     status = "",
     referralDate = "",
+    paid = "",
   } = filters;
 
   return `<!doctype html>
@@ -271,11 +316,19 @@ const renderDbPage = ({ rows, statuses, filters = {} }) => {
     </div>
     <div class="field">
       <label for="f-status">Status</label>
-      <select id="f-status" name="status">${renderStatusOptions(statuses, status)}</select>
+      <select id="f-status" name="status">${renderStatusOptions(status)}</select>
     </div>
     <div class="field">
       <label for="f-referralDate">Referral Date</label>
       <input id="f-referralDate" name="referralDate" type="date" value="${escapeHtml(referralDate)}" />
+    </div>
+    <div class="field">
+      <label for="f-paid">Paid</label>
+      <select id="f-paid" name="paid">
+        <option value="">All</option>
+        <option value="1"${paid === "1" ? " selected" : ""}>Yes</option>
+        <option value="0"${paid === "0" ? " selected" : ""}>No</option>
+      </select>
     </div>
     <div class="actions">
       <a class="btn-link secondary" href="/db">Clear</a>
@@ -288,7 +341,7 @@ const renderDbPage = ({ rows, statuses, filters = {} }) => {
   <div class="table-wrap">
     <table>
       <thead>
-        <tr>${COLUMNS.map((col) => `<th>${col}</th>`).join("")}</tr>
+        <tr>${COLUMNS.map((col) => `<th>${COLUMN_LABELS[col] || col}</th>`).join("")}</tr>
       </thead>
       <tbody>${renderRows(rows)}</tbody>
     </table>

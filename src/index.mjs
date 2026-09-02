@@ -43,7 +43,6 @@ import {
   deleteOldCaseFiles,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
-  getDistinctStatuses,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
@@ -326,27 +325,33 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
     app.get("/db", (req, res) => {
       try {
-        const { referralId, patientNationalId, navigationId, status, referralDate } =
-          req.query;
+        const {
+          referralId,
+          patientNationalId,
+          navigationId,
+          status,
+          referralDate,
+          paid,
+        } = req.query;
         const rows = getPatientsFiltered({
           referralId,
           patientNationalId,
           navigationId,
           status,
           referralDate,
+          paid,
         });
-        const statuses = getDistinctStatuses();
 
         res.type("html").send(
           renderDbPage({
             rows,
-            statuses,
             filters: {
               referralId,
               patientNationalId,
               navigationId,
               status,
               referralDate,
+              paid,
             },
           }),
         );
@@ -452,6 +457,7 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
     });
 
     createConsoleMessage("info", `HTTPS listening on https://${HOST}:${PORT}`);
+    createConsoleMessage("info", `📊 Cases DB: https://localhost:${PORT}/db`);
 
     if (USE_NTFY_AS_CASE_PROVIDER == "Y") {
       await startCloudflareTunnel();

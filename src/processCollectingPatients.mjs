@@ -186,6 +186,7 @@ const processCollectingPatients = async ({
         letterType,
         tab: 1,
         tabName: "Referrals",
+        paid: 0,
       };
 
       await patientsStore.addPatients(finalData);
