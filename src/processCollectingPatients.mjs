@@ -87,7 +87,7 @@ const processCollectingPatients = async ({
         status,
         broadcastedAt,
         id: navigationId,
-        // https://weslah.seha.sa/facility-referrals/view/384325
+        // https://weslah.seha.sa/facility-referrals/view/navigationId
       } = patient || {};
       const referralId = String(patientReferralId);
 
@@ -184,6 +184,8 @@ const processCollectingPatients = async ({
         transferUrl,
         ...patientData,
         letterType,
+        tab: 1,
+        tabName: "Referrals",
       };
 
       await patientsStore.addPatients(finalData);

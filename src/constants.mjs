@@ -158,6 +158,7 @@ export const API_URLS = {
   ACCEPT_CASE: `${baseReferraAPiUrl}/accept`,
   REJECT: `${baseReferraAPiUrl}/reject`,
   DISTRIBUTION_WINDOWS_URL: `${BASE_WASLA_API_URL}/lookup/distribution-windows`,
+  NOTIFICATIONS_LIST: `${BASE_WASLA_API_URL}/notifications`,
 };
 
 export const baseWaslaHeaders = {

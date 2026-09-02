@@ -49,6 +49,7 @@ const casesLettersDb = new Database(casesLettersFilePath);
       navigationId TEXT,
       patientName TEXT NOT NULL,
       patientNationalId TEXT,
+      referralDate TEXT,                  -- the real referral-creation date from facility/tabs' createdAt field (renamed here to avoid clashing with the row-bookkeeping createdAt column below)
       referralType TEXT,
       referralReason TEXT,
       providerRegion TEXT,
@@ -92,6 +93,7 @@ const casesLettersDb = new Database(casesLettersFilePath);
     facilityReviewWindowMinutes: "INTEGER",
     acceptanceWindowMinutes: "INTEGER",
     extendScopeWindowMinutes: "INTEGER",
+    referralDate: "TEXT",
   };
 
   for (const [columnName, columnType] of Object.entries(columnsToEnsure)) {
@@ -118,6 +120,17 @@ const toDbRow = (oldRow, patient) => {
     navigationId: merged.navigationId ?? null,
     patientName: merged.patientName ?? null,
     patientNationalId: merged.patientNationalId ?? null,
+    // The real referral-creation date, as returned by facility/tabs under
+    // the name `createdAt` (see processCollectingPatients.mjs ->
+    // finalData.createdAt) - stored under a different column name here
+    // (referralDate) so it doesn't collide with this table's own
+    // `createdAt` column, which is separate row-insertion bookkeeping
+    // (DEFAULT datetime('now')), not the referral's actual date. Preferred
+    // over the old row's stored value (patient.createdAt is the latest
+    // fetch from the API each time), but falls back to whatever was
+    // already there if a given call site doesn't provide it, so it's never
+    // wiped out by an update.
+    referralDate: oldRow?.createdAt ?? oldRow?.referralDate ?? null,
     referralType: merged.referralType ?? null,
     referralReason: merged.referralReason ?? null,
     providerRegion: merged.providerRegion ?? null,
@@ -150,6 +163,7 @@ const insertPatientSQL = `
     navigationId,
     patientName,
     patientNationalId,
+    referralDate,
     referralType,
     referralReason,
     providerRegion,
@@ -179,6 +193,7 @@ const insertPatientSQL = `
     @navigationId,
     @patientName,
     @patientNationalId,
+    @referralDate,
     @referralType,
     @referralReason,
     @providerRegion,
@@ -208,6 +223,7 @@ const insertPatientSQL = `
     navigationId          = COALESCE(excluded.navigationId, navigationId),
     patientName           = COALESCE(excluded.patientName, patientName),
     patientNationalId     = COALESCE(excluded.patientNationalId, patientNationalId),
+    referralDate          = COALESCE(excluded.referralDate, referralDate),
     referralType          = COALESCE(excluded.referralType, referralType),
     referralReason        = COALESCE(excluded.referralReason, referralReason),
     providerRegion        = COALESCE(excluded.providerRegion, providerRegion),
@@ -239,6 +255,7 @@ const updatePatientSQL = `
     navigationId = @navigationId,
     patientName = @patientName,
     patientNationalId = @patientNationalId,
+    referralDate = @referralDate,
     referralType = @referralType,
     referralReason = @referralReason,
     providerRegion = @providerRegion,
@@ -366,6 +383,75 @@ const getCasesWithEmptyClaimStatusStatement = db.prepare(
 const getCasesWithEmptyClaimStatus = () =>
   getCasesWithEmptyClaimStatusStatement.all();
 
+const getDistinctStatusesStatement = db.prepare(
+  `SELECT DISTINCT status FROM patients WHERE status IS NOT NULL AND status != '' ORDER BY status ASC`,
+);
+
+const getDistinctStatuses = () =>
+  getDistinctStatusesStatement.all().map((row) => row.status);
+
+// Column allowlist for the /db admin page filters - kept explicit (rather
+// than accepting arbitrary column names from the request) since these
+// build into raw SQL clause text below, not just bound parameter values.
+const FILTERABLE_LIKE_COLUMNS = [
+  "referralId",
+  "patientNationalId",
+  "navigationId",
+];
+
+/**
+ * @param {object} [filters]
+ * @param {string} [filters.referralId] - Partial match.
+ * @param {string} [filters.patientNationalId] - Partial match.
+ * @param {string} [filters.navigationId] - Partial match.
+ * @param {string} [filters.status] - Exact match.
+ * @param {string} [filters.referralDate] - "YYYY-MM-DD" - matches that
+ *   whole calendar day (prefix match). This is the real referral-creation
+ *   date from facility/tabs' `createdAt` field, stored under the
+ *   `referralDate` column (see toDbRow above) - distinct from this table's
+ *   own `createdAt` column, which is just row-insertion bookkeeping.
+ * @param {number} [filters.limit=500] - Clamped to [1, 2000].
+ * @returns {object[]}
+ */
+const getPatientsFiltered = ({
+  referralId,
+  patientNationalId,
+  navigationId,
+  status,
+  referralDate,
+  limit = 500,
+} = {}) => {
+  const values = { referralId, patientNationalId, navigationId };
+  const clauses = [];
+  const params = {};
+
+  for (const column of FILTERABLE_LIKE_COLUMNS) {
+    const value = values[column];
+    if (value) {
+      clauses.push(`${column} LIKE @${column}`);
+      params[column] = `%${value}%`;
+    }
+  }
+
+  if (status) {
+    clauses.push(`status = @status`);
+    params.status = status;
+  }
+
+  if (referralDate) {
+    clauses.push(`referralDate LIKE @referralDate`);
+    params.referralDate = `${referralDate}%`;
+  }
+
+  const whereSQL = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  params.limit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+
+  const stmt = db.prepare(
+    `SELECT * FROM patients ${whereSQL} ORDER BY id DESC LIMIT @limit`,
+  );
+  return stmt.all(params);
+};
+
 const upsertCaseFile = (referralId, action, tgFileId) => {
   const stmt = casesLettersDb.prepare(`
     INSERT INTO casesFilesDb (
@@ -435,6 +521,8 @@ export {
   deletePatients,
   getPatient,
   getCasesWithEmptyClaimStatus,
+  getDistinctStatuses,
+  getPatientsFiltered,
   getOldestPatient,
   upsertCaseFile,
   getCaseFile,

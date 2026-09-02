@@ -16,6 +16,9 @@ import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
 import sleep from "./sleep.mjs";
 import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
 import getSehaSessionExpiry from "./getSehaSessionExpiry.mjs";
+import getWaslaNotifications, {
+  NOTIFICATION_TYPES,
+} from "./getWaslaNotifications.mjs";
 import {
   pauseController,
   pause,
@@ -34,6 +37,15 @@ const HOURLY_REFRESH_MS = 60 * 60_000;
 const SESSION_EXPIRY_SAFETY_MARGIN_MS = 5 * 60_000;
 const SESSION_EXPIRY_WARNING_THRESHOLD_MS = 15 * 60_000;
 
+const trackNotificationEnabled =
+  process.env.TRACK_NOTIFICATION_ENABLED === "1";
+
+const NOTIFICATION_TYPE_LABELS = {
+  [NOTIFICATION_TYPES.WITHDRAWAL]: "Facility withdrawn from case",
+  [NOTIFICATION_TYPES.TRANSFER_REJECTED]: "Transfer rejected",
+  [NOTIFICATION_TYPES.TRANSFER_RETURNED]: "Transfer returned",
+};
+
 const pausableSleep = async (ms) => {
   await pauseController.waitIfPaused();
   await sleep(ms);
@@ -51,6 +63,7 @@ const waitForWaitingCountWithInterval = async ({
 
   let apiHadData = false;
   let lastPageRefreshAt = Date.now();
+  const seenNotificationIds = new Set();
 
   const { targetText, tab } = PATIENT_SECTIONS_STATUS[collectionTabType];
 
@@ -244,6 +257,71 @@ const waitForWaitingCountWithInterval = async ({
           cursor = null;
         }
         continue;
+      }
+
+      // Administrative alerts on cases already in the store (a facility got
+      // withdrawn, a transfer was rejected/returned) - confirmed against
+      // the real bundle (useReferralListNotifications-Ddem8nev.js), see
+      // getWaslaNotifications.mjs. Separate from, and not a replacement
+      // for, the facility/tabs poll above: this tells us WHY a tracked
+      // case might disappear instead of just THAT it did. Gated behind an
+      // env flag since it's an extra API call every cycle and its response
+      // shape is unverified beyond "has a data array." seenNotificationIds
+      // is per-run (not persisted), so a fresh process restart may
+      // re-report a notification the server hasn't cleared yet - treated
+      // as an acceptable duplicate over risking a missed one.
+      if (trackNotificationEnabled) {
+        const {
+          success: notificationsFetched,
+          notifications,
+          message: notificationsMessage,
+        } = await getWaslaNotifications(frame);
+
+        if (!notificationsFetched) {
+          createConsoleMessage(
+            "warn",
+            notificationsMessage,
+            "⚠️ getWaslaNotifications failed",
+          );
+        } else {
+          for (const notification of notifications) {
+            const notificationId = notification?.id;
+
+            if (
+              notificationId == null ||
+              seenNotificationIds.has(notificationId)
+            ) {
+              continue;
+            }
+            seenNotificationIds.add(notificationId);
+
+            const referralId =
+              notification?.referralId != null
+                ? String(notification.referralId)
+                : null;
+
+            if (!referralId || !patientsStore.getPatientByReferralId(referralId)) {
+              continue;
+            }
+
+            const typeLabel =
+              NOTIFICATION_TYPE_LABELS[notification.type] ||
+              `Unknown notification type (${notification.type})`;
+            const details =
+              notification.notes || notification.details || notification.message || "";
+
+            createConsoleMessage(
+              "warn",
+              `🔔 ${typeLabel} for referralId=${referralId}${details ? `: ${details}` : ""}`,
+            );
+
+            await sendTelegramMessage?.(
+              `🔔 *${typeLabel}*\nReferral: \`${referralId}\`${details ? `\n${details}` : ""}`,
+            );
+
+            await patientsStore.removePatientByReferralId(referralId);
+          }
+        }
       }
 
       const nonClaimableCasesSize = patientsStore.getNonClaimableCasesSize();

@@ -39,7 +39,13 @@ import {
 } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import installTelegramBotApi from "./installTelegramBotApi.mjs";
-import { deleteOldCaseFiles, getCasesWithEmptyClaimStatus } from "./db.mjs";
+import {
+  deleteOldCaseFiles,
+  getCasesWithEmptyClaimStatus,
+  getPatientsFiltered,
+  getDistinctStatuses,
+} from "./db.mjs";
+import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
@@ -315,6 +321,40 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
         const message = error?.message || "Internal server error";
         await sendNtfyMessage(`❌ ${message}`);
         return res.status(400).type("text/plain").send(message);
+      }
+    });
+
+    app.get("/db", (req, res) => {
+      try {
+        const { referralId, patientNationalId, navigationId, status, referralDate } =
+          req.query;
+        const rows = getPatientsFiltered({
+          referralId,
+          patientNationalId,
+          navigationId,
+          status,
+          referralDate,
+        });
+        const statuses = getDistinctStatuses();
+
+        res.type("html").send(
+          renderDbPage({
+            rows,
+            statuses,
+            filters: {
+              referralId,
+              patientNationalId,
+              navigationId,
+              status,
+              referralDate,
+            },
+          }),
+        );
+      } catch (error) {
+        res
+          .status(500)
+          .type("text/plain")
+          .send(error?.message || "Query failed");
       }
     });
 

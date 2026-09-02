@@ -3811,11 +3811,17 @@ const generateAcceptanceLetterHtml = ({
   letterType,
   __reasonName__,
 }) => {
+  // createdAt comes back as "YYYY-MM-DD HH:mm:ss" (space-separated, no "T",
+  // no timezone offset - confirmed live), not ISO 8601, so this only reads
+  // the leading YYYY-MM-DD date part directly from the string rather than
+  // constructing a Date - that sidesteps needing to know what timezone a
+  // zone-less timestamp like this is even in, which doesn't matter for just
+  // displaying the calendar date it was created on.
   const requestDateSource =
-    typeof _requestDate === "string" && _requestDate.includes("T")
+    typeof _requestDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(_requestDate)
       ? _requestDate
       : new Date().toISOString();
-  const [date] = requestDateSource.split("T");
+  const date = requestDateSource.slice(0, 10);
   const [year, month, day] = date.split("-");
   const requestDate = `${day}/${month}/${year}`;
 
