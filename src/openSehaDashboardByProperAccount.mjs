@@ -47,6 +47,15 @@ const APPEAR_TIMEOUT_MS = 10_000;
 const NESTED_ITEM_TIMEOUT_MS = 5_000;
 const DASHBOARD_REDIRECT_TIMEOUT_MS = 30_000;
 const DASHBOARD_REDIRECT_POLL_MS = 2_000;
+// A live failure showed the nested role item found and clicked without
+// throwing, yet the URL never moved once across the full 30s redirect
+// wait - unconfirmed but plausible: the click landed while AntD's
+// submenu-open slide/fade transition was still settling, so the measured
+// bounding box wasn't where the element actually ended up. This is a
+// cheap guard against that specific race, not a fix for a confirmed root
+// cause - the logging around the click below is what would confirm or
+// rule it out if this recurs.
+const SUBMENU_SETTLE_MS = 400;
 
 /**
  * Parses SEHA_ACCOUNT_PICKER_ORDER (e.g. "1,2") into 0-based
@@ -149,6 +158,10 @@ const openSehaDashboardByProperAccount = async (page) => {
       return { success: false, message: "configured nested role item not found" };
     }
 
+    await sleep(SUBMENU_SETTLE_MS);
+
+    const urlBeforeRoleClick = page.url();
+
     try {
       await nestedItemHandle.asElement()?.click();
     } catch (error) {
@@ -160,6 +173,12 @@ const openSehaDashboardByProperAccount = async (page) => {
       await captureFailureArtifacts(page, "select-seha-role-click-failed");
       return { success: false, message: "failed to click nested role item" };
     }
+
+    createConsoleMessage(
+      "info",
+      `🖱️ Clicked role item #${roleIndex + 1}, url before=${urlBeforeRoleClick} url right after=${page.url()}`,
+      "openSehaDashboardByProperAccount",
+    );
   }
 
   // Polled manually (rather than a single waitForFunction) so a failure
