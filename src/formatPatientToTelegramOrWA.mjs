@@ -3,9 +3,12 @@
  * Helper: `formatPatientToTelegramOrWA`.
  *
  */
+import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+
 const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   const {
     referralId,
+    navigationId,
     patientName,
     patientNationalId,
     referralType,
@@ -51,6 +54,10 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
 
   let message = undefined;
 
+  const caseUrl = navigationId
+    ? `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`
+    : undefined;
+
   if (forTelegram) {
     message =
       `🚨 <b>New Case Alert!</b> 🚨\n\n` +
@@ -61,6 +68,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `🪟 <b>Acceptance Window:</b> ${acceptanceWindowMinutes ?? ""} min\n` +
       `🪟 <b>Extend Scope Window:</b> ${extendScopeWindowMinutes ?? ""} min\n` +
       `────────────────────────\n\n` +
+      (caseUrl ? `🔗 <b>Case Link:</b> <a href="${caseUrl}">Open</a>\n` : "") +
       `🔢 <b>Referral ID:</b> <code>${referralId}</code>\n` +
       `👤 <b>Name:</b> <code>${patientName}</code>\n` +
       `📱 <b>Mobile:</b> <code>${mobileNumber || ""}</code>\n` +
@@ -86,6 +94,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `🪟 *Acceptance Window*: ${acceptanceWindowMinutes ?? ""} min\n` +
       `🪟 *Extend Scope Window*: ${extendScopeWindowMinutes ?? ""} min\n` +
       `────────────────────────\n\n` +
+      (caseUrl ? `🔗 *Case Link:* ${caseUrl}\n` : "") +
       `🔢 *Referral ID:* \`${referralId}\`\n` +
       `👤 *Name:* \`${patientName}\`\n` +
       `📱 *Mobile:* \`${mobileNumber || ""}\`\n` +

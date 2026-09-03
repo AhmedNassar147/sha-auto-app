@@ -20,7 +20,7 @@ import waitForWaitingCountWithInterval, {
 
 import generateFolderIfNotExisting from "./generateFolderIfNotExisting.mjs";
 
-// import processSendPatientsToClient from "./processSendPatientsToClient.mjs";
+import processSendPatientsToClient from "./processSendPatientsToClient.mjs";
 // import createAndSendWeeklyReport from "./createAndSendWeeklyReport.mjs";
 
 import {
@@ -35,7 +35,7 @@ import {
   errorsFolderDirectory,
   TABS_COLLECTION_TYPES,
   APP_URL,
-  FAKE_REJECT_PROBE,
+  // FAKE_REJECT_PROBE,
 } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import installTelegramBotApi from "./installTelegramBotApi.mjs";
@@ -48,6 +48,7 @@ import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
+import handleSubmitReferral from "./handleSubmitReferral.mjs";
 
 // https://github.com/FiloSottile/mkcert/releases
 // Download mkcert-vX.X.X-windows-amd64.exe
@@ -109,12 +110,6 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
     try {
       clearInterval(pingInterval);
     } catch {}
-
-    // try {
-    //   await shutdownAllClients();
-    // } catch (e) {
-    //   createConsoleMessage(e, "error", "shutdownAllClients failed:");
-    // }
 
     try {
       if (wss) {
@@ -234,10 +229,10 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
     //   patientsStore.setTelegramMessageSender(sendTelegramMessage);
     // }
 
-    // patientsStore.on(
-    //   "patientsAdded",
-    //   processSendPatientsToClient(patientsStore, sendTelegramMessage),
-    // );
+    patientsStore.on(
+      "patientsAdded",
+      processSendPatientsToClient(patientsStore, sendTelegramMessage),
+    );
 
     // Background collector
     (async () =>
@@ -410,33 +405,33 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
     wss.on("close", () => clearInterval(pingInterval));
 
-    // patientsStore.on(
-    //   "patientAccepted",
-    //   handleCaseAcceptanceOrRejection({
-    //     browser,
-    //     actionType: USER_ACTION_TYPES.ACCEPT,
-    //     broadcast,
-    //     sendTelegramMessage,
-    //     continueFetchingPatientsIfPaused,
-    //     patientStore: patientsStore,
-    //   }),
-    // );
+    patientsStore.on(
+      "patientAccepted",
+      handleSubmitReferral({
+        browser,
+        actionType: USER_ACTION_TYPES.ACCEPT,
+        broadcast,
+        sendTelegramMessage,
+        continueFetchingPatientsIfPaused,
+        patientsStore,
+      }),
+    );
 
-    // patientsStore.on(
-    //   "patientRejected",
-    //   handleCaseAcceptanceOrRejection({
-    //     browser,
-    //     actionType: USER_ACTION_TYPES.REJECT,
-    //     broadcast,
-    //     sendTelegramMessage,
-    //     continueFetchingPatientsIfPaused,
-    //     patientStore: patientsStore,
-    //   }),
-    // );
+    patientsStore.on(
+      "patientRejected",
+      handleSubmitReferral({
+        browser,
+        actionType: USER_ACTION_TYPES.REJECT,
+        broadcast,
+        sendTelegramMessage,
+        continueFetchingPatientsIfPaused,
+        patientsStore,
+      }),
+    );
 
     // patientsStore.on(
     //   FAKE_REJECT_PROBE,
-    //   handleCaseAcceptanceOrRejection({
+    //   handleSubmitReferral({
     //     browser,
     //     actionType: FAKE_REJECT_PROBE,
     //     broadcast,

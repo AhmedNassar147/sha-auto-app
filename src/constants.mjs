@@ -146,7 +146,15 @@ export const LOGIN_PAGE_URL = `${APP_URL}/${LOGIN_PAGE_PATH_NAME}`;
 export const HOME_PAGE_PATH_NAME = `#/Dashboard`;
 export const HOME_PAGE_URL = `${APP_URL}/${HOME_PAGE_PATH_NAME}`;
 
-export const BASE_WASLA_API_URL = "https://weslah.seha.sa/api";
+// The Wasla widget's own frontend origin - normally embedded as an iframe
+// inside seha.sa (see openWaslaReferralWidget.mjs), but also directly
+// visitable as its own standalone site under the same authenticated
+// browser session (cookies/localStorage are shared per-origin across tabs
+// in one Puppeteer browser context, not scoped to a single page/frame).
+export const WASLA_APP_URL = "https://weslah.seha.sa";
+
+export const WASLA_REFERRAL_VIEW_URL = `${WASLA_APP_URL}/facility-referrals/view`;
+export const BASE_WASLA_API_URL = `${WASLA_APP_URL}/api`;
 export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;
 
 export const API_URLS = {
@@ -156,7 +164,7 @@ export const API_URLS = {
   CASEE_DETAILS: `${baseReferraAPiUrl}/details`,
   CASEE_DOWNLOAD_ATTACHMENT: `${baseReferraAPiUrl}/download-attachment`,
   ACCEPT_CASE: `${baseReferraAPiUrl}/accept`,
-  REJECT: `${baseReferraAPiUrl}/reject`,
+  REJECT_CASE: `${baseReferraAPiUrl}/reject`,
   DISTRIBUTION_WINDOWS_URL: `${BASE_WASLA_API_URL}/lookup/distribution-windows`,
   NOTIFICATIONS_LIST: `${BASE_WASLA_API_URL}/notifications`,
 };

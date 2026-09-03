@@ -3,11 +3,14 @@
  * Helper: `formatPatientToNtfy`.
  *
  */
+import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+
 const safe = (value) => value ?? "";
 
 const formatPatientToNtfy = (patient) => {
   const {
     referralId,
+    navigationId,
     patientName,
     patientNationalId,
     referralType,
@@ -45,8 +48,15 @@ const formatPatientToNtfy = (patient) => {
 
   const clientOrBranchName = BRANCH_NAME || CLIENT_ID || "Unknown";
 
+  const caseUrl = navigationId
+    ? `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`
+    : undefined;
+
   if (!useFullMessage) {
-    return `At ${clientOrBranchName} NEW Patient ${referralId}`;
+    return (
+      `At ${clientOrBranchName} NEW Patient ${referralId}` +
+      (caseUrl ? `\n${caseUrl}` : "")
+    );
   }
 
   let cutoffLabel = "0 s";
@@ -62,6 +72,7 @@ const formatPatientToNtfy = (patient) => {
 
   const message =
     `🚨 New Case Alert!\n\n` +
+    (caseUrl ? `🔗 Case Link: ${caseUrl}\n` : "") +
     `🔢 Referral ID: ${safe(referralId)}\n` +
     `🕐 Actionable At: ${safe(referralEndDateActionablAt)}\n` +
     `🕐 Cutoff Time: ${cutoffLabel}\n` +
