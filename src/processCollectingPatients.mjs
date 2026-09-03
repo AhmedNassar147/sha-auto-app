@@ -11,6 +11,7 @@ import formateDateToString from "./formateDateToString.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
+import generateRandomFileName from "./generateRandomFileName.mjs";
 import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
 import { cutoffTimeMs, LETTER_LAYOUT_NAMES } from "./constants.mjs";
 
@@ -162,9 +163,16 @@ const processCollectingPatients = async ({
 
       const letterType = LETTER_TYPE || randomArrayItem(LETTER_LAYOUT_NAMES);
 
+      const randomFileName = generateRandomFileName({
+        patientName,
+        referralId,
+        letterType,
+      });
+
       const finalData = {
         referralId,
         createdAt,
+        randomFileName,
         ...getWaslaCaseWindow(
           broadcastedAt,
           cutoffTimeMs,
