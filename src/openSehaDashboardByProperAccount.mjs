@@ -61,6 +61,17 @@ const DASHBOARD_REDIRECT_POLL_MS = 2_000;
 // how long the transition takes.
 const SUBMENU_VISIBLE_POLL_MS = 100;
 const SUBMENU_VISIBLE_TIMEOUT_MS = 3_000;
+// A live failure (screenshot in results/errors/select-seha-dashboard-
+// redirect-failed-*) showed the click reported success (no thrown error)
+// yet the page stayed exactly on the still-open picker the entire 30s wait
+// - the role item was never visibly selected. Best explanation: the
+// ElementHandle found before the visibility wait can go stale if AntD
+// re-renders the submenu's DOM during its own open transition, so the
+// click lands on a node that's no longer the "live" one. Re-querying a
+// fresh handle and re-clicking if the click had no observable effect
+// guards against that without needing to know the exact cause.
+const ROLE_CLICK_MAX_ATTEMPTS = 3;
+const ROLE_CLICK_VERIFY_MS = 2_000;
 
 /**
  * Parses SEHA_ACCOUNT_PICKER_ORDER (e.g. "1,2") into 0-based
@@ -155,20 +166,22 @@ const openSehaDashboardByProperAccount = async (page) => {
   }
 
   if (facilityItemKind === "submenu") {
-    const nestedItemHandle = await page
-      .waitForFunction(
-        (containerSelector, index) => {
-          const items = document
-            .querySelector(containerSelector)
-            ?.querySelectorAll("ul.ant-menu-sub li.ant-menu-item");
-          return items?.[index] || items?.[0] || null;
-        },
-        { timeout: NESTED_ITEM_TIMEOUT_MS },
-        facilityItemSelector,
-        roleIndex,
-      )
-      .catch(() => null);
+    const findNestedItem = () =>
+      page
+        .waitForFunction(
+          (containerSelector, index) => {
+            const items = document
+              .querySelector(containerSelector)
+              ?.querySelectorAll("ul.ant-menu-sub li.ant-menu-item");
+            return items?.[index] || items?.[0] || null;
+          },
+          { timeout: NESTED_ITEM_TIMEOUT_MS },
+          facilityItemSelector,
+          roleIndex,
+        )
+        .catch(() => null);
 
+    let nestedItemHandle = await findNestedItem();
     const tNestedItemFound = Date.now();
 
     if (!nestedItemHandle) {
@@ -187,41 +200,86 @@ const openSehaDashboardByProperAccount = async (page) => {
       "openSehaDashboardByProperAccount",
     );
 
-    const element = nestedItemHandle.asElement();
-    const visibleWaitDeadline = Date.now() + SUBMENU_VISIBLE_TIMEOUT_MS;
-    let boundingBox = element ? await element.boundingBox() : null;
-
-    while (!boundingBox && Date.now() < visibleWaitDeadline) {
-      await sleep(SUBMENU_VISIBLE_POLL_MS);
-      boundingBox = element ? await element.boundingBox() : null;
-    }
-
-    createConsoleMessage(
-      "info",
-      `👁️ Role item #${roleIndex + 1} became clickable (non-zero bounding box) ${Date.now() - tNestedItemFound}ms after being found` +
-        (boundingBox ? "" : " - never did, clicking anyway as a last resort"),
-      "openSehaDashboardByProperAccount",
-    );
-
     const urlBeforeRoleClick = page.url();
+    let clickHadObservableEffect = false;
 
-    try {
-      await nestedItemHandle.asElement()?.click();
-    } catch (error) {
+    for (let attempt = 1; attempt <= ROLE_CLICK_MAX_ATTEMPTS; attempt++) {
+      if (attempt > 1) {
+        nestedItemHandle = await findNestedItem();
+
+        if (!nestedItemHandle) {
+          createConsoleMessage(
+            "warn",
+            `⚠️ Retry #${attempt}: role item #${roleIndex + 1} not found on re-query, stopping retries.`,
+            "openSehaDashboardByProperAccount",
+          );
+          break;
+        }
+      }
+
+      const element = nestedItemHandle.asElement();
+      const visibleWaitDeadline = Date.now() + SUBMENU_VISIBLE_TIMEOUT_MS;
+      let boundingBox = element ? await element.boundingBox() : null;
+
+      while (!boundingBox && Date.now() < visibleWaitDeadline) {
+        await sleep(SUBMENU_VISIBLE_POLL_MS);
+        boundingBox = element ? await element.boundingBox() : null;
+      }
+
+      if (attempt === 1) {
+        createConsoleMessage(
+          "info",
+          `👁️ Role item #${roleIndex + 1} became clickable (non-zero bounding box) ${Date.now() - tNestedItemFound}ms after being found` +
+            (boundingBox ? "" : " - never did, clicking anyway as a last resort"),
+          "openSehaDashboardByProperAccount",
+        );
+      }
+
+      try {
+        await element?.click();
+      } catch (error) {
+        createConsoleMessage(
+          "error",
+          `❌ Failed to click role item #${roleIndex + 1} (attempt ${attempt}/${ROLE_CLICK_MAX_ATTEMPTS}): ${error.message}`,
+          "openSehaDashboardByProperAccount",
+        );
+        await captureFailureArtifacts(page, "select-seha-role-click-failed");
+        return { success: false, message: "failed to click nested role item" };
+      }
+
       createConsoleMessage(
-        "error",
-        `❌ Failed to click role item #${roleIndex + 1}: ${error.message}`,
+        "info",
+        `🖱️ Clicked role item #${roleIndex + 1} (attempt ${attempt}/${ROLE_CLICK_MAX_ATTEMPTS}), url before=${urlBeforeRoleClick} url right after=${page.url()}`,
         "openSehaDashboardByProperAccount",
       );
-      await captureFailureArtifacts(page, "select-seha-role-click-failed");
-      return { success: false, message: "failed to click nested role item" };
+
+      await sleep(ROLE_CLICK_VERIFY_MS);
+
+      const urlAfterVerifyWait = page.url();
+      const pickerStillShowing = await page
+        .$(roleMenuSelector)
+        .then((handle) => Boolean(handle))
+        .catch(() => true);
+
+      if (urlAfterVerifyWait !== urlBeforeRoleClick || !pickerStillShowing) {
+        clickHadObservableEffect = true;
+        break;
+      }
+
+      createConsoleMessage(
+        "warn",
+        `⚠️ Role item #${roleIndex + 1} click had no observable effect ${ROLE_CLICK_VERIFY_MS}ms later (still on picker, url unchanged) - re-querying and retrying.`,
+        "openSehaDashboardByProperAccount",
+      );
     }
 
-    createConsoleMessage(
-      "info",
-      `🖱️ Clicked role item #${roleIndex + 1}, url before=${urlBeforeRoleClick} url right after=${page.url()}`,
-      "openSehaDashboardByProperAccount",
-    );
+    if (!clickHadObservableEffect) {
+      createConsoleMessage(
+        "warn",
+        `⚠️ Role item #${roleIndex + 1} click never produced a visible effect after ${ROLE_CLICK_MAX_ATTEMPTS} attempts - falling through to the dashboard-redirect wait anyway.`,
+        "openSehaDashboardByProperAccount",
+      );
+    }
   }
 
   // Polled manually (rather than a single waitForFunction) so a failure

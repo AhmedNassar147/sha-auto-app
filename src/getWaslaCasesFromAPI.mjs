@@ -85,7 +85,7 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
           return {
             success: false,
             patients: [],
-            needsLogin: true,
+            // needsLogin: true,
             totalRowsCount: 0,
             message: `Response was not valid JSON, session expired, Status ${res.status}`,
           };
@@ -101,7 +101,7 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
             patients: [],
             totalRowsCount: json?.totalRowsCount ?? 0,
             message: message,
-            needsLogin: true,
+            // needsLogin: true,
           };
         }
 
