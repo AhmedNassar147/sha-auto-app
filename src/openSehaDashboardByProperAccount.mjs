@@ -49,13 +49,18 @@ const DASHBOARD_REDIRECT_TIMEOUT_MS = 30_000;
 const DASHBOARD_REDIRECT_POLL_MS = 2_000;
 // A live failure showed the nested role item found and clicked without
 // throwing, yet the URL never moved once across the full 30s redirect
-// wait - unconfirmed but plausible: the click landed while AntD's
-// submenu-open slide/fade transition was still settling, so the measured
-// bounding box wasn't where the element actually ended up. This is a
-// cheap guard against that specific race, not a fix for a confirmed root
-// cause - the logging around the click below is what would confirm or
-// rule it out if this recurs.
-const SUBMENU_SETTLE_MS = 400;
+// wait - plausible cause: the item is present in the DOM (and so gets
+// "found") well before AntD's submenu-open transition finishes, since
+// that's a CSS display/height toggle on an ancestor, not a DOM-attach -
+// confirmed live in a replay test, where a fixed sleep shorter than the
+// transition left the item still display:none, and .click() either
+// throws outright on a zero-size element or (worse) can silently
+// succeed on stale coordinates once the sleep happens to outlast the
+// transition. So this polls for an actual non-zero bounding box instead
+// of trusting a fixed delay - it's an upper bound, not a bet on exactly
+// how long the transition takes.
+const SUBMENU_VISIBLE_POLL_MS = 100;
+const SUBMENU_VISIBLE_TIMEOUT_MS = 3_000;
 
 /**
  * Parses SEHA_ACCOUNT_PICKER_ORDER (e.g. "1,2") into 0-based
@@ -94,6 +99,8 @@ const getConfiguredItemIndexes = () => {
  * }>}
  */
 const openSehaDashboardByProperAccount = async (page) => {
+  const tFnStart = Date.now();
+
   const roleMenu = await page
     .waitForSelector(roleMenuSelector, { timeout: APPEAR_TIMEOUT_MS })
     .catch(() => null);
@@ -101,6 +108,13 @@ const openSehaDashboardByProperAccount = async (page) => {
   if (!roleMenu) {
     return { success: true, skipped: true, message: "role picker not shown" };
   }
+
+  const tPickerAppeared = Date.now();
+  createConsoleMessage(
+    "info",
+    `📋 Role picker appeared after ${tPickerAppeared - tFnStart}ms`,
+    "openSehaDashboardByProperAccount",
+  );
 
   const [facilityIndex, roleIndex] = getConfiguredItemIndexes();
   const facilityItemSelector = `${roleMenuSelector} > li:nth-child(${facilityIndex + 1})`;
@@ -122,6 +136,13 @@ const openSehaDashboardByProperAccount = async (page) => {
     item.click();
     return "leaf";
   }, facilityItemSelector);
+
+  const tFacilityClicked = Date.now();
+  createConsoleMessage(
+    "info",
+    `🖱️ Clicked facility item #${facilityIndex + 1} (kind=${facilityItemKind}) ${tFacilityClicked - tPickerAppeared}ms after picker appeared`,
+    "openSehaDashboardByProperAccount",
+  );
 
   if (!facilityItemKind) {
     createConsoleMessage(
@@ -148,6 +169,8 @@ const openSehaDashboardByProperAccount = async (page) => {
       )
       .catch(() => null);
 
+    const tNestedItemFound = Date.now();
+
     if (!nestedItemHandle) {
       createConsoleMessage(
         "error",
@@ -158,7 +181,27 @@ const openSehaDashboardByProperAccount = async (page) => {
       return { success: false, message: "configured nested role item not found" };
     }
 
-    await sleep(SUBMENU_SETTLE_MS);
+    createConsoleMessage(
+      "info",
+      `🔎 Found nested role item #${roleIndex + 1} ${tNestedItemFound - tFacilityClicked}ms after facility click`,
+      "openSehaDashboardByProperAccount",
+    );
+
+    const element = nestedItemHandle.asElement();
+    const visibleWaitDeadline = Date.now() + SUBMENU_VISIBLE_TIMEOUT_MS;
+    let boundingBox = element ? await element.boundingBox() : null;
+
+    while (!boundingBox && Date.now() < visibleWaitDeadline) {
+      await sleep(SUBMENU_VISIBLE_POLL_MS);
+      boundingBox = element ? await element.boundingBox() : null;
+    }
+
+    createConsoleMessage(
+      "info",
+      `👁️ Role item #${roleIndex + 1} became clickable (non-zero bounding box) ${Date.now() - tNestedItemFound}ms after being found` +
+        (boundingBox ? "" : " - never did, clicking anyway as a last resort"),
+      "openSehaDashboardByProperAccount",
+    );
 
     const urlBeforeRoleClick = page.url();
 
