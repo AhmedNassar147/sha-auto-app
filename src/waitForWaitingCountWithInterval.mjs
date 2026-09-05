@@ -37,8 +37,7 @@ const HOURLY_REFRESH_MS = 60 * 60_000;
 const SESSION_EXPIRY_SAFETY_MARGIN_MS = 5 * 60_000;
 const SESSION_EXPIRY_WARNING_THRESHOLD_MS = 15 * 60_000;
 
-const trackNotificationEnabled =
-  process.env.TRACK_NOTIFICATION_ENABLED === "1";
+const trackNotificationEnabled = process.env.TRACK_NOTIFICATION_ENABLED === "1";
 
 const NOTIFICATION_TYPE_LABELS = {
   [NOTIFICATION_TYPES.WITHDRAWAL]: "Facility withdrawn from case",
@@ -85,7 +84,7 @@ const waitForWaitingCountWithInterval = async ({
   };
 
   const requestBody = {
-    pageSize: isPending ? 100 : 5,
+    pageSize: isPending ? 20 : 10,
     tab,
   };
 
@@ -242,10 +241,11 @@ const waitForWaitingCountWithInterval = async ({
             `success=${success} message=${message}`,
             "🔑 needsLogin — forcing a fresh login next iteration",
           );
-          await closePageSafely(page);
           page = null;
           cursor = null;
         }
+
+        await sleep(3000 + Math.random() * 3000);
 
         const shouldCreateNewPage = await reloadAndCheckIfShouldCreateNewPage(
           page,
@@ -300,7 +300,10 @@ const waitForWaitingCountWithInterval = async ({
                 ? String(notification.referralId)
                 : null;
 
-            if (!referralId || !patientsStore.getPatientByReferralId(referralId)) {
+            if (
+              !referralId ||
+              !patientsStore.getPatientByReferralId(referralId)
+            ) {
               continue;
             }
 
@@ -308,7 +311,10 @@ const waitForWaitingCountWithInterval = async ({
               NOTIFICATION_TYPE_LABELS[notification.type] ||
               `Unknown notification type (${notification.type})`;
             const details =
-              notification.notes || notification.details || notification.message || "";
+              notification.notes ||
+              notification.details ||
+              notification.message ||
+              "";
 
             createConsoleMessage(
               "warn",
@@ -404,13 +410,14 @@ const waitForWaitingCountWithInterval = async ({
         if (sessionExpiresAtMs != null) {
           const msRemaining = sessionExpiresAtMs - Date.now();
           const minutesRemaining = Math.round(msRemaining / 60_000);
-          const expiresAtLabel = new Date(sessionExpiresAtMs).toLocaleTimeString(
-            "en-GB",
-            { hour12: false },
-          );
+          const expiresAtLabel = new Date(
+            sessionExpiresAtMs,
+          ).toLocaleTimeString("en-GB", { hour12: false });
 
           createConsoleMessage(
-            msRemaining <= SESSION_EXPIRY_WARNING_THRESHOLD_MS ? "warn" : "info",
+            msRemaining <= SESSION_EXPIRY_WARNING_THRESHOLD_MS
+              ? "warn"
+              : "info",
             `🔐 seha.sa session token expires at ${expiresAtLabel} (in ${minutesRemaining} min)`,
           );
         }

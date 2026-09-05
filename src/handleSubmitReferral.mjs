@@ -26,6 +26,8 @@ const { ACCEPT_CASE, REJECT_CASE } = API_URLS;
 
 const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 
+// https://weslah.seha.sa/facility-referrals/view/OWPFET926JK5V4T
+
 const handleSubmitReferral =
   ({
     actionType,
