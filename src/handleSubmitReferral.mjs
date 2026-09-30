@@ -54,7 +54,7 @@ const MODAL_FILE_INPUT_SELECTOR = "input[type='file']";
 // `textarea` order isn't safe long-term; `name="notes"` on the real one is.
 const MODAL_TEXTAREA_SELECTOR = "textarea[name='notes']";
 const MODAL_TIMEOUT_MS = 15_000;
-const DESCRIPTION_TYPE_DELAY_MS = 20;
+const DESCRIPTION_TYPE_DELAY_MS = 8;
 const DESCRIPTION_TYPE_DELAY_JITTER_MS = 20;
 
 // Confirmed unique in both html/details/accept-modal.html and
@@ -156,21 +156,20 @@ const handleSubmitReferral =
     try {
       page = await browser.newPage();
 
-      const [, { fileData: filebase64, filePath: letterFilePath }] =
-        await Promise.all([
-          page.goto(url, {
-            waitUntil: "domcontentloaded",
-            timeout: NAVIGATION_TIMEOUT_MS,
-          }),
-          getCurrentActionLetterFile(
-            referralId,
-            isAcceptanceAction ? actionType : REJECT,
-          ),
-        ]);
+      const [, { filePath: letterFilePath }] = await Promise.all([
+        page.goto(url, {
+          waitUntil: "domcontentloaded",
+          timeout: NAVIGATION_TIMEOUT_MS,
+        }),
+        getCurrentActionLetterFile(
+          referralId,
+          isAcceptanceAction ? actionType : REJECT,
+        ),
+      ]);
 
-      // await page.evaluate(() => {
-      //   window.scrollTo(0, document.body.scrollHeight);
-      // });
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
 
       // const files = [
       //   {
