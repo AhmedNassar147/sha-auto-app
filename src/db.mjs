@@ -383,6 +383,40 @@ const getCasesWithEmptyClaimStatusStatement = db.prepare(
 const getCasesWithEmptyClaimStatus = () =>
   getCasesWithEmptyClaimStatusStatement.all();
 
+const clearClaimedStatusStatement = db.prepare(
+  `UPDATE patients SET claimed = NULL WHERE referralId = ?`,
+);
+
+const clearAllClaimedStatusesStatement = db.prepare(
+  `UPDATE patients SET claimed = NULL`,
+);
+
+// Resets claimed back to NULL (unresolved) for every row, so
+// getCasesWithEmptyClaimStatus() picks all of them up again for a fresh
+// checkReferralSelectedStatus.mjs check.
+const clearAllClaimedStatuses = () => clearAllClaimedStatusesStatement.run();
+
+// Resets claimed back to NULL (unresolved) for the given referralId(s), so
+// getCasesWithEmptyClaimStatus() picks them up again for a fresh
+// checkReferralSelectedStatus.mjs check - e.g. to force a recheck of a case
+// whose claimed status looks stale/wrong. Requires explicit referralId(s)
+// rather than defaulting to "clear everything", same as deletePatients.
+const clearClaimedStatus = (referralIds) => {
+  const ids = (
+    Array.isArray(referralIds) ? referralIds : [referralIds]
+  ).filter(Boolean);
+  if (!ids.length) return;
+
+  if (ids.length === 1) {
+    return clearClaimedStatusStatement.run(String(ids[0]));
+  }
+
+  const trx = db.transaction((items) =>
+    items.map((id) => clearClaimedStatusStatement.run(String(id))),
+  );
+  return trx(ids);
+};
+
 // Column allowlist for the /db admin page filters - kept explicit (rather
 // than accepting arbitrary column names from the request) since these
 // build into raw SQL clause text below, not just bound parameter values.
@@ -529,6 +563,8 @@ export {
   deletePatients,
   getPatient,
   getCasesWithEmptyClaimStatus,
+  clearClaimedStatus,
+  clearAllClaimedStatuses,
   getPatientsFiltered,
   getOldestPatient,
   upsertCaseFile,

@@ -17,6 +17,7 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
+import sleep from "./sleep.mjs";
 import {
   API_URLS,
   USER_ACTION_TYPES,
@@ -371,6 +372,8 @@ const handleSubmitReferral =
         // polls patientsStore.getAllNonClaimableCases() and removes it once
         // confirmed), since clicking Confirm here doesn't itself tell us
         // whether Wasla actually accepted the submission.
+
+        await sleep(17_000);
         patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
       }
     } catch (error) {
