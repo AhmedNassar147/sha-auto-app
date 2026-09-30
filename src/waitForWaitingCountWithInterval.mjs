@@ -332,7 +332,7 @@ const waitForWaitingCountWithInterval = async ({
 
       const nonClaimableCasesSize = patientsStore.getNonClaimableCasesSize();
 
-      if (nonClaimableCasesSize && page) {
+      if (nonClaimableCasesSize && frame) {
         createConsoleMessage(
           "info",
           `⏳ There are (${nonClaimableCasesSize}) cases that need to be checked`,

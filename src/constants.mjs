@@ -106,8 +106,16 @@ export const PATIENT_SECTIONS_STATUS = {
 
 export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 
-export const cutoffTimeMs = 22_000;
-export const searchIfAcceptacneButtonShownMS = 22_000;
+// Kept equal to each other on purpose - PatientStore.calculateCanStillProcessPatient
+// computes lastTime = referralEndDateActionableAtMS + (cutoffTimeMs -
+// searchIfAcceptacneButtonShownMS), and only cutoffTimeMs is what actually
+// pulls the scheduled accept/reject fire time earlier than the real
+// deadline (see getWaslaCaseWindow in processCollectingPatients.mjs).
+// Changing cutoffTimeMs alone without moving searchIfAcceptacneButtonShownMS
+// the same amount would shrink the "can still process" window by the
+// difference, cutting it off before the timer even fires.
+export const cutoffTimeMs = 1_000;
+export const searchIfAcceptacneButtonShownMS = 1_000;
 
 export const USER_MESSAGES = {
   alreadyScheduledAccept: "Already scheduled for acceptance.",
