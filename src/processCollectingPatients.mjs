@@ -87,6 +87,7 @@ const processCollectingPatients = async ({
         status,
         broadcastedAt,
         id: navigationId,
+        requestedBedType,
         // https://weslah.seha.sa/facility-referrals/view/navigationId
       } = patient || {};
       const referralId = String(patientReferralId);
@@ -185,6 +186,7 @@ const processCollectingPatients = async ({
         referralId,
         createdAt,
         randomFileName,
+        requestedBedType,
         ...getWaslaCaseWindow(
           broadcastedAt,
           cutoffTimeMs,
