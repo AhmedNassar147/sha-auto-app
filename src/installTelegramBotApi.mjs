@@ -8,7 +8,7 @@ import { unlink } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import { getCaseFile, upsertCaseFile } from "./db.mjs";
+import { getCaseFile, upsertCaseFile, getPatient } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
 import compressPdfGentlly from "./compressPdfGentlly.mjs";
@@ -16,7 +16,9 @@ import formatFilesToTelegram from "./formatFilesToTelgram.mjs";
 import sleep from "./sleep.mjs";
 import generateAcceptancePdfLetters from "./generatePdfs.mjs";
 import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs";
-import getPatientReferralDataFromAPI from "./getPatientReferralDataFromAPI.mjs";
+import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
+import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
+import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import notifyUserWithNewCase from "./notifyUserWithNewCase.mjs";
@@ -1032,6 +1034,24 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     }
 
     if (!fileBuffer) {
+      // getWaslaPatientReferralDataFromAPI needs the internal Wasla case id
+      // (navigationId), not referralId - patientData above only exists if
+      // the case was still in the in-memory store; getPatient() falls back
+      // to the persisted DB row (still has navigationId even if the store
+      // already evicted it) since that's the only other place it's tracked.
+      const navigationId =
+        patientData?.navigationId || getPatient(referralId)?.navigationId;
+
+      if (!navigationId) {
+        return await sendBotMessage(
+          chatId,
+          `⛔ No navigationId on record for referralId=\`${referralId}\` - can't look it up via the Wasla API.`,
+          {
+            reply_to_message_id: msgId,
+          },
+        );
+      }
+
       const { isLoggedIn, newPage, isErrorAboutLockedOut } =
         await makeUserLoggedInOrOpenHomePage({
           browser,
@@ -1064,23 +1084,54 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         );
       }
 
-      const fetchedPatientData = await getPatientReferralDataFromAPI(
-        newPage,
+      const { success: widgetOpened, message: widgetMessage } =
+        await openWaslaReferralWidget({ page: newPage });
+
+      if (!widgetOpened) {
+        await closePageSafely(newPage);
+        return await sendBotMessage(
+          chatId,
+          `⛔ Could not open the Wasla widget: ${widgetMessage}`,
+          {
+            reply_to_message_id: msgId,
+          },
+        );
+      }
+
+      const {
+        frameReady,
+        frame,
+        message: frameMessage,
+      } = await getWaslaReferralFrame(newPage);
+
+      if (!frameReady) {
+        await closePageSafely(newPage);
+        return await sendBotMessage(
+          chatId,
+          `⛔ Could not reach the Wasla widget frame: ${frameMessage}`,
+          {
+            reply_to_message_id: msgId,
+          },
+        );
+      }
+
+      const fetchedPatientData = await getWaslaPatientReferralDataFromAPI(
+        frame,
+        navigationId,
         referralId,
         true,
       );
 
       await closePageSafely(newPage);
 
-      const { patientDetailsError, patientInfoError } =
-        fetchedPatientData || {};
+      const { patientDetailsError } = fetchedPatientData || {};
 
-      if (patientDetailsError || patientInfoError || !fetchedPatientData) {
+      if (patientDetailsError || !fetchedPatientData) {
         return await sendBotMessage(
           chatId,
-          fetchedPatientData
-            ? `⛔ Could Find the patient in the app, please try again`
-            : `⛔ Error: ${patientDetailsError || patientInfoError}`,
+          patientDetailsError
+            ? `⛔ Error: ${patientDetailsError}`
+            : `⛔ Could Find the patient in the app, please try again`,
           {
             reply_to_message_id: msgId,
           },

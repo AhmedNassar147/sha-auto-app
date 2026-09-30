@@ -23,23 +23,6 @@ import generateFolderIfNotExisting from "./generateFolderIfNotExisting.mjs";
 import processSendPatientsToClient from "./processSendPatientsToClient.mjs";
 // import createAndSendWeeklyReport from "./createAndSendWeeklyReport.mjs";
 
-// https://weslah.seha.sa/api/attachments/upload
-// Request Method: POST
-// payload file (binary)
-// response: {
-//     "id": 31284,
-//     "fileName": "accept-GEYLI822DA73TBP.pdf",
-//     "fileType": ".pdf",
-//     "url": "https://api-minio.lean.sa/red-upload-bucket/c1d1a539080a4845bd368034a34aa00a.pdf",
-//     "key": "c1d1a539080a4845bd368034a34aa00a.pdf",
-//     "fileSize": 17413,
-//     "documentType": 0
-// }
-
-// https://weslah.seha.sa/api/referrals/13474/accept-json
-// payload: {"accept":true,"notes":"accept","file":"31284"}
-// {message: " Referral accepted successfully."}
-
 import {
   waitingPatientsFolderDirectory,
   COLLECTD_PATIENTS_FULL_FILE_PATH,

@@ -18,14 +18,10 @@ import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
-import {
-  API_URLS,
-  USER_ACTION_TYPES,
-  WASLA_REFERRAL_VIEW_URL,
-} from "./constants.mjs";
+import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
+import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
-const { ACCEPT_CASE, REJECT_CASE } = API_URLS;
 
 const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 
@@ -66,6 +62,7 @@ const DESCRIPTION_TYPE_DELAY_JITTER_MS = 20;
 // validate, so this waits for that rather than a fixed delay.
 const CONFIRM_BUTTON_SELECTOR = "button.MuiButton-containedPrimary";
 const CONFIRM_BUTTON_TIMEOUT_MS = 15_000;
+const SLEEP_AFTER_CONFIRMATION_MS = 17_000;
 
 // Only the accept modal has a Description field - a different random
 // sentence each time rather than one fixed string.
@@ -157,20 +154,25 @@ const handleSubmitReferral =
     try {
       page = await browser.newPage();
 
-      const [, { filePath: letterFilePath }] = await Promise.all([
-        page.goto(url, {
-          waitUntil: "domcontentloaded",
-          timeout: NAVIGATION_TIMEOUT_MS,
-        }),
-        getCurrentActionLetterFile(
-          referralId,
-          isAcceptanceAction ? actionType : REJECT,
-        ),
-      ]);
+      const [, { filePath: letterFilePath, fileData: letterFileBase64 }] =
+        await Promise.all([
+          page.goto(url, {
+            waitUntil: "domcontentloaded",
+            timeout: NAVIGATION_TIMEOUT_MS,
+          }),
+          getCurrentActionLetterFile(
+            referralId,
+            isAcceptanceAction ? actionType : REJECT,
+          ),
+        ]);
 
       await page.evaluate(() => {
         window.scrollTo(0, document.body.scrollHeight);
       });
+
+      const targetButtonTexts = isAcceptanceAction
+        ? ACCEPT_BUTTON_TEXTS
+        : REJECT_BUTTON_TEXTS;
 
       // const files = [
       //   {
@@ -183,9 +185,51 @@ const handleSubmitReferral =
       //   },
       // ];
 
-      const targetButtonTexts = isAcceptanceAction
-        ? ACCEPT_BUTTON_TEXTS
-        : REJECT_BUTTON_TEXTS;
+      // Computed up front (not just inside the modal-filling step below) so
+      // the same text is used both for the direct-API attempt's "notes" and
+      // for the UI fallback's Description field, rather than picking twice.
+      let description;
+
+      if (isAcceptanceAction) {
+        description = randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(
+          navigationId,
+        );
+
+        const apiResult = await submitWaslaReferralViaApi({
+          page,
+          navigationId,
+          fileBase64: letterFileBase64,
+          fileName: randomFileName,
+          notes: description,
+          isAccept: true,
+        });
+
+        if (apiResult.success) {
+          await sendTelegramMessage?.(
+            `✅ *[${actionType}]* Wasla accepted referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) via direct API.`,
+          );
+
+          createConsoleMessage(
+            "success",
+            `✅ [${actionType}] Accepted via direct API for referralId=${referralId} (navigationId=${navigationId})`,
+            "handleSubmitReferral",
+          );
+
+          await sleep(SLEEP_AFTER_CONFIRMATION_MS);
+          patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
+          return;
+        }
+
+        await sendTelegramMessage?.(
+          `⚠️ *[${actionType}]* Direct API attempt failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) - step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, error=\`${apiResult.error}\`. Falling back to the UI.`,
+        );
+
+        createConsoleMessage(
+          "warn",
+          `⚠️ Direct API accept failed (step=${apiResult.step}, error=${apiResult.error}) for referralId=${referralId} (navigationId=${navigationId}) attachmentId=${apiResult.attachmentId} - falling back to UI flow`,
+          "handleSubmitReferral",
+        );
+      }
 
       const actionButtonHandle = await page
         .waitForFunction(
@@ -290,10 +334,6 @@ const handleSubmitReferral =
           return;
         }
 
-        const description = randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(
-          navigationId,
-        );
-
         await descriptionHandle.focus();
         await page.keyboard.type(description, {
           delay:
@@ -372,8 +412,7 @@ const handleSubmitReferral =
         // polls patientsStore.getAllNonClaimableCases() and removes it once
         // confirmed), since clicking Confirm here doesn't itself tell us
         // whether Wasla actually accepted the submission.
-
-        await sleep(17_000);
+        await sleep(SLEEP_AFTER_CONFIRMATION_MS);
         patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
       }
     } catch (error) {

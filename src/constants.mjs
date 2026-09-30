@@ -168,14 +168,73 @@ export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;
 
 export const API_URLS = {
   CASES_LIST: `${baseReferraAPiUrl}/facility/tabs`,
-  CASEE_ATTACHMENTS: `${baseReferraAPiUrl}/attachments`,
-  CASEE_INFO: `${baseReferraAPiUrl}/patient-info`,
-  CASEE_DETAILS: `${baseReferraAPiUrl}/details`,
-  CASEE_DOWNLOAD_ATTACHMENT: `${baseReferraAPiUrl}/download-attachment`,
-  ACCEPT_CASE: `${baseReferraAPiUrl}/accept`,
-  REJECT_CASE: `${baseReferraAPiUrl}/reject`,
   DISTRIBUTION_WINDOWS_URL: `${BASE_WASLA_API_URL}/lookup/distribution-windows`,
   NOTIFICATIONS_LIST: `${BASE_WASLA_API_URL}/notifications`,
+  UPLOAD_ATTACHMENT: `${BASE_WASLA_API_URL}/attachments/upload`,
+  // https://weslah.seha.sa/api/attachments/upload
+  // Request Method: POST
+  // headers
+  //   :authority
+  // weslah.seha.sa
+  // :method
+  // POST
+  // :path
+  // /api/attachments/upload
+  // :scheme
+  // https
+  // accept
+  // application/json
+  // accept-encoding
+  // gzip, deflate, br, zstd
+  // accept-language
+  // en-US,en;q=0.9
+  // authorization
+  // Bearer <redacted JWT - was a live token, see git history/chat if needed>
+  // content-length
+  // 1416
+  // content-type
+  // multipart/form-data; boundary=----WebKitFormBoundaryPK7AacI9suxtz2kV
+  // cookie
+  // <redacted - was a live session cookie string (__cf_bm/_ga/nonce/state)>
+  // culture
+  // en-US
+  // origin
+  // https://weslah.seha.sa
+  // priority
+  // u=1, i
+  // referer
+  // https://weslah.seha.sa/my-orders/view/13486
+  // sec-ch-ua
+  // "Chromium";v="154", "Google Chrome";v="154", "Not A(Brand";v="99"
+  // sec-ch-ua-mobile
+  // ?0
+  // sec-ch-ua-platform
+  // "Windows"
+  // sec-fetch-dest
+  // empty
+  // sec-fetch-mode
+  // cors
+  // sec-fetch-site
+  // same-origin
+  // user-agent
+  // Mozilla/5.0 (Windows NT 10.0; Win64;
+  // payload file (binary)
+  // response: {
+  //     "id": 31284,
+  //     "fileName": "accept-GEYLI822DA73TBP.pdf",
+  //     "fileType": ".pdf",
+  //     "url": "https://api-minio.lean.sa/red-upload-bucket/c1d1a539080a4845bd368034a34aa00a.pdf",
+  //     "key": "c1d1a539080a4845bd368034a34aa00a.pdf",
+  //     "fileSize": 17413,
+  //     "documentType": 0
+  // }
+
+  // https://weslah.seha.sa/api/referrals/13474/accept-json
+  // payload: {"accept":true,"notes":"accept","file":"31284"}
+  // {message: " Referral accepted successfully."}
+  ACCEPT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
+  // payload: {"accept":false,"notes":"reject","file":"31284"}
+  REJECT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
 };
 
 export const baseWaslaHeaders = {
