@@ -35,6 +35,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     subSpecialty,
     sourceProvider,
     note,
+    medicalData,
   } = patient;
 
   const referralReasonText = Array.isArray(referralReason)
@@ -83,7 +84,8 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `🏥 <b>Provider:</b> <code>${sourceProvider || ""}</code>\n` +
       `📍 <b>Zone:</b> <code>${providerRegion}</code>\n` +
       `📝 <b>Reason:</b> <code>${referralReasonText}</code>\n` +
-      `🧾 <b>CauseNote:</b> <code>${note || ""}</code>\n`;
+      `🧾 <b>CauseNote:</b> <code>${note || ""}</code>\n` +
+      `🩻 <b>Medical Data:</b> <code>${medicalData || ""}</code>\n`;
   } else {
     message =
       `🚨 *New Case Alert!* 🚨\n\n` +
@@ -110,7 +112,8 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `📍 *Zone:* \`${providerRegion}\`\n` +
       // `🗓️ *Requested At:* \`${requestDate}\`\n` +
       `📝 *Reason:* \`${referralReasonText}\`\n` +
-      `🧾 *CauseNote:* \`${note || ""}\`\n`;
+      `🧾 *CauseNote:* \`${note || ""}\`\n` +
+      `🩻 *Medical Data:* \`${medicalData || ""}\`\n`;
   }
 
   return {

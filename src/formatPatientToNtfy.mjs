@@ -36,6 +36,7 @@ const formatPatientToNtfy = (patient) => {
     subSpecialty,
     sourceProvider,
     note,
+    medicalData,
   } = patient;
 
   const referralReasonText = Array.isArray(referralReason)
@@ -96,7 +97,8 @@ const formatPatientToNtfy = (patient) => {
     `🏥 Provider: ${safe(sourceProvider)}\n` +
     `📍 Zone: ${safe(providerRegion)}\n` +
     `📝 Reason: ${safe(referralReasonText)}\n` +
-    `🧾 Cause Note: ${safe(note)}`;
+    `🧾 Cause Note: ${safe(note)}\n` +
+    `🩻 Medical Data: ${safe(medicalData)}`;
 
   return message;
 };

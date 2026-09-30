@@ -123,12 +123,22 @@ const escapeTelegramHtml = (value = "") =>
     .replace(/>/g, "&gt;");
 
 const restoreTelegramHtmlTags = (value = "") =>
-  value.replace(
-    /&lt;(\/?(?:b|strong|i|em|u|s|strike|del|code|pre))&gt;/g,
-    (_, tag) => {
-      return `<${tag}>`;
-    },
-  );
+  value
+    .replace(
+      /&lt;(\/?(?:b|strong|i|em|u|s|strike|del|code|pre))&gt;/g,
+      (_, tag) => {
+        return `<${tag}>`;
+      },
+    )
+    // The plain-tag regex above only matches attribute-less tags, so
+    // <a href="...">, escaped the same way by escapeTelegramHtml, never
+    // matched it and stayed as literal "<a href=...>" text instead of a
+    // clickable link (seen live in a Telegram case-link message).
+    .replace(
+      /&lt;a href="([^"]*)"&gt;/g,
+      (_, href) => `<a href="${href}">`,
+    )
+    .replace(/&lt;\/a&gt;/g, "</a>");
 
 const markdownToHtml = (value = "") => {
   const codes = [];

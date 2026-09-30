@@ -47,13 +47,16 @@ import {
  * inspection (not included in the returned object - the caller's patient
  * record shouldn't be bloated with the raw nested payload).
  * @returns {Promise<{
+ *   patientName?: string,
+ *   patientNationalId?: string,
  *   mobileNumber?: string,
  *   nationality?: string,
- *   gender?: number,
+ *   gender?: string|number,
  *   specialty?: string,
  *   subSpecialty?: string,
  *   sourceProvider?: string,
  *   note?: string,
+ *   medicalData?: string,
  *   files?: object[],
  *   patientDetailsError?: string,
  *   attachmentsError?: string,
@@ -80,9 +83,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           if (!rawAuth) return {};
 
           const parsedAuth = JSON.parse(rawAuth);
-          const token = parsedAuth?.token
-            ? JSON.parse(parsedAuth.token)
-            : null;
+          const token = parsedAuth?.token ? JSON.parse(parsedAuth.token) : null;
 
           return {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -105,7 +106,9 @@ const getWaslaPatientReferralDataFromAPI = async (
 
         for (i = 2; i < bytes.length; i += 3) {
           result.push(base64abc[bytes[i - 2] >> 2]);
-          result.push(base64abc[((bytes[i - 2] & 3) << 4) | (bytes[i - 1] >> 4)]);
+          result.push(
+            base64abc[((bytes[i - 2] & 3) << 4) | (bytes[i - 1] >> 4)],
+          );
           result.push(base64abc[((bytes[i - 1] & 15) << 2) | (bytes[i] >> 6)]);
           result.push(base64abc[bytes[i] & 63]);
         }
@@ -118,7 +121,9 @@ const getWaslaPatientReferralDataFromAPI = async (
 
         if (i === bytes.length) {
           result.push(base64abc[bytes[i - 2] >> 2]);
-          result.push(base64abc[((bytes[i - 2] & 3) << 4) | (bytes[i - 1] >> 4)]);
+          result.push(
+            base64abc[((bytes[i - 2] & 3) << 4) | (bytes[i - 1] >> 4)],
+          );
           result.push(base64abc[(bytes[i - 1] & 15) << 2]);
           result.push("=");
         }
@@ -150,17 +155,87 @@ const getWaslaPatientReferralDataFromAPI = async (
 
         const data = await res.json();
 
-        const { patientInfo, caseInfo, attachments } = data || {};
+        const { patientInfo, caseInfo, medicalData, attachments } = data || {};
 
-        const { mobileNumber, gender, nationality } = patientInfo || {};
+        const {
+          idNumber,
+          mobileNumber,
+          gender,
+          nationality,
+          firstNameEn,
+          firstNameAr,
+          lastNameEn,
+          lastNameAr,
+        } = patientInfo || {};
 
-        const { speciality, subSpeciality, providerName, additionalInformation } =
-          caseInfo || {};
+        const {
+          speciality,
+          subSpeciality,
+          providerName,
+          additionalInformation,
+        } = caseInfo || {};
+
+        // Prefer the English name where the API has one - falls back to
+        // Arabic (firstName/lastName mirror firstNameAr/lastNameAr) when a
+        // case doesn't carry an English transliteration.
+        const patientName = [
+          firstNameEn || firstNameAr,
+          lastNameEn || lastNameAr,
+        ]
+          .filter(Boolean)
+          .join(" ");
+
+        // Confirmed: gender 1 = Male. String() guards against the API
+        // sending it as either a number or a string; anything else is
+        // passed through as-is rather than guessed at.
+        const genderLabel = String(gender) === "1" ? "Male" : gender;
+
+        // Flattened to one readable string here (rather than passing the
+        // nested object through) so notification formatters (Telegram/WA,
+        // ntfy) can just print it directly like the other text fields.
+        const nameOfEntry = (entry) =>
+          entry && typeof entry === "object" ? entry.name : entry;
+
+        const formatMedicalData = ({
+          procedure,
+          procedureDescription,
+          icd10,
+          icd10Description,
+        } = {}) => {
+          const procedureNames = Array.isArray(procedure)
+            ? procedure.map(nameOfEntry).filter(Boolean)
+            : [];
+
+          const icd10Entries = Array.isArray(icd10)
+            ? icd10
+                .map((code) =>
+                  [code?.name, code?.description].filter(Boolean).join(" - "),
+                )
+                .filter(Boolean)
+            : [];
+
+          const parts = [
+            procedureNames.length
+              ? `Procedures: ${procedureNames.join(", ")}`
+              : null,
+            procedureDescription ? `Procedure Notes: ${procedureDescription}` : null,
+            icd10Entries.length ? `ICD10: ${icd10Entries.join(", ")}` : null,
+            icd10Description ? `ICD10 Notes: ${icd10Description}` : null,
+          ].filter(Boolean);
+
+          return parts.join(" | ") || undefined;
+        };
+
+        const medicalDataText = formatMedicalData(medicalData);
 
         let files;
         let attachmentsError;
 
-        if (!skippAttachments && Array.isArray(attachments) && attachments.length) {
+        if (
+          !skippAttachments &&
+          Array.isArray(attachments) &&
+          attachments.length
+        ) {
           const downloadTasks = attachments
             .filter((item) => !!(item.fileName && item.fileUrl))
             .map(async ({ fileName, fileUrl, id: idAttachment }) => {
@@ -213,13 +288,16 @@ const getWaslaPatientReferralDataFromAPI = async (
         }
 
         return {
+          patientName,
+          patientNationalId: idNumber,
           mobileNumber,
-          gender,
+          gender: genderLabel,
           nationality: nationality?.name,
           specialty: speciality?.name,
           subSpecialty: subSpeciality?.name,
           sourceProvider: providerName?.name,
           note: additionalInformation,
+          medicalData: medicalDataText,
           files,
           attachmentsError,
           detailsAPiFiresAtMS: apiFiresAtMS,
