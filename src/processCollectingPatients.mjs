@@ -81,15 +81,31 @@ const processCollectingPatients = async ({
         referralReferenceId,
         patientName,
         patientNationalId,
-        referralReason,
-        providerRegion,
-        referralType,
+        referralReason: rawReferralReason,
+        providerRegion: rawProviderRegion,
+        referralType: rawReferralType,
         status,
         broadcastedAt,
         id: navigationId,
         // https://weslah.seha.sa/facility-referrals/view/navigationId
       } = patient || {};
       const referralId = String(patientReferralId);
+
+      // Wasla represents region/reason/type fields as lookup objects
+      // ({id, name, description}, referralReason as an array of them) -
+      // confirmed live in scripts/apis.mjs's case-details recon. SQLite can
+      // only bind primitives (numbers/strings/bigints/buffers/null), so
+      // these have to be flattened to plain strings here, at the external
+      // API boundary, before they ever reach patientsStore/db.mjs - passing
+      // an object/array straight through crashed insertPatients live.
+      const nameOfLookup = (value) =>
+        value && typeof value === "object" ? (value.name ?? null) : value;
+
+      const providerRegion = nameOfLookup(rawProviderRegion);
+      const referralType = nameOfLookup(rawReferralType);
+      const referralReason = Array.isArray(rawReferralReason)
+        ? rawReferralReason.map(nameOfLookup).filter(Boolean).join(" - ")
+        : nameOfLookup(rawReferralReason);
 
       if (!referralId) {
         createConsoleMessage("warn", `⏩ skipping patient without referralId`);
@@ -98,13 +114,13 @@ const processCollectingPatients = async ({
 
       createConsoleMessage(
         "info",
-        `🔹 Progress: ${index}/${patientsLength} (referralId=${referralId})`,
+        `🔹 Progress: ${index}/${patientsLength} (referralId=${referralId} navigationId=${navigationId})`,
       );
 
       if (patientsStore.has(referralId)) {
         createConsoleMessage(
           "warn",
-          `✅ Skipping referralId=${referralId} already collected...`,
+          `✅ Skipping referralId=${referralId} navigationId=${navigationId} already collected...`,
         );
         continue;
       }
@@ -114,18 +130,14 @@ const processCollectingPatients = async ({
 
       createConsoleMessage(
         "info",
-        `📡 Fetching data for referralId=(${referralId})...`,
+        `📡 Fetching data for referralId=${referralId} navigationId=${navigationId}...`,
       );
 
       // Call existing API function to get detailed patient info
       const { serverDate, serverNow, ...patientData } =
         (await insureFetchedPatientData(
           () =>
-            getWaslaPatientReferralDataFromAPI(
-              frame,
-              navigationId,
-              referralId,
-            ),
+            getWaslaPatientReferralDataFromAPI(frame, navigationId, referralId),
           3, // attempts
           1200, // base backoff ms
         )) || {};
@@ -138,7 +150,7 @@ const processCollectingPatients = async ({
       if (hasInternalError) {
         createConsoleMessage(
           "error",
-          `❌ Error collecting referralId=${referralId} => patientData=${!!patientData}, patientDetailsError=${patientDetailsError}, attachmentsError=${attachmentsError}`,
+          `❌ Error collecting referralId=${referralId} navigationId=${navigationId} => patientData=${!!patientData}, patientDetailsError=${patientDetailsError}, attachmentsError=${attachmentsError}`,
         );
         continue;
       }
@@ -149,14 +161,14 @@ const processCollectingPatients = async ({
         const uploadResult = await uploadToTransferIt({
           browser,
           files: patientData.files,
-          title: `ReferralId=${referralId}-report`,
+          title: `ReferralId=${referralId}-navigationId=${navigationId}-report`,
         });
         transferUrl = uploadResult.transferUrl;
 
         if (!uploadResult.success) {
           createConsoleMessage(
             "error",
-            `❌ Error uploading files for referralId=${referralId} => uploadResult=${JSON.stringify(uploadResult)}`,
+            `❌ Error uploading files for referralId=${referralId}-navigationId=${navigationId} => uploadResult=${JSON.stringify(uploadResult)}`,
           );
         }
       }
