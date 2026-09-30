@@ -228,7 +228,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
       true,
     );
 
-    clearAllClaimedStatuses();
+    // clearAllClaimedStatuses();
     const nonClaimableCases = getCasesWithEmptyClaimStatus();
 
     const patientsStore = new PatientStore(
