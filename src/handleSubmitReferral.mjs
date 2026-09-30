@@ -74,7 +74,7 @@ const ACCEPTANCE_DESCRIPTION_TEMPLATES = [
     `Case ${navigationId} is approved for acceptance following our internal review.`,
 ];
 
-// https://weslah.seha.sa/facility-referrals/view/OWPFET926JK5V4T
+// https://weslah.seha.sa/facility-referrals/view/13466
 
 const handleSubmitReferral =
   ({
