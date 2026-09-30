@@ -4,6 +4,7 @@
  *
  */
 import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
 
 const safe = (value) => value ?? "";
 
@@ -48,6 +49,7 @@ const formatPatientToNtfy = (patient) => {
   const useFullMessage = USE_NTFY_AS_CASE_PROVIDER === "Y";
 
   const clientOrBranchName = BRANCH_NAME || CLIENT_ID || "Unknown";
+  const orgLabel = getOrgLabel();
 
   const caseUrl = navigationId
     ? `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`
@@ -73,6 +75,7 @@ const formatPatientToNtfy = (patient) => {
 
   const message =
     `🚨 New Case Alert!\n\n` +
+    `🏢 ORG: ${safe(orgLabel)}\n` +
     (caseUrl ? `🔗 Case Link: ${caseUrl}\n` : "") +
     `🔢 Referral ID: ${safe(referralId)}\n` +
     `🕐 Actionable At: ${safe(referralEndDateActionablAt)}\n` +

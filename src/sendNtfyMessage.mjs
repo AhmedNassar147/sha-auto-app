@@ -6,8 +6,13 @@
 import getCurrentUserNtfyID from "./getCurrentUserNtfyID.mjs";
 import { waitForPublicActionBaseUrl } from "./startCloudflareTunnel.mjs";
 
-const sendNtfyMessage = async (message, referralId, withActions) => {
-  const notifierID = getCurrentUserNtfyID();
+const sendNtfyMessage = async (
+  message,
+  referralId,
+  withActions,
+  overrideChatId,
+) => {
+  const notifierID = getCurrentUserNtfyID(overrideChatId);
 
   let actions = undefined;
 

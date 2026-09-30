@@ -25,6 +25,7 @@ import formatPatientToTelegramOrWA from "./formatPatientToTelegramOrWA.mjs";
 import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
 
 const execAsync = promisify(exec);
 
@@ -134,10 +135,7 @@ const restoreTelegramHtmlTags = (value = "") =>
     // <a href="...">, escaped the same way by escapeTelegramHtml, never
     // matched it and stayed as literal "<a href=...>" text instead of a
     // clickable link (seen live in a Telegram case-link message).
-    .replace(
-      /&lt;a href="([^"]*)"&gt;/g,
-      (_, href) => `<a href="${href}">`,
-    )
+    .replace(/&lt;a href="([^"]*)"&gt;/g, (_, href) => `<a href="${href}">`)
     .replace(/&lt;\/a&gt;/g, "</a>");
 
 const markdownToHtml = (value = "") => {
@@ -1329,8 +1327,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
   bot.on("polling_error", async (err) => {
     const telegramError = err?.message || String(err);
 
-    const { BRANCH_NAME, CLIENT_ID } = process.env;
-    const locationName = BRANCH_NAME || CLIENT_ID || "unknown";
+    const locationName = getOrgLabel() || "unknown";
 
     const baseMessage = `⚠️ At ${locationName} Telegram polling error:\n${telegramError}\n\n`;
 

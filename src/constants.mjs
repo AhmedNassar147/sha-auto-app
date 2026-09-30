@@ -114,8 +114,8 @@ export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 // Changing cutoffTimeMs alone without moving searchIfAcceptacneButtonShownMS
 // the same amount would shrink the "can still process" window by the
 // difference, cutting it off before the timer even fires.
-export const cutoffTimeMs = 1_000;
-export const searchIfAcceptacneButtonShownMS = 1_000;
+export const cutoffTimeMs = 700;
+export const searchIfAcceptacneButtonShownMS = 700;
 
 export const USER_MESSAGES = {
   alreadyScheduledAccept: "Already scheduled for acceptance.",

@@ -4,6 +4,7 @@
  *
  */
 import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
 
 const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   const {
@@ -42,6 +43,8 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     ? referralReason.join(" - ")
     : referralReason;
 
+  const orgLabel = getOrgLabel();
+
   let label = `0 s`;
 
   if (cutoffTimeMs) {
@@ -62,6 +65,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   if (forTelegram) {
     message =
       `🚨 <b>New Case Alert!</b> 🚨\n\n` +
+      `🏢 <b>ORG:</b> <code>${orgLabel}</code>\n` +
       `🕐 <b>Actionable At:</b> ${referralEndDateActionablAt}\n` +
       `🕐 <b>cutoffTime:</b> ${label}\n` +
       `🕐 <b>Ends At:</b> ${referralEndDate}\n` +
@@ -89,6 +93,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   } else {
     message =
       `🚨 *New Case Alert!* 🚨\n\n` +
+      `🏢 *ORG:* \`${orgLabel}\`\n` +
       `🕐 *Actionable At*: ${referralEndDateActionablAt}\n` +
       `🕐 *cutoffTime*: ${label}\n` +
       `🕐 *Ends At*: ${referralEndDate}\n` +

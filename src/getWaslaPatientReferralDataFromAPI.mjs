@@ -185,10 +185,11 @@ const getWaslaPatientReferralDataFromAPI = async (
           .filter(Boolean)
           .join(" ");
 
-        // Confirmed: gender 1 = Male. String() guards against the API
-        // sending it as either a number or a string; anything else is
-        // passed through as-is rather than guessed at.
-        const genderLabel = String(gender) === "1" ? "Male" : gender;
+        // Confirmed: gender 1 = Male, 2 = Female. String() guards against
+        // the API sending it as either a number or a string; anything else
+        // is passed through as-is rather than guessed at.
+        const genderLabel =
+          { "1": "Male", "2": "Female" }[String(gender)] ?? gender;
 
         // Flattened to one readable string here (rather than passing the
         // nested object through) so notification formatters (Telegram/WA,

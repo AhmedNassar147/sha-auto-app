@@ -65,6 +65,8 @@ import getLoginErrors from "./getLoginErrors.mjs";
 import confirmNafathTransition from "./confirmNafathTransition.mjs";
 import openSehaDashboardByProperAccount from "./openSehaDashboardByProperAccount.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
+import sendNtfyMessage from "./sendNtfyMessage.mjs";
 
 const credentialInputSelectorSets = [
   { username: "#username", password: "#password" },
@@ -194,12 +196,40 @@ const reportVerificationCode = async (
   );
 
   const spokenDigits = verificationCode.split("").join(" ");
+  const orgLabel = getOrgLabel();
   const telegramMessage =
-    `🔢 *Nafath verification code:* \`${verificationCode}\`\n` +
+    `🔢 *Nafath verification code for* \`${orgLabel}\`*:* \`${verificationCode}\`\n` +
     `Open the Nafath app and select this number to approve login.`;
+
+  // A shared/admin chat+topic that watches Nafath verification codes across
+  // every org's bot deployment, in addition to that org's own default chat
+  // - read at call time (matches getActiveChatID()'s convention elsewhere)
+  // rather than as a module-level constant, and skipped entirely when unset
+  // rather than falling back to a hardcoded id.
+  const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
+
+  const ntfyMessage = `Nafath verification code for ${orgLabel}: ${verificationCode}
+Open the Nafath app and select this number to approve login.`;
 
   await Promise.allSettled([
     sendTelegramMessage?.(telegramMessage),
+    VERIFICATION_CODE_WATCHER_CHAT_ID
+      ? sendTelegramMessage?.(
+          telegramMessage,
+          [],
+          undefined,
+          VERIFICATION_CODE_WATCHER_CHAT_ID,
+          true,
+        )
+      : null,
+    !!VERIFICATION_CODE_WATCHER_CHAT_ID
+      ? sendNtfyMessage(
+          ntfyMessage,
+          undefined,
+          false,
+          VERIFICATION_CODE_WATCHER_CHAT_ID,
+        )
+      : null,
     speakText({
       text: `Code Is: ${spokenDigits}`,
       useMaleVoice: true,
@@ -507,7 +537,10 @@ const loginWithUsernameAndPassword = async (page, userName, password) => {
       `❌ Could not find "${usernamePasswordToggleText}" toggle button.`,
       "loginWithNafathCredentials",
     );
-    await captureFailureArtifacts(page, "username-password-toggle-click-failed");
+    await captureFailureArtifacts(
+      page,
+      "username-password-toggle-click-failed",
+    );
     return { success: false, message: "username/password toggle not found" };
   }
 
