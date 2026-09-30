@@ -4,7 +4,7 @@
  *
  */
 import generateAcceptancePdfLetters from "./generatePdfs.mjs";
-import getPatientReferralDataFromAPI from "./getPatientReferralDataFromAPI.mjs";
+import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
 import sleep from "./sleep.mjs";
 import insureFetchedPatientData from "./insureFetchedPatientData.mjs";
 import formateDateToString from "./formateDateToString.mjs";
@@ -52,7 +52,6 @@ const getWaslaCaseWindow = (broadcastedAt, cutoffTimeMs, windowMinutes) => {
 const processCollectingPatients = async ({
   browser,
   patientsStore,
-  page,
   frame,
   patients,
 }) => {
@@ -121,24 +120,25 @@ const processCollectingPatients = async ({
       // Call existing API function to get detailed patient info
       const { serverDate, serverNow, ...patientData } =
         (await insureFetchedPatientData(
-          () => getPatientReferralDataFromAPI(page, referralId),
+          () =>
+            getWaslaPatientReferralDataFromAPI(
+              frame,
+              navigationId,
+              referralId,
+            ),
           3, // attempts
           1200, // base backoff ms
         )) || {};
 
-      const { patientDetailsError, patientInfoError, attachmentsError } =
-        patientData || {};
+      const { patientDetailsError, attachmentsError } = patientData || {};
 
       const hasInternalError =
-        !patientData ||
-        patientDetailsError ||
-        patientInfoError ||
-        attachmentsError;
+        !patientData || patientDetailsError || attachmentsError;
 
       if (hasInternalError) {
         createConsoleMessage(
           "error",
-          `❌ Error collecting referralId=${referralId} => patientData=${!!patientData}, patientDetailsError=${patientDetailsError}, patientInfoError=${patientInfoError}, attachmentsError=${attachmentsError}`,
+          `❌ Error collecting referralId=${referralId} => patientData=${!!patientData}, patientDetailsError=${patientDetailsError}, attachmentsError=${attachmentsError}`,
         );
         continue;
       }

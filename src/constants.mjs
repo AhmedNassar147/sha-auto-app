@@ -15,6 +15,7 @@ export const generatedSummaryFolderPath = `${cwd}/results/summary`;
 // export const pollLogsFolderPath = `${cwd}/results/poll-logs`;
 export const htmlFilesPath = `${cwd}/results/html`;
 export const errorsFolderDirectory = `${cwd}/results/errors`;
+export const rawReferralResponsesFolderDirectory = `${cwd}/results/raw-referral-responses`;
 export const COLLECTD_PATIENTS_FILE_NAME = "collectedPatients";
 export const COLLECTD_PATIENTS_FULL_FILE_PATH = `${waitingPatientsFolderDirectory}/${COLLECTD_PATIENTS_FILE_NAME}.json`;
 
