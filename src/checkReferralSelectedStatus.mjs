@@ -53,8 +53,7 @@ const fetchCase = async (waslaFrame, referralId) => {
 
   if (foundPatient) {
     const { status } = foundPatient;
-    const isStillInAcceptance =
-      `${WAITING_ACCEPTANCE_STATUS_CODES}` === `${status}`;
+    const isStillInAcceptance = WAITING_ACCEPTANCE_STATUS_CODES === status;
 
     const isClaimed = CLAIMED_STATUS_CODES.includes(status);
     const statusID = WASLA_STATUS_TYPES[status];

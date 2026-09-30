@@ -58,6 +58,7 @@ import {
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import installTelegramBotApi from "./installTelegramBotApi.mjs";
 import {
+  clearAllClaimedStatuses,
   deleteOldCaseFiles,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
@@ -227,6 +228,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
       true,
     );
 
+    clearAllClaimedStatuses();
     const nonClaimableCases = getCasesWithEmptyClaimStatus();
 
     const patientsStore = new PatientStore(

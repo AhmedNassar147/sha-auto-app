@@ -56,8 +56,8 @@ export const WASLA_STATUS_TYPES = {
   7: "AnotherFacilityApproved",
 };
 
-export const CLAIMED_STATUS_CODES = [1, 4];
-export const WAITING_ACCEPTANCE_STATUS_CODES = 3;
+export const CLAIMED_STATUS_CODES = ["1", "4"];
+export const WAITING_ACCEPTANCE_STATUS_CODES = "3";
 
 export const PATIENT_SECTIONS_STATUS = {
   [TABS_COLLECTION_TYPES.PENDING]: {
