@@ -51,6 +51,7 @@ import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import handleSubmitReferral from "./handleSubmitReferral.mjs";
+// import generatePdfs from "./generatePdfs.mjs";
 
 // https://github.com/FiloSottile/mkcert/releases
 // Download mkcert-vX.X.X-windows-amd64.exe
@@ -218,6 +219,61 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
       collectedPatients || [],
       nonClaimableCases,
     );
+
+    // const patientArray = [
+    //   {
+    //     referralId: "4IMB5GR1V8FL0SU",
+    //     createdAt: "2026-10-01 08:25:38",
+    //     randomFileName: "Approval Form ELG-4Vepw 4IMB5GR1V8FL0SU ABDULLAH.pdf",
+    //     requestedBedType: "Adult Intensive Care Unit (ICU)",
+    //     cutoffTimeMs: 900,
+    //     broadcastedAt: "2026-10-01 08:25:38",
+    //     referralStartDate: "01/10/2026 08:25:38 am",
+    //     referralEndDate: "01/10/2026 08:40:38 am",
+    //     referralEndTimestamp: 1790833238000,
+    //     referralEndDateActionableAtMS: 1790833237100,
+    //     referralEndDateActionablAt: "01/10/2026 08:40:37 am",
+    //     facilityReviewWindowMinutes: 15,
+    //     acceptanceWindowMinutes: 60,
+    //     extendScopeWindowMinutes: 60,
+    //     referralReferenceId: "32999267",
+    //     patientName: "ABDULLAH ALSHEHRI",
+    //     patientNationalId: "1028984316",
+    //     referralReason: "Medical Crisis",
+    //     providerRegion: "Asir",
+    //     referralType: "Emergency",
+    //     status: "3",
+    //     navigationId: "13501",
+    //     mobileNumber: "0504675337",
+    //     gender: "Male",
+    //     nationality: "Saudi Arabia",
+    //     specialty: "Internal Medicine",
+    //     subSpecialty: "Hematology",
+    //     sourceProvider: "ASEER CENTRAL HOSPITAL",
+    //     note: "Admitted as a case of Emphesmatous Pyelitis for IV antibiotics. ",
+    //     medicalData: "ICD10: A41.9 - Sepsis, unspecified",
+    //     detailsAPiFiresAtMS: 1790832362397,
+    //     detailsAPiServerResponseTimeMS: 111,
+    //     letterType: "ELEGANT",
+    //     tab: 1,
+    //     tabName: "Referrals",
+    //     paid: 0,
+    //     scheduledAt: 1790832823185,
+    //     providerAction: "accepted",
+    //     isReceived: "yes",
+    //     isSent: "yes",
+    //     claimed: null,
+    //     __reasonName__:
+    //       "Aprtic dissection for cardiothoracic surgery speciality not available",
+    //   },
+    // ];
+
+    // await generatePdfs(
+    //   browser,
+    //   patientArray,
+    //   false,
+    //   patientArray[0].letterType,
+    // );
 
     await patientsStore.scheduleAllInitialPatients();
 

@@ -52,11 +52,14 @@ const fetchCase = async (waslaFrame, referralId) => {
     : null;
 
   if (foundPatient) {
-    const { status } = foundPatient;
+    const { status, statusName } = foundPatient;
     const isStillInAcceptance = WAITING_ACCEPTANCE_STATUS_CODES === status;
 
     const isClaimed = CLAIMED_STATUS_CODES.includes(status);
     const statusID = WASLA_STATUS_TYPES[status];
+
+    // "status": "5",
+    //         "statusName": "Withdrawn",
 
     return {
       referralId,

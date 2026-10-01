@@ -64,6 +64,11 @@ const CONFIRM_BUTTON_SELECTOR = "button.MuiButton-containedPrimary";
 const CONFIRM_BUTTON_TIMEOUT_MS = 15_000;
 const SLEEP_AFTER_CONFIRMATION_MS = 17_000;
 
+// Lookup id from the portal's own rejection-reasons list (scripts/
+// reject-case.js) - "Unavailability of Required Bed" / "عدم توفر السرير
+// المطلوب". Always this one reason, per instruction.
+const REJECTION_REASON_ID = 18;
+
 // Only the accept modal has a Description field - a different random
 // sentence each time rather than one fixed string.
 const ACCEPTANCE_DESCRIPTION_TEMPLATES = [
@@ -174,6 +179,42 @@ const handleSubmitReferral =
         ? ACCEPT_BUTTON_TEXTS
         : REJECT_BUTTON_TEXTS;
 
+      // Confirmed live: the accept/reject button starts disabled and only
+      // becomes clickable later (same shape as the Confirm button further
+      // down) - matching by text alone found it while still disabled, so
+      // the real click landed (native focus happened) but React's handler
+      // no-op'd on the disabled state, and the popup never opened.
+      const tActionButtonWaitStart = Date.now();
+
+      const actionButtonHandle = await page
+        .waitForFunction(
+          (texts) => {
+            const normalize = (text) =>
+              (text || "").replace(/\s+/g, " ").trim();
+
+            const buttons = [...document.querySelectorAll("button")];
+
+            return (
+              buttons.find(
+                (button) =>
+                  texts.includes(normalize(button.textContent)) &&
+                  !button.disabled,
+              ) || null
+            );
+          },
+          { timeout: ACTION_BUTTON_TIMEOUT_MS },
+          targetButtonTexts,
+        )
+        .catch(() => null);
+
+      const actionButtonWaitMs = Date.now() - tActionButtonWaitStart;
+
+      createConsoleMessage(
+        "info",
+        `⏱️ actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after ${actionButtonWaitMs}ms for referralId=${referralId} (navigationId=${navigationId})`,
+        "handleSubmitReferral",
+      );
+
       // const files = [
       //   {
       //     fileName: randomFileName,
@@ -188,67 +229,50 @@ const handleSubmitReferral =
       // Computed up front (not just inside the modal-filling step below) so
       // the same text is used both for the direct-API attempt's "notes" and
       // for the UI fallback's Description field, rather than picking twice.
-      let description;
+      // Reject has no notes/description at all (submitWaslaReferralViaApi
+      // sends rejectionReasonId instead), so this stays undefined there.
+      const description = isAcceptanceAction
+        ? randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(navigationId)
+        : undefined;
 
-      if (isAcceptanceAction) {
-        description = randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(
-          navigationId,
-        );
+      const apiResult = await submitWaslaReferralViaApi({
+        page,
+        navigationId,
+        fileBase64: letterFileBase64,
+        fileName: randomFileName,
+        notes: description,
+        rejectionReasonId: REJECTION_REASON_ID,
+        isAccept: isAcceptanceAction,
+      });
 
-        const apiResult = await submitWaslaReferralViaApi({
-          page,
-          navigationId,
-          fileBase64: letterFileBase64,
-          fileName: randomFileName,
-          notes: description,
-          isAccept: true,
-        });
-
-        if (apiResult.success) {
-          await sendTelegramMessage?.(
-            `✅ *[${actionType}]* Wasla accepted referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) via direct API.`,
-          );
-
-          createConsoleMessage(
-            "success",
-            `✅ [${actionType}] Accepted via direct API for referralId=${referralId} (navigationId=${navigationId})`,
-            "handleSubmitReferral",
-          );
-
-          await sleep(SLEEP_AFTER_CONFIRMATION_MS);
-          patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
-          return;
-        }
-
+      if (apiResult.success) {
         await sendTelegramMessage?.(
-          `⚠️ *[${actionType}]* Direct API attempt failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) - step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, error=\`${apiResult.error}\`. Falling back to the UI.`,
+          `✅ *[${actionType}]* Wasla ${isAcceptanceAction ? "accepted" : "rejected"} referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) via direct API.`,
         );
 
         createConsoleMessage(
-          "warn",
-          `⚠️ Direct API accept failed (step=${apiResult.step}, error=${apiResult.error}) for referralId=${referralId} (navigationId=${navigationId}) attachmentId=${apiResult.attachmentId} - falling back to UI flow`,
+          "success",
+          `✅ [${actionType}] ${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API for referralId=${referralId} (navigationId=${navigationId})`,
           "handleSubmitReferral",
         );
+
+        // Matches handleCaseAcceptanceOrRejection.mjs: only acceptance
+        // needs its claimed status double-checked later - a rejection
+        // has nothing further to verify.
+        await sleep(SLEEP_AFTER_CONFIRMATION_MS);
+        patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
+        return;
       }
 
-      const actionButtonHandle = await page
-        .waitForFunction(
-          (texts) => {
-            const normalize = (text) =>
-              (text || "").replace(/\s+/g, " ").trim();
+      await sendTelegramMessage?.(
+        `⚠️ *[${actionType}]* Direct API attempt failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) - step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, url=\`${apiResult.url}\` error=\`${apiResult.error}\`. Falling back to the UI.`,
+      );
 
-            const buttons = [...document.querySelectorAll("button")];
-
-            return (
-              buttons.find((button) =>
-                texts.includes(normalize(button.textContent)),
-              ) || null
-            );
-          },
-          { timeout: ACTION_BUTTON_TIMEOUT_MS },
-          targetButtonTexts,
-        )
-        .catch(() => null);
+      createConsoleMessage(
+        "warn",
+        `⚠️ Direct API ${isAcceptanceAction ? "accept" : "reject"} failed (step=${apiResult.step}, error=${apiResult.error}) for referralId=${referralId} (navigationId=${navigationId}) attachmentId=${apiResult.attachmentId} url=${apiResult.url} - falling back to UI flow`,
+        "handleSubmitReferral",
+      );
 
       if (!actionButtonHandle) {
         await reportFailure(
@@ -271,6 +295,10 @@ const handleSubmitReferral =
         );
         return;
       }
+
+      await sendTelegramMessage?.(
+        `⏱️ *[${actionType}]* actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\` for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`)`,
+      );
 
       createConsoleMessage(
         "success",

@@ -5,11 +5,17 @@
  * Direct-API alternative to clicking Confirm in the referral-details
  * confirmation popup (see handleSubmitReferral.mjs) - tried first for the
  * accept case there, falling back to the UI flow on any failure. Uploads
- * the letter PDF, then POSTs accept-json referencing
- * the uploaded attachment's own numeric id, for either accept or reject
- * (same endpoint both ways - only the `accept` boolean in the payload
- * differs, confirmed live: accept -> {"accept":true,...}, reject ->
- * {"accept":false,...}).
+ * the letter PDF, then POSTs accept-json referencing the uploaded
+ * attachment's own numeric id, for either accept or reject (same endpoint
+ * both ways, but NOT the same payload shape - confirmed live from two
+ * separate real requests, scripts/reject-case.js for reject:
+ *   accept -> {"accept":true,"notes":"...","file":"31284"}
+ *   reject -> {"accept":false,"rejectionReasonId":18,"file":"31465"}
+ * i.e. reject has no "notes" field at all, and needs rejectionReasonId
+ * instead - a lookup id from the portal's own rejection-reasons list (also
+ * captured in scripts/reject-case.js, see id 18 there, "Unavailability of
+ * Required Bed" / "عدم توفر السرير المطلوب") - supplied by the caller
+ * rather than hardcoded here.
  *
  * Confirmed live (real request headers pasted in chat) for the upload
  * endpoint: content-type is multipart/form-data with a browser-generated
@@ -43,7 +49,10 @@ import { API_URLS } from "./constants.mjs";
  *   default - no need to pass returnBuffer/re-encode for this).
  * @param {string} params.fileName - Attachment file name, e.g.
  *   `${actionType}-${referralId}.pdf`.
- * @param {string} params.notes - The accept/reject notes text.
+ * @param {string} [params.notes] - Accept-only notes text; ignored when
+ *   isAccept is false.
+ * @param {number} [params.rejectionReasonId] - Reject-only lookup id from
+ *   the portal's own rejection-reasons list; ignored when isAccept is true.
  * @param {boolean} params.isAccept - true to accept, false to reject.
  * @returns {Promise<{
  *   success: boolean,
@@ -51,6 +60,7 @@ import { API_URLS } from "./constants.mjs";
  *   data?: unknown,
  *   error?: string,
  *   step?: "upload" | "accept-json",
+ *   url?: string,
  * }>}
  */
 const submitWaslaReferralViaApi = async ({
@@ -59,13 +69,25 @@ const submitWaslaReferralViaApi = async ({
   fileBase64,
   fileName,
   notes,
+  rejectionReasonId,
   isAccept,
 }) => {
-  const acceptUrl = API_URLS.ACCEPT_CASE.replace("_nav_id_", navigationId);
+  const acceptUrl = API_URLS.ACCEPT_OR_REJECT_CASE.replace(
+    "_nav_id_",
+    navigationId,
+  );
   const uploadAPI = API_URLS.UPLOAD_ATTACHMENT;
 
   return await page.evaluate(
-    async ({ fileBase64, name, uploadUrl, url, notesText, accept }) => {
+    async ({
+      fileBase64,
+      name,
+      uploadUrl,
+      url,
+      notesText,
+      rejectionReasonIdValue,
+      accept,
+    }) => {
       const getWaslaAuthHeaders = () => {
         try {
           const rawAuth = localStorage.getItem("persist:auth");
@@ -75,6 +97,7 @@ const submitWaslaReferralViaApi = async ({
           const token = parsedAuth?.token ? JSON.parse(parsedAuth.token) : null;
 
           return {
+            Accept: "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
             culture: localStorage.getItem("i18nextLng") || "en",
           };
@@ -109,10 +132,12 @@ const submitWaslaReferralViaApi = async ({
         });
 
         if (!uploadRes.ok) {
+          const bodyText = await uploadRes.text().catch(() => "");
           return {
             success: false,
             step: "upload",
-            error: `Status ${uploadRes.status}`,
+            url: uploadUrl,
+            error: `Status ${uploadRes.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
 
@@ -125,12 +150,31 @@ const submitWaslaReferralViaApi = async ({
           return {
             success: false,
             step: "upload",
+            url: uploadUrl,
             error: `No attachment id in response (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
       } catch (err) {
-        return { success: false, step: "upload", error: err.message };
+        return {
+          success: false,
+          step: "upload",
+          url: uploadUrl,
+          error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
+        };
       }
+
+      // Confirmed live: accept and reject do NOT share a payload shape.
+      // Accept sends free-text "notes"; reject has no "notes" field at all
+      // and instead needs "rejectionReasonId" - a lookup id from the
+      // portal's own rejection-reasons list (scripts/reject-case.js),
+      // supplied by the caller.
+      const payload = accept
+        ? { accept, notes: notesText, file: String(attachmentId) }
+        : {
+            accept,
+            rejectionReasonId: rejectionReasonIdValue,
+            file: String(attachmentId),
+          };
 
       try {
         const acceptRes = await fetch(url, {
@@ -140,19 +184,17 @@ const submitWaslaReferralViaApi = async ({
             "Content-Type": "application/json",
             ...headers,
           },
-          body: JSON.stringify({
-            accept,
-            notes: notesText,
-            file: String(attachmentId),
-          }),
+          body: JSON.stringify(payload),
         });
 
         if (!acceptRes.ok) {
+          const bodyText = await acceptRes.text().catch(() => "");
           return {
             success: false,
             step: "accept-json",
             attachmentId,
-            error: `Status ${acceptRes.status}`,
+            url,
+            error: `Status ${acceptRes.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
 
@@ -162,7 +204,8 @@ const submitWaslaReferralViaApi = async ({
           success: false,
           step: "accept-json",
           attachmentId,
-          error: err.message,
+          url,
+          error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
         };
       }
     },
@@ -172,6 +215,7 @@ const submitWaslaReferralViaApi = async ({
       uploadUrl: uploadAPI,
       url: acceptUrl,
       notesText: notes,
+      rejectionReasonIdValue: rejectionReasonId,
       accept: isAccept,
     },
   );

@@ -114,8 +114,8 @@ export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 // Changing cutoffTimeMs alone without moving searchIfAcceptacneButtonShownMS
 // the same amount would shrink the "can still process" window by the
 // difference, cutting it off before the timer even fires.
-export const cutoffTimeMs = 900;
-export const searchIfAcceptacneButtonShownMS = 900;
+export const cutoffTimeMs = 860;
+export const searchIfAcceptacneButtonShownMS = 860;
 
 export const USER_MESSAGES = {
   alreadyScheduledAccept: "Already scheduled for acceptance.",
@@ -232,9 +232,7 @@ export const API_URLS = {
   // https://weslah.seha.sa/api/referrals/13474/accept-json
   // payload: {"accept":true,"notes":"accept","file":"31284"}
   // {message: " Referral accepted successfully."}
-  ACCEPT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
-  // payload: {"accept":false,"notes":"reject","file":"31284"}
-  REJECT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
+  ACCEPT_OR_REJECT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
 };
 
 export const baseWaslaHeaders = {
