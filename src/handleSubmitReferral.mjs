@@ -139,7 +139,7 @@ const reportFailure = async (
  *   referralId: string,
  *   navigationId: string,
  *   apiResult: Awaited<ReturnType<typeof import("./submitWaslaReferralViaApi.mjs").default>>,
- *   actionButtonTimingLine: string,
+ *   waitedBeforeActionLine: string,
  * }} params
  * @returns {string}
  */
@@ -149,7 +149,7 @@ const buildDirectApiTelegramMessage = ({
   referralId,
   navigationId,
   apiResult,
-  actionButtonTimingLine,
+  waitedBeforeActionLine,
 }) => {
   const title = success
     ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
@@ -164,10 +164,12 @@ const buildDirectApiTelegramMessage = ({
     `ID: \`${navigationId}\`\n` +
     `${title}\n` +
     `${detailLine}\n\n` +
-    actionButtonTimingLine +
+    waitedBeforeActionLine +
     (success ? "" : "\nFalling back to the UI.")
   );
 };
+
+const waitedBeforeActionMs = 1000;
 
 const handleSubmitReferral = (options) => async (patient) => {
   const {
@@ -217,48 +219,7 @@ const handleSubmitReferral = (options) => async (patient) => {
         ),
       ]);
 
-    await page.evaluate(() => {
-      window.scrollTo(0, document.body.scrollHeight);
-    });
-
-    const targetButtonTexts = isAcceptanceAction
-      ? ACCEPT_BUTTON_TEXTS
-      : REJECT_BUTTON_TEXTS;
-
-    // Confirmed live: the accept/reject button starts disabled and only
-    // becomes clickable later (same shape as the Confirm button further
-    // down) - matching by text alone found it while still disabled, so
-    // the real click landed (native focus happened) but React's handler
-    // no-op'd on the disabled state, and the popup never opened.
-    const tActionButtonWaitStart = Date.now();
-
-    const actionButtonHandle = await page
-      .waitForFunction(
-        (texts) => {
-          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
-
-          const buttons = [...document.querySelectorAll("button")];
-
-          return (
-            buttons.find(
-              (button) =>
-                texts.includes(normalize(button.textContent)) &&
-                !button.disabled,
-            ) || null
-          );
-        },
-        { timeout: ACTION_BUTTON_TIMEOUT_MS },
-        targetButtonTexts,
-      )
-      .catch(() => null);
-
-    const actionButtonWaitMs = Date.now() - tActionButtonWaitStart;
-
-    // createConsoleMessage(
-    //   "info",
-    //   `⏱️ actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after ${actionButtonWaitMs}ms for referralId=${referralId} (navigationId=${navigationId})`,
-    //   "handleSubmitReferral",
-    // );
+    await sleep(waitedBeforeActionMs);
 
     // Computed up front (not just inside the modal-filling step below) so
     // the same text is used both for the direct-API attempt's "notes" and
@@ -295,7 +256,9 @@ const handleSubmitReferral = (options) => async (patient) => {
       severity: apiResult.success ? "success" : "error",
     });
 
-    const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
+    // const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
+
+    const waitedBeforeActionLine = `waitedBeforeAction: ${waitedBeforeActionMs}ms\n`;
 
     await sendTelegramMessage?.(
       buildDirectApiTelegramMessage({
@@ -304,7 +267,7 @@ const handleSubmitReferral = (options) => async (patient) => {
         referralId,
         navigationId,
         apiResult,
-        actionButtonTimingLine,
+        waitedBeforeActionLine,
       }),
     );
 
@@ -321,6 +284,39 @@ const handleSubmitReferral = (options) => async (patient) => {
       await closePageSafely(page);
       return;
     }
+
+    const targetButtonTexts = isAcceptanceAction
+      ? ACCEPT_BUTTON_TEXTS
+      : REJECT_BUTTON_TEXTS;
+
+    // Confirmed live: the accept/reject button starts disabled and only
+    // becomes clickable later (same shape as the Confirm button further
+    // down) - matching by text alone found it while still disabled, so
+    // the real click landed (native focus happened) but React's handler
+    // no-op'd on the disabled state, and the popup never opened.
+    const tActionButtonWaitStart = Date.now();
+
+    const actionButtonHandle = await page
+      .waitForFunction(
+        (texts) => {
+          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
+
+          const buttons = [...document.querySelectorAll("button")];
+
+          return (
+            buttons.find(
+              (button) =>
+                texts.includes(normalize(button.textContent)) &&
+                !button.disabled,
+            ) || null
+          );
+        },
+        { timeout: ACTION_BUTTON_TIMEOUT_MS },
+        targetButtonTexts,
+      )
+      .catch(() => null);
+
+    const actionButtonWaitMs = Date.now() - tActionButtonWaitStart;
 
     if (!actionButtonHandle) {
       await reportFailure(
