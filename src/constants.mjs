@@ -241,6 +241,22 @@ export const API_URLS = {
   // payload: {"accept":true,"notes":"accept","file":"31284"}
   // {message: " Referral accepted successfully."}
   ACCEPT_OR_REJECT_CASE: `${baseReferraAPiUrl}/_nav_id_/accept-json`,
+  // Confirmed straight from the Wasla frontend's own bundled RTK Query
+  // slice (scripts/index-DkGuikpU.js, "confirmPatientArrival" mutation),
+  // not a live network capture like the others above - a different
+  // top-level resource (admissions, not referrals), no file/attachment
+  // field at all:
+  //   query: (t) => ({ url: `/admissions/${t.referralId}/arrival`, method: "POST",
+  //     body: { nationalId: t.nationalId, arrivalAt: t.arrivalAt, notes: t.notes } })
+  CONFIRM_PATIENT_ARRIVAL: `${BASE_WASLA_API_URL}/admissions/_nav_id_/arrival`,
+  // Same source as CONFIRM_PATIENT_ARRIVAL above (scripts/index-DkGuikpU.js,
+  // "withdrawFromReferral" mutation) - unlike arrival confirmation, this one
+  // DOES need a file first (same two-step upload-then-post shape as
+  // ACCEPT_OR_REJECT_CASE/submitWaslaReferralViaApi.mjs, confirmed by the
+  // frontend's own withdrawal modal requiring an attachment):
+  //   query: (t) => ({ url: `/admissions/${t.referralId}/withdraw`, method: "POST",
+  //     body: { notes: t.notes, file: t.file } })
+  WITHDRAW_FROM_REFERRAL: `${BASE_WASLA_API_URL}/admissions/_nav_id_/withdraw`,
 };
 
 export const baseWaslaHeaders = {
