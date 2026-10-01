@@ -56,8 +56,14 @@ export const WASLA_STATUS_TYPES = {
   7: "AnotherFacilityApproved",
 };
 
-export const CLAIMED_STATUS_CODES = ["1", "4"];
-export const WAITING_ACCEPTANCE_STATUS_CODES = "3";
+// Numbers, not strings - checkReferralSelectedStatus.mjs's fetchCase()
+// converts the Wasla API's own status field (a string, e.g. "status": "3")
+// to a Number() once, right where it's read, specifically so it can be
+// compared against these as numbers. Matches WASLA_STATUS_TYPES' numeric
+// keys above (object keys stringify either way, so that lookup was never
+// type-sensitive - only the === and .includes() checks here are).
+export const CLAIMED_STATUS_CODES = [1, 4];
+export const WAITING_ACCEPTANCE_STATUS_CODES = 3;
 
 export const PATIENT_SECTIONS_STATUS = {
   [TABS_COLLECTION_TYPES.PENDING]: {
