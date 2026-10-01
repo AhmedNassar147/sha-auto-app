@@ -48,12 +48,31 @@ const fetchCase = async (waslaFrame, referralId) => {
     },
   );
 
+  if (!patients?.length) {
+    return {
+      referralId,
+      status: "-1000",
+      claimed: "",
+      hints: [message].filter(Boolean),
+      statusID: "No data found",
+      shouldUpdateAndNotify: false,
+      tabName: "orders",
+    };
+  }
+
   const foundPatient = totalRowsCount
     ? patients?.find((patient) => `${patient.referralId}` === patientIdString)
     : null;
 
   if (foundPatient) {
-    const { status } = foundPatient;
+    // Confirmed live: the myOrders/tab-2 API returns status as a STRING
+    // (e.g. "status": "3"), while WAITING_ACCEPTANCE_STATUS_CODES/
+    // CLAIMED_STATUS_CODES are numbers - the strict === / .includes()
+    // checks below never matched against the raw string, so a still-
+    // pending case (status "3", WaitingAcceptance) fell through to
+    // isStillInAcceptance=false and got wrongly marked claimed: "No"
+    // instead of being left queued for a later check.
+    const status = Number(foundPatient.status);
     const isStillInAcceptance = WAITING_ACCEPTANCE_STATUS_CODES === status;
 
     const isClaimed = CLAIMED_STATUS_CODES.includes(status);

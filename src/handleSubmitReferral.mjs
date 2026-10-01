@@ -19,6 +19,7 @@ import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
+import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
 import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 
@@ -314,10 +315,10 @@ const handleSubmitReferral = (options) => async (patient) => {
         "handleSubmitReferral",
       );
 
-      // this is not supports rejection and accteptance
-      await sleep(SLEEP_AFTER_CONFIRMATION_MS);
+      // this is now supports rejection and accteptance
+      await sleep(3_000);
       patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
-
+      await closePageSafely(page);
       return;
     }
 
