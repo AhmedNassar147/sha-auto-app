@@ -8,23 +8,23 @@ import { unlink } from "fs/promises";
 import { exec } from "child_process";
 import { promisify } from "util";
 import createConsoleMessage from "./createConsoleMessage.mjs";
-import { getCaseFile, upsertCaseFile, getPatient } from "./db.mjs";
+import {
+  getCaseFile,
+  upsertCaseFile,
+  buildCaseFileKey,
+  getPatient,
+} from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
 import compressPdfGentlly from "./compressPdfGentlly.mjs";
 import formatFilesToTelegram from "./formatFilesToTelgram.mjs";
 import sleep from "./sleep.mjs";
 import generateAcceptancePdfLetters from "./generatePdfs.mjs";
-import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs";
-import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
-import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
-import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
-import closePageSafely from "./closePageSafely.mjs";
 import notifyUserWithNewCase from "./notifyUserWithNewCase.mjs";
 // import createAndSendInvoiceReport from "./createAndSendInvoiceReport.mjs";
 import formatPatientToTelegramOrWA from "./formatPatientToTelegramOrWA.mjs";
-import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
+import { USER_ACTION_TYPES } from "./constants.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
@@ -979,27 +979,19 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       action === "a" ? USER_ACTION_TYPES.ACCEPT : USER_ACTION_TYPES.REJECT;
 
     if (!reason) {
-      const record = getCaseFile(referralId);
-      const {
-        action: recordAction,
-        referralId: recordReferralId,
-        tgFileId,
-      } = record || {};
+      const record = getCaseFile(buildCaseFileKey(referralId, actionType));
+      const { tgFileId } = record || {};
 
-      if (
-        tgFileId &&
-        recordAction === actionType &&
-        recordReferralId === referralId
-      ) {
+      if (tgFileId) {
         try {
-          const fileMessage = `✅ Cached letter served for Referral ID: \`${referralId}\` and action: \`${recordAction}\`.`;
+          const fileMessage = `✅ Cached letter served for Referral ID: \`${referralId}\` and action: \`${actionType}\`.`;
           await sendBotMessage(chatId, fileMessage, {
             reply_to_message_id: msgId,
           });
 
           await bot.sendDocument(chatId, tgFileId, {
             reply_to_message_id: msgId,
-            caption: `📎 ${recordAction}_${referralId}`,
+            caption: `📎 ${actionType}_${referralId}`,
           });
 
           createConsoleMessage("info", fileMessage);
@@ -1015,145 +1007,48 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       }
     }
 
-    const patientData = patientsStore.getPatientByReferralId(referralId);
+    let patientData = patientsStore.getPatientByReferralId(referralId);
 
     if (!patientData) {
-      await sendBotMessage(
-        chatId,
-        "⛔ Patient removed from the store, searching the app....",
-      );
+      // The in-memory store evicts a case once it's resolved, but its data
+      // (patientName, nationality, specialty, mobileNumber, etc. - now all
+      // persisted columns, see db.mjs) still lives in the DB row - no need
+      // to open a new tab and re-fetch from the live Wasla API for data we
+      // already saved at collection time.
+      const storedPatient = getPatient(referralId);
+
+      if (!storedPatient) {
+        return await sendBotMessage(
+          chatId,
+          `⛔ No record found for referralId=\`${referralId}\`.`,
+          {
+            reply_to_message_id: msgId,
+          },
+        );
+      }
+
+      // The DB row's own `createdAt` column is row-insertion bookkeeping
+      // (see db.mjs's toDbRow comment), not the real referral date -
+      // that's `referralDate` - but makeLetterGenerationAndReturnFile
+      // expects a `createdAt` field to derive the letter's printed date.
+      patientData = {
+        ...storedPatient,
+        createdAt: storedPatient.referralDate,
+      };
     }
 
-    let fileBuffer = null;
-
-    if (patientData) {
-      fileBuffer = await makeLetterGenerationAndReturnFile({
-        actionType,
-        browser,
-        patientData,
-        reason,
-        referralId,
-      });
-    }
-
-    if (!fileBuffer) {
-      // getWaslaPatientReferralDataFromAPI needs the internal Wasla case id
-      // (navigationId), not referralId - patientData above only exists if
-      // the case was still in the in-memory store; getPatient() falls back
-      // to the persisted DB row (still has navigationId even if the store
-      // already evicted it) since that's the only other place it's tracked.
-      const navigationId =
-        patientData?.navigationId || getPatient(referralId)?.navigationId;
-
-      if (!navigationId) {
-        return await sendBotMessage(
-          chatId,
-          `⛔ No navigationId on record for referralId=\`${referralId}\` - can't look it up via the Wasla API.`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      const { isLoggedIn, newPage, isErrorAboutLockedOut } =
-        await makeUserLoggedInOrOpenHomePage({
-          browser,
-          startingPageUrl: HOME_PAGE_URL,
-          noCursor: true,
-          noBundleCheck: true,
-          sendTelegramMessage,
-        });
-
-      if (isErrorAboutLockedOut) {
-        await closePageSafely(newPage);
-
-        return await sendBotMessage(
-          chatId,
-          `⛔ Could not loginin, We are blocked`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      if (!isLoggedIn) {
-        await closePageSafely(newPage);
-        return await sendBotMessage(
-          chatId,
-          `⛔ Could not loginin, Please check the app`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      const { success: widgetOpened, message: widgetMessage } =
-        await openWaslaReferralWidget({ page: newPage });
-
-      if (!widgetOpened) {
-        await closePageSafely(newPage);
-        return await sendBotMessage(
-          chatId,
-          `⛔ Could not open the Wasla widget: ${widgetMessage}`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      const {
-        frameReady,
-        frame,
-        message: frameMessage,
-      } = await getWaslaReferralFrame(newPage);
-
-      if (!frameReady) {
-        await closePageSafely(newPage);
-        return await sendBotMessage(
-          chatId,
-          `⛔ Could not reach the Wasla widget frame: ${frameMessage}`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      const fetchedPatientData = await getWaslaPatientReferralDataFromAPI(
-        frame,
-        navigationId,
-        referralId,
-        true,
-      );
-
-      await closePageSafely(newPage);
-
-      const { patientDetailsError } = fetchedPatientData || {};
-
-      if (patientDetailsError || !fetchedPatientData) {
-        return await sendBotMessage(
-          chatId,
-          patientDetailsError
-            ? `⛔ Error: ${patientDetailsError}`
-            : `⛔ Could Find the patient in the app, please try again`,
-          {
-            reply_to_message_id: msgId,
-          },
-        );
-      }
-
-      fileBuffer = await makeLetterGenerationAndReturnFile({
-        actionType,
-        browser,
-        patientData: fetchedPatientData,
-        reason,
-        referralId,
-      });
-    }
+    const fileBuffer = await makeLetterGenerationAndReturnFile({
+      actionType,
+      browser,
+      patientData,
+      reason,
+      referralId,
+    });
 
     if (!fileBuffer) {
       return await sendBotMessage(
         chatId,
-        `⛔ Could Find the patient while searching the app, please try again`,
+        `⛔ Could not generate the letter for referralId=\`${referralId}\`, please try again`,
         {
           reply_to_message_id: msgId,
         },

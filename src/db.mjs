@@ -72,6 +72,15 @@ const casesLettersDb = new Database(casesLettersFilePath);
       tabName TEXT DEFAULT '',
       paid INTEGER DEFAULT 0,             -- 0 = false, 1 = true
       payerAction TEXT,                   -- confirmed or dropped
+      nationality TEXT,
+      specialty TEXT,
+      subSpecialty TEXT,
+      sourceProvider TEXT,
+      mobileNumber TEXT,
+      note TEXT,
+      medicalData TEXT,
+      requestedBedType TEXT,
+      attachmentUrls TEXT,                -- JSON array of presigned S3 urls - these expire (~30 min), stored anyway per explicit choice
       createdAt TEXT DEFAULT (datetime('now')),
       updatedAt TEXT
     )
@@ -94,6 +103,15 @@ const casesLettersDb = new Database(casesLettersFilePath);
     acceptanceWindowMinutes: "INTEGER",
     extendScopeWindowMinutes: "INTEGER",
     referralDate: "TEXT",
+    nationality: "TEXT",
+    specialty: "TEXT",
+    subSpecialty: "TEXT",
+    sourceProvider: "TEXT",
+    mobileNumber: "TEXT",
+    note: "TEXT",
+    medicalData: "TEXT",
+    requestedBedType: "TEXT",
+    attachmentUrls: "TEXT",
   };
 
   for (const [columnName, columnType] of Object.entries(columnsToEnsure)) {
@@ -164,6 +182,23 @@ const toDbRow = (oldRow, patient) => {
     tabName: merged.tabName ?? "",
     paid: merged.paid ? 1 : 0,
     payerAction: merged.payerAction ?? null,
+    nationality: merged.nationality ?? null,
+    specialty: merged.specialty ?? null,
+    subSpecialty: merged.subSpecialty ?? null,
+    sourceProvider: merged.sourceProvider ?? null,
+    mobileNumber: merged.mobileNumber ?? null,
+    note: merged.note ?? null,
+    medicalData: merged.medicalData ?? null,
+    requestedBedType: merged.requestedBedType ?? null,
+    // Stored as JSON text (TEXT column, same as every other field here) -
+    // attachmentUrls arrives as a real array from
+    // getWaslaPatientReferralDataFromAPI.mjs/processCollectingPatients.mjs,
+    // but a caller rehydrating from an old DB row (oldRow spread above)
+    // would otherwise hand back the already-stringified text as-is, so
+    // only stringify when it's still an actual array.
+    attachmentUrls: Array.isArray(merged.attachmentUrls)
+      ? JSON.stringify(merged.attachmentUrls)
+      : (merged.attachmentUrls ?? null),
   };
 };
 
@@ -197,6 +232,15 @@ const insertPatientSQL = `
     tabName,
     paid,
     payerAction,
+    nationality,
+    specialty,
+    subSpecialty,
+    sourceProvider,
+    mobileNumber,
+    note,
+    medicalData,
+    requestedBedType,
+    attachmentUrls,
     updatedAt
   ) VALUES (
     @referralId,
@@ -227,6 +271,15 @@ const insertPatientSQL = `
     @tabName,
     @paid,
     @payerAction,
+    @nationality,
+    @specialty,
+    @subSpecialty,
+    @sourceProvider,
+    @mobileNumber,
+    @note,
+    @medicalData,
+    @requestedBedType,
+    @attachmentUrls,
     datetime('now')
   )
   ON CONFLICT(referralId) DO UPDATE SET
@@ -257,6 +310,15 @@ const insertPatientSQL = `
     tabName               = COALESCE(excluded.tabName, tabName),
     paid                  = COALESCE(excluded.paid, paid),
     payerAction           = COALESCE(excluded.payerAction, payerAction),
+    nationality           = COALESCE(excluded.nationality, nationality),
+    specialty             = COALESCE(excluded.specialty, specialty),
+    subSpecialty          = COALESCE(excluded.subSpecialty, subSpecialty),
+    sourceProvider        = COALESCE(excluded.sourceProvider, sourceProvider),
+    mobileNumber          = COALESCE(excluded.mobileNumber, mobileNumber),
+    note                  = COALESCE(excluded.note, note),
+    medicalData           = COALESCE(excluded.medicalData, medicalData),
+    requestedBedType      = COALESCE(excluded.requestedBedType, requestedBedType),
+    attachmentUrls        = COALESCE(excluded.attachmentUrls, attachmentUrls),
     updatedAt             = datetime('now')
 `;
 
@@ -289,6 +351,15 @@ const updatePatientSQL = `
     tabName = @tabName,
     paid = @paid,
     payerAction = @payerAction,
+    nationality = @nationality,
+    specialty = @specialty,
+    subSpecialty = @subSpecialty,
+    sourceProvider = @sourceProvider,
+    mobileNumber = @mobileNumber,
+    note = @note,
+    medicalData = @medicalData,
+    requestedBedType = @requestedBedType,
+    attachmentUrls = @attachmentUrls,
     updatedAt = datetime('now')
   WHERE referralId = @referralId
 `;
@@ -517,6 +588,16 @@ const getPatientsFiltered = ({
   return stmt.all(params);
 };
 
+// casesFilesDb is keyed on the `referralId` column alone, but a case can
+// have two cached letters (accept and reject) - encoding the action into
+// that same column as "<action>-<referralId>" gives each its own row
+// without a schema migration (the column's just TEXT, no FK elsewhere
+// depends on its exact format). Centralized here so every caller builds
+// the same key instead of risking a typo'd/mismatched format (e.g. the
+// abbreviated "a"/"r" from the /letter command vs the full "accept"/
+// "reject" action name the callback_query handler upserts with).
+const buildCaseFileKey = (referralId, action) => `${action}-${referralId}`;
+
 const upsertCaseFile = (referralId, action, tgFileId) => {
   const stmt = casesLettersDb.prepare(`
     INSERT INTO casesFilesDb (
@@ -539,21 +620,21 @@ const upsertCaseFile = (referralId, action, tgFileId) => {
   `);
 
   return stmt.run({
-    referralId: String(referralId),
+    referralId: buildCaseFileKey(referralId, action),
     date: Date.now(),
     action: String(action),
     tgFileId: String(tgFileId),
   });
 };
 
-const getCaseFile = (referralId) => {
+const getCaseFile = (key) => {
   const stmt = casesLettersDb.prepare(`
     SELECT *
     FROM casesFilesDb
     WHERE referralId = ?
   `);
 
-  return stmt.get(String(referralId));
+  return stmt.get(String(key));
 };
 
 const deleteOldCaseFiles = () => {
@@ -592,5 +673,6 @@ export {
   getOldestPatient,
   upsertCaseFile,
   getCaseFile,
+  buildCaseFileKey,
   deleteOldCaseFiles,
 };

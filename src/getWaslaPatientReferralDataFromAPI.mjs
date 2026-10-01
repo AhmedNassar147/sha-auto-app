@@ -58,6 +58,7 @@ import {
  *   note?: string,
  *   medicalData?: string,
  *   files?: object[],
+ *   attachmentUrls?: string[],
  *   patientDetailsError?: string,
  *   attachmentsError?: string,
  *   detailsAPiFiresAtMS?: number,
@@ -288,6 +289,14 @@ const getWaslaPatientReferralDataFromAPI = async (
           }
         }
 
+        // Just the links, independent of the download loop above (so
+        // they're captured even when skippAttachments is true, or a
+        // download fails) - each is a presigned S3 link and expires
+        // (~30 min per X-Amz-Expires), stored anyway for later display.
+        const attachmentUrls = Array.isArray(attachments)
+          ? attachments.map(({ fileUrl }) => fileUrl).filter(Boolean)
+          : [];
+
         return {
           patientName,
           patientNationalId: idNumber,
@@ -300,6 +309,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           note: additionalInformation,
           medicalData: medicalDataText,
           files,
+          attachmentUrls,
           attachmentsError,
           detailsAPiFiresAtMS: apiFiresAtMS,
           detailsAPiServerResponseTimeMS: Math.trunc(serverResponseTimeMS),

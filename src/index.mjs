@@ -36,6 +36,7 @@ import {
   rawReferralResponsesFolderDirectory,
   TABS_COLLECTION_TYPES,
   APP_URL,
+  WASLA_REFERRAL_VIEW_URL,
   // FAKE_REJECT_PROBE,
 } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
@@ -45,12 +46,16 @@ import {
   deleteOldCaseFiles,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
+  getPatient,
+  updatePatients,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import handleSubmitReferral from "./handleSubmitReferral.mjs";
+import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
+import closePageSafely from "./closePageSafely.mjs";
 // import generatePdfs from "./generatePdfs.mjs";
 
 // https://github.com/FiloSottile/mkcert/releases
@@ -415,6 +420,61 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           .status(500)
           .type("text/plain")
           .send(error?.message || "Query failed");
+      }
+    });
+
+    // Attachment links on /db are presigned S3 urls that expire (~30 min
+    // per X-Amz-Expires) - this re-fetches fresh ones live from Wasla for
+    // a single case. weslah.seha.sa is also directly visitable as its own
+    // standalone site (not just embedded as an iframe in seha.sa), sharing
+    // the same browser context's cookies/localStorage per-origin - so this
+    // just opens that case's own view page directly rather than going
+    // through seha.sa's login+dashboard+widget-click flow. A Page's own
+    // .evaluate() works identically to a Frame's, so it can be passed
+    // straight into getWaslaPatientReferralDataFromAPI unchanged.
+    app.get("/db/refresh-attachments/:referralId", async (req, res) => {
+      const { referralId } = req.params;
+      const redirectTo = `/db?referralId=${encodeURIComponent(referralId)}`;
+
+      let newPage;
+
+      try {
+        const storedPatient = getPatient(referralId);
+
+        if (!storedPatient?.navigationId) {
+          return res.redirect(redirectTo);
+        }
+
+        newPage = await browser.newPage();
+        await newPage.goto(
+          `${WASLA_REFERRAL_VIEW_URL}/${storedPatient.navigationId}`,
+          { waitUntil: "domcontentloaded" },
+        );
+
+        const patientData = await getWaslaPatientReferralDataFromAPI(
+          newPage,
+          storedPatient.navigationId,
+          referralId,
+          true,
+        );
+
+        if (patientData?.attachmentUrls) {
+          updatePatients({
+            referralId,
+            attachmentUrls: patientData.attachmentUrls,
+          });
+        }
+
+        return res.redirect(redirectTo);
+      } catch (error) {
+        createConsoleMessage(
+          "error",
+          error,
+          `❌ refresh-attachments failed for referralId=${referralId}:`,
+        );
+        return res.redirect(redirectTo);
+      } finally {
+        await closePageSafely(newPage);
       }
     });
 

@@ -45,6 +45,15 @@ const COLUMN_LABELS = {
   tabName: "Tab",
   createdAt: "Saved At",
   updatedAt: "Updated At",
+  nationality: "Nationality",
+  specialty: "Specialty",
+  subSpecialty: "Sub-specialty",
+  sourceProvider: "Source Provider",
+  mobileNumber: "Mobile",
+  requestedBedType: "Requested Bed Type",
+  note: "Note",
+  medicalData: "Medical Data",
+  attachmentUrls: "Attachments",
 };
 
 const COLUMNS = [
@@ -59,6 +68,15 @@ const COLUMNS = [
   "referralType",
   "referralReason",
   "providerRegion",
+  "nationality",
+  "specialty",
+  "subSpecialty",
+  "sourceProvider",
+  "mobileNumber",
+  "requestedBedType",
+  "note",
+  "medicalData",
+  "attachmentUrls",
   "status",
   "claimed",
   "isSent",
@@ -104,7 +122,38 @@ const badgeClassFor = (value) => {
   return "badge-neutral";
 };
 
-const renderCell = (column, value) => {
+const renderCell = (column, value, row) => {
+  if (column === "attachmentUrls") {
+    // Handles its own empty case (rather than falling into the generic
+    // empty-cell check below) so the refresh link can still show even
+    // when there's nothing cached yet - each stored link is a presigned
+    // S3 url and expires (~30 min), so this is also the way to pull in
+    // fresh ones after they've gone dead.
+    let urls = [];
+    if (value) {
+      try {
+        urls = JSON.parse(value);
+      } catch {
+        urls = [];
+      }
+    }
+    const linksHtml = Array.isArray(urls)
+      ? urls
+          .map((url, index) => {
+            if (!url) return "";
+            const safeUrl = escapeHtml(url);
+            return `<a href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${index + 1}</a>`;
+          })
+          .filter(Boolean)
+          .join(" ")
+      : "";
+
+    const refreshHtml = row?.navigationId
+      ? ` <a href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
+      : "";
+
+    return (linksHtml || '<span class="empty-cell">—</span>') + refreshHtml;
+  }
   if (value === null || value === undefined || value === "") {
     return '<span class="empty-cell">—</span>';
   }
@@ -133,7 +182,7 @@ const renderRows = (rows) => {
   return rows
     .map(
       (row) =>
-        `<tr>${COLUMNS.map((col) => `<td>${renderCell(col, row[col])}</td>`).join("")}</tr>`,
+        `<tr>${COLUMNS.map((col) => `<td>${renderCell(col, row[col], row)}</td>`).join("")}</tr>`,
     )
     .join("");
 };
