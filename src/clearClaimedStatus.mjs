@@ -12,7 +12,7 @@ const referralIds = process.argv.slice(2);
 
 if (!referralIds.length) {
   console.error(
-    "Usage: node scripts/clearClaimedStatus.mjs <referralId> [more ids...]",
+    "Usage: node src/clearClaimedStatus.mjs <referralId> [more ids...]",
   );
   process.exit(1);
 }
