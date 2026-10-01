@@ -29,6 +29,7 @@ import {
  *   status: number | undefined,
  *   claimed: "Yes" | "No" | null,
  *   hints: string[],
+ *   patientName?: string,
  *   statusID?: string,
  *   shouldUpdateAndNotify: boolean,
  *   tabName?: string,
@@ -65,6 +66,7 @@ const fetchCase = async (waslaFrame, referralId) => {
     : null;
 
   if (foundPatient) {
+    const { status: statusString, patientName } = foundPatient;
     // Confirmed live: the myOrders/tab-2 API returns status as a STRING
     // (e.g. "status": "3"), while WAITING_ACCEPTANCE_STATUS_CODES/
     // CLAIMED_STATUS_CODES are numbers - the strict === / .includes()
@@ -72,7 +74,7 @@ const fetchCase = async (waslaFrame, referralId) => {
     // pending case (status "3", WaitingAcceptance) fell through to
     // isStillInAcceptance=false and got wrongly marked claimed: "No"
     // instead of being left queued for a later check.
-    const status = Number(foundPatient.status);
+    const status = Number(statusString);
     const isStillInAcceptance = WAITING_ACCEPTANCE_STATUS_CODES === status;
 
     const isClaimed = CLAIMED_STATUS_CODES.includes(status);
@@ -89,6 +91,7 @@ const fetchCase = async (waslaFrame, referralId) => {
       statusID,
       shouldUpdateAndNotify: isStillInAcceptance ? false : true,
       tabName: "orders",
+      patientName,
     };
   }
 
@@ -119,11 +122,13 @@ const fetchCase = async (waslaFrame, referralId) => {
  *   "Confirmed" (see WASLA_STATUS_TYPES).
  * @param {"Yes" | "No"} params.claimed
  * @param {string} [params.tabName]
+ * @param {string} [params.patientName]
  * @returns {Promise<void>}
  */
 const updateAndNotifyUser = async ({
   sendTelegramMessage,
   referralId,
+  patientName,
   status,
   hints,
   statusID,
@@ -142,6 +147,7 @@ const updateAndNotifyUser = async ({
     `${statusEmoji} *Referral Status Update*\n` +
     `────────────────────────\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
+    (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
     `📋 *Status:* ${statusText}` +
     hintsLine;
 
@@ -159,8 +165,31 @@ const updateAndNotifyUser = async ({
     `${statusEmoji} *Referral Status Update for* \`${getOrgLabel()}\`\n` +
     `────────────────────────\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
+    (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
     `📋 *Status:* ${statusText}` +
     hintsLine;
+
+  // Lets the watcher chat confirm patient arrival or withdraw our
+  // acceptance straight from this message - callback_data format matches
+  // the accept/reject/etc. buttons (buildButtons), handled separately in
+  // installTelegramBotApi.mjs's callback_query listener via
+  // performArrivalConfirmation/performWithdrawal.
+  const arrivalButtonMarkup = isClaimed
+    ? {
+        inline_keyboard: [
+          [
+            {
+              text: "🏥 Confirm Arrival",
+              callback_data: `arrived_${referralId}`,
+            },
+            {
+              text: "🚫 Withdraw",
+              callback_data: `withdraw_${referralId}`,
+            },
+          ],
+        ],
+      }
+    : null;
 
   await Promise.all([
     sendTelegramMessage(telegramMessage),
@@ -171,6 +200,7 @@ const updateAndNotifyUser = async ({
           undefined,
           VERIFICATION_CODE_WATCHER_CHAT_ID,
           true,
+          arrivalButtonMarkup,
         )
       : null,
   ]);

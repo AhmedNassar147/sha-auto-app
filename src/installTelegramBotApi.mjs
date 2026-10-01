@@ -28,6 +28,8 @@ import { USER_ACTION_TYPES } from "./constants.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
+import performArrivalConfirmation from "./telegramFunctions/performArrivalConfirmation.mjs";
+import performWithdrawal from "./telegramFunctions/performWithdrawal.mjs";
 
 const execAsync = promisify(exec);
 
@@ -85,6 +87,18 @@ const COMMANDS = {
     description:
       "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI reason",
     command: "letter",
+  },
+  confirmArrival: {
+    value: /\/arrived (.+)/,
+    description:
+      "Confirm arrival. Example: /arrived 13509 OR /arrived 13509 1210 OR /arrived 5AW0BELHL51HPFI 1210 note",
+    command: "arrived",
+  },
+  withdrawReferral: {
+    value: /\/withdraw (.+)/,
+    description:
+      "Withdraw acceptance. Example: /withdraw 13509 OR /withdraw 5AW0BELHL51HPFI reason",
+    command: "withdraw",
   },
   getInvoiceFile: {
     value: /\/invoice(?:\s+(.*))?$/,
@@ -355,6 +369,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     targetReferralIdForButtons,
     overrideChatId = null,
     skipOnlineCheckCreation = false,
+    extraReplyMarkup = null,
   ) => {
     const TG_CHAT_ID = overrideChatId || getActiveChatID();
 
@@ -372,8 +387,10 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       if (message) {
         const res = await sendBotMessage(TG_CHAT_ID, message, {
           disable_notification: false,
-          ...(targetReferralIdForButtons && {
-            reply_markup: buildButtons(targetReferralIdForButtons),
+          ...((targetReferralIdForButtons || extraReplyMarkup) && {
+            reply_markup: targetReferralIdForButtons
+              ? buildButtons(targetReferralIdForButtons)
+              : extraReplyMarkup,
           }),
         });
 
@@ -1065,6 +1082,56 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     );
   });
 
+  safeOnText(COMMANDS.confirmArrival.value, async (msg, match) => {
+    const { unAuthorizedMessage, chatId, msgId } =
+      getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
+    }
+
+    const raw = (match[1] || "").trim();
+    const parts = raw.split(/\s+/);
+    const idArg = parts[0];
+
+    // Since notes are also optional free text, whether the second token IS
+    // a time is decided (both here and inside performArrivalConfirmation)
+    // by whether it looks like one (all digits, 3-4 of them) - anything
+    // else is treated as the start of notes instead.
+    const maybeTime = parts[1];
+    const timeGiven = !!maybeTime && /^\d{3,4}$/.test(maybeTime);
+    const notes = (timeGiven ? parts.slice(2) : parts.slice(1)).join(" ");
+
+    const { message } = await performArrivalConfirmation({
+      browser,
+      idArg,
+      maybeTime,
+      notes,
+    });
+
+    return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
+  });
+
+  safeOnText(COMMANDS.withdrawReferral.value, async (msg, match) => {
+    const { unAuthorizedMessage, chatId, msgId } =
+      getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
+    }
+
+    const raw = (match[1] || "").trim();
+    const parts = raw.split(/\s+/);
+    const idArg = parts[0];
+    const notes = parts.slice(1).join(" ");
+
+    const { message } = await performWithdrawal({ browser, idArg, notes });
+
+    return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
+  });
+
   // safeOnText(COMMANDS.getInvoiceFile.value, async (msg, match) => {
   //   const { unAuthorizedMessage, chatId, msgId } = getIfNotAuthorizedMessage(
   //     msg,
@@ -1426,6 +1493,33 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         return reply(_message);
       }
       const [action, referralId] = data?.split("_") || [];
+
+      // Separate from handleUserActionOnCase's fixed action set
+      // (accept/reject/cancel/noreply/online/lefttime) - this is the
+      // "Confirm Arrival" button sent alongside the watcher-chat status
+      // update once a case is Confirmed/claimed (see
+      // checkReferralSelectedStatus.mjs), sharing its core logic with the
+      // /arrived slash command via performArrivalConfirmation.
+      if (action === "arrived") {
+        const { message: arrivalMessage } = await performArrivalConfirmation({
+          browser,
+          idArg: referralId,
+        });
+
+        return reply(arrivalMessage);
+      }
+
+      // Same deal as "arrived" above - the "Withdraw" button sent
+      // alongside it, sharing its core logic with the /withdraw slash
+      // command via performWithdrawal.
+      if (action === "withdraw") {
+        const { message: withdrawMessage } = await performWithdrawal({
+          browser,
+          idArg: referralId,
+        });
+
+        return reply(withdrawMessage);
+      }
 
       const {
         message: _message,

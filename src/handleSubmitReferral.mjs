@@ -21,6 +21,7 @@ import sleep from "./sleep.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
 import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
@@ -169,6 +170,56 @@ const buildDirectApiTelegramMessage = ({
   );
 };
 
+/**
+ * Notifies the shared/admin watcher chat the moment a case is actually
+ * accepted (not just scheduled) - same watcher pattern as
+ * loginWithNafathCredentials.mjs/checkReferralSelectedStatus.mjs, but
+ * fired right here instead of waiting for the later claim-status
+ * resolution, since that can take a while and the watcher chat wants to
+ * know (and be able to withdraw) as soon as the acceptance itself lands.
+ * Best-effort - a notify failure shouldn't be treated as the acceptance
+ * itself failing.
+ *
+ * @param {object} params
+ * @param {(message: string, files?: any[], targetReferralIdForButtons?: string, overrideChatId?: string, skipOnlineCheckCreation?: boolean, extraReplyMarkup?: object) => Promise<any>} params.sendTelegramMessage
+ * @param {string} params.referralId
+ * @param {string} params.navigationId
+ * @param {string} [params.patientName]
+ * @returns {Promise<void>}
+ */
+const notifyWatcherOfAcceptance = async ({
+  sendTelegramMessage,
+  navigationId,
+  referralId,
+  patientName,
+}) => {
+  const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
+
+  if (!VERIFICATION_CODE_WATCHER_CHAT_ID) return;
+
+  const watcherMessage =
+    `✅ *JUST Accepted Case At* \`${getOrgLabel()}\`\n` +
+    `────────────────────────\n` +
+    `🔢 *ID:* \`${navigationId}\`\n` +
+    `🔢 *Referral ID:* \`${referralId}\`\n` +
+    (patientName ? `👤 *Patient:* ${patientName}\n` : "");
+
+  const withdrawButtonMarkup = {
+    inline_keyboard: [
+      [{ text: "🚫 Withdraw", callback_data: `withdraw_${referralId}` }],
+    ],
+  };
+
+  await sendTelegramMessage?.(
+    watcherMessage,
+    [],
+    undefined,
+    VERIFICATION_CODE_WATCHER_CHAT_ID,
+    true,
+    withdrawButtonMarkup,
+  ).catch(() => {});
+};
+
 const waitedBeforeActionMs = 950;
 
 const handleSubmitReferral = (options) => async (patient) => {
@@ -186,6 +237,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     referralEndTimestamp,
     providerName,
     randomFileName,
+    patientName,
   } = patient;
 
   if (!navigationId) {
@@ -277,6 +329,15 @@ const handleSubmitReferral = (options) => async (patient) => {
         `✅ [${actionType}] ${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API for referralId=${referralId} (navigationId=${navigationId})`,
         "handleSubmitReferral",
       );
+
+      if (isAcceptanceAction) {
+        await notifyWatcherOfAcceptance({
+          sendTelegramMessage,
+          referralId,
+          patientName,
+          navigationId,
+        });
+      }
 
       // this is now supports rejection and accteptance
       await sleep(3_000);
@@ -492,6 +553,13 @@ const handleSubmitReferral = (options) => async (patient) => {
         `✅ [${actionType}] Clicked Confirm for referralId=${referralId} (navigationId=${navigationId})`,
         "handleSubmitReferral",
       );
+
+      await notifyWatcherOfAcceptance({
+        sendTelegramMessage,
+        referralId,
+        patientName,
+        navigationId,
+      });
 
       // Same bookkeeping handleCaseAcceptanceOrRejection.mjs does right
       // after a real acceptance API call: mark the case as needing its

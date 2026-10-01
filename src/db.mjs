@@ -129,6 +129,10 @@ const getPatientStatement = db.prepare(
   `SELECT * FROM patients WHERE referralId = ?`,
 );
 
+const getPatientByNavigationIdStatement = db.prepare(
+  `SELECT * FROM patients WHERE navigationId = ? ORDER BY id DESC LIMIT 1`,
+);
+
 const toDbRow = (oldRow, patient) => {
   const merged = { ...(oldRow || {}), ...(patient || {}) };
 
@@ -455,6 +459,9 @@ const deletePatients = (referralIds) => {
 const getPatient = (referralId) =>
   getPatientStatement.get(String(referralId)) || null;
 
+const getPatientByNavigationId = (navigationId) =>
+  getPatientByNavigationIdStatement.get(String(navigationId)) || null;
+
 const getOldestPatient = () =>
   db.prepare(`SELECT * FROM patients ORDER BY id ASC LIMIT 1`).get() || null;
 
@@ -666,6 +673,7 @@ export {
   updatePatients,
   deletePatients,
   getPatient,
+  getPatientByNavigationId,
   getCasesWithEmptyClaimStatus,
   clearClaimedStatus,
   clearAllClaimedStatuses,
