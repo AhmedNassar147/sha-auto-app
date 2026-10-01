@@ -146,7 +146,18 @@ const toDbRow = (oldRow, patient) => {
     userActionName: merged.userActionName ?? null,
     providerAction: merged.providerAction ?? null,
     claimed: merged.claimed ?? null,
-    status: merged.status ?? null,
+    // String(), not a bare number - better-sqlite3 binds every plain JS
+    // number as SQLite REAL (confirmed live), regardless of whether it's
+    // integer-valued, and this column has TEXT affinity: a REAL->TEXT
+    // affinity conversion always keeps a decimal point (SQLite's "%!.15g"
+    // format), so an unwrapped `status: 3` lands as the literal text "3.0",
+    // not "3" - every caller that passes a number here (e.g. the Number()
+    // conversions in processCollectingPatients.mjs/
+    // checkReferralSelectedStatus.mjs, normalizeStatus.mjs) was silently
+    // reintroducing the exact bug it was trying to fix. Fixed once here,
+    // at the single point all writes pass through, instead of requiring
+    // every call site to remember to String()-wrap it.
+    status: merged.status != null ? String(merged.status) : null,
     isSent: merged.isSent ?? null,
     isReceived: merged.isReceived ?? null,
     scheduledAt: merged.scheduledAt ?? null,

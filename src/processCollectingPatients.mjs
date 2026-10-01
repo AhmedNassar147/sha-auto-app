@@ -73,8 +73,6 @@ const processCollectingPatients = async ({
     for (const patient of patients) {
       index++;
 
-      createConsoleMessage("info", patient, "patient");
-
       const {
         referralId: patientReferralId,
         createdAt,
@@ -125,6 +123,8 @@ const processCollectingPatients = async ({
         );
         continue;
       }
+
+      createConsoleMessage("info", patient, "patient");
 
       // mark as we found at least one new patient (before processing)
       if (!newPatientAdded) newPatientAdded = true;
