@@ -201,7 +201,14 @@ const processCollectingPatients = async ({
         referralReason,
         providerRegion,
         referralType,
-        status,
+        // The tabs/pending-list API returns this as a decimal-formatted
+        // string (e.g. "3.0"), unlike the myOrders/tab-2 endpoint used by
+        // checkReferralSelectedStatus.mjs (which returns "3") - stored
+        // as-is, "3.0" never matches WASLA_STATUS_TYPES' "3" key, so the
+        // /db page falls back to showing the raw value instead of a status
+        // name. Normalize to a number here too, matching the Number()
+        // conversion already done in checkReferralSelectedStatus.mjs.
+        status: Number(status),
         navigationId,
         transferUrl,
         ...patientData,
