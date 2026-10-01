@@ -12,9 +12,10 @@
  * separate API endpoint.
  *
  */
-import { WASLA_STATUS_TYPES } from "./constants.mjs";
+import { WASLA_STATUS_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 
 const COLUMN_LABELS = {
+  openCase: "",
   referralDate: "Referral Date",
   navigationId: "Navigation ID",
   referralId: "Referral ID",
@@ -57,6 +58,9 @@ const COLUMN_LABELS = {
 };
 
 const COLUMNS = [
+  // Not a real `patients` column - renderCell builds this straight from
+  // the row's navigationId (see below), ignoring row.openCase (undefined).
+  "openCase",
   "referralDate",
   "broadcastedAt",
   "referralEndDate",
@@ -123,6 +127,13 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
+  if (column === "openCase") {
+    if (!row?.navigationId) return '<span class="empty-cell">—</span>';
+    const safeUrl = escapeHtml(
+      `${WASLA_REFERRAL_VIEW_URL}/${row.navigationId}`,
+    );
+    return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">Open</a>`;
+  }
   if (column === "attachmentUrls") {
     // Handles its own empty case (rather than falling into the generic
     // empty-cell check below) so the refresh link can still show even
@@ -149,7 +160,7 @@ const renderCell = (column, value, row) => {
       : "";
 
     const refreshHtml = row?.navigationId
-      ? ` <a href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
+      ? ` <a class="refresh-link" href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
       : "";
 
     return (linksHtml || '<span class="empty-cell">—</span>') + refreshHtml;
@@ -338,6 +349,8 @@ const renderDbPage = ({ rows, filters = {} }) => {
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
   .badge-red { background: var(--badge-red-bg); color: var(--badge-red-text); }
   .empty-cell { color: var(--muted); }
+  .refresh-link { display: inline-block; font-size: 18px; line-height: 1; color: var(--text); text-decoration: none; vertical-align: middle; }
+  .refresh-link:hover { color: var(--accent); }
   .state-msg { padding: 40px 24px; text-align: center; color: var(--muted); }
 </style>
 </head>
