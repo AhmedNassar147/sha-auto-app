@@ -5,10 +5,10 @@
  * Injects a MUI-styled Snackbar+Alert-like status indicator into the given
  * page - purely visual, for a human operator watching the live browser to
  * see the direct-API submit attempt's progress/outcome without needing to
- * check Telegram/console. Styled to match MUI's own Snackbar (bottom-left
- * anchor, MUI's default anchorOrigin) + "filled" Alert (solid severity
- * color) look, so it blends in with the rest of the Wasla app's own
- * MUI-based UI rather than looking like a foreign injected element.
+ * check Telegram/console. Styled to match MUI's own Snackbar (bottom-right
+ * anchor) + "filled" Alert (solid severity color, taller padding) look, so
+ * it blends in with the rest of the Wasla app's own MUI-based UI rather
+ * than looking like a foreign injected element.
  *
  * Each call replaces any snackbar this helper already showed (by element
  * id), so a "submitting..." call followed by a "done" call swaps cleanly
@@ -54,28 +54,29 @@ const showPageSnackbar = async (page, { message, severity = "info" }) => {
         el.style.cssText = `
           position: fixed;
           bottom: 24px;
-          left: 24px;
+          right: 24px;
           z-index: 2147483647;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 12px;
           min-width: 288px;
           max-width: 568px;
-          padding: 6px 16px;
+          min-height: 28px;
+          padding: 16px 20px;
           border-radius: 4px;
           box-shadow: 0px 3px 5px -1px rgba(0,0,0,0.2), 0px 6px 10px 0px rgba(0,0,0,0.14), 0px 1px 18px 0px rgba(0,0,0,0.12);
           background-color: ${bg};
           color: #fff;
           font-family: Roboto, Helvetica, Arial, sans-serif;
-          font-size: 0.875rem;
+          font-size: 0.9375rem;
           font-weight: 400;
-          line-height: 1.43;
+          line-height: 1.5;
         `;
 
         const iconSpan = document.createElement("span");
         iconSpan.textContent = iconChar;
         iconSpan.style.cssText =
-          "font-size: 1.25rem; line-height: 1; flex-shrink: 0;";
+          "font-size: 1.5rem; line-height: 1; flex-shrink: 0;";
 
         const textSpan = document.createElement("span");
         textSpan.textContent = text;

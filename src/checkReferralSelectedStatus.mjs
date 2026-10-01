@@ -6,6 +6,7 @@
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import sleep from "./sleep.mjs";
+import getOrgLabel from "./getOrgLabel.mjs";
 import { updatePatients } from "./db.mjs";
 import {
   CLAIMED_STATUS_CODES,
@@ -52,7 +53,7 @@ const fetchCase = async (waslaFrame, referralId) => {
     : null;
 
   if (foundPatient) {
-    const { status, statusName } = foundPatient;
+    const { status } = foundPatient;
     const isStillInAcceptance = WAITING_ACCEPTANCE_STATUS_CODES === status;
 
     const isClaimed = CLAIMED_STATUS_CODES.includes(status);
@@ -116,17 +117,44 @@ const updateAndNotifyUser = async ({
     ? `We have been selected (${statusID})`
     : `We have NOT been selected${statusID ? ` (${statusID})` : ""}`;
 
+  const hintsLine = hints?.length ? `\n⚠️ *Hints:* ${hints.join("\n\n")}` : "";
+
   const telegramMessage =
     `${statusEmoji} *Referral Status Update*\n` +
     `────────────────────────\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
     `📋 *Status:* ${statusText}` +
-    `${!!hints?.length ? `\n⚠️ *Hints:* ${hints.join("\n\n")}` : ""}`;
+    hintsLine;
 
   const updates = { referralId, status, claimed, tabName };
 
   updatePatients(updates);
-  await sendTelegramMessage(telegramMessage);
+
+  // Same shared/admin watcher pattern as loginWithNafathCredentials.mjs's
+  // Nafath-code report: that chat tracks multiple orgs' bot deployments at
+  // once, so its copy needs the org label the operator's own default chat
+  // doesn't (they already know which deployment they're looking at).
+  const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
+
+  const watcherMessage =
+    `${statusEmoji} *Referral Status Update for* \`${getOrgLabel()}\`\n` +
+    `────────────────────────\n` +
+    `🔢 *Referral ID:* \`${referralId}\`\n` +
+    `📋 *Status:* ${statusText}` +
+    hintsLine;
+
+  await Promise.all([
+    sendTelegramMessage(telegramMessage),
+    VERIFICATION_CODE_WATCHER_CHAT_ID
+      ? sendTelegramMessage(
+          watcherMessage,
+          [],
+          undefined,
+          VERIFICATION_CODE_WATCHER_CHAT_ID,
+          true,
+        )
+      : null,
+  ]);
 };
 
 /**
