@@ -78,6 +78,7 @@ const formatPatientToNtfy = (patient) => {
     `🏢 ORG: ${safe(orgLabel)}\n` +
     (caseUrl ? `🔗 Case Link: ${caseUrl}\n` : "") +
     `🔢 Referral ID: ${safe(referralId)}\n` +
+    `🆔 Navigation ID: ${safe(navigationId)}\n` +
     `🕐 Actionable At: ${safe(referralEndDateActionablAt)}\n` +
     `🕐 Cutoff Time: ${cutoffLabel}\n` +
     `🕐 Ends At: ${safe(referralEndDate)}\n` +

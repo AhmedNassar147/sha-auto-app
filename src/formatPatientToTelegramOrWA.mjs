@@ -75,6 +75,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `────────────────────────\n\n` +
       (caseUrl ? `🔗 <b>Case Link:</b> <a href="${caseUrl}">Open</a>\n` : "") +
       `🔢 <b>Referral ID:</b> <code>${referralId}</code>\n` +
+      `🆔 <b>Navigation ID:</b> <code>${navigationId || ""}</code>\n` +
       `👤 <b>Name:</b> <code>${patientName}</code>\n` +
       `📱 <b>Mobile:</b> <code>${mobileNumber || ""}</code>\n` +
       `🌐 <b>Nationality:</b> <code>${nationality || ""}</code>\n` +
@@ -103,6 +104,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `────────────────────────\n\n` +
       (caseUrl ? `🔗 *Case Link:* ${caseUrl}\n` : "") +
       `🔢 *Referral ID:* \`${referralId}\`\n` +
+      `🆔 *Navigation ID:* \`${navigationId || ""}\`\n` +
       `👤 *Name:* \`${patientName}\`\n` +
       `📱 *Mobile:* \`${mobileNumber || ""}\`\n` +
       `🌐 *Nationality:* \`${nationality || ""}\`\n` +

@@ -83,7 +83,7 @@ const COMMANDS = {
   getReferralLetter: {
     value: /\/letter (.+)/,
     description:
-      "Long press → get letter, Example: /letter a 12345 OR /letter r 12345 OR /letter r 12345 reason",
+      "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI reason",
     command: "letter",
   },
   getInvoiceFile: {
@@ -955,20 +955,23 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
     const parts = raw.split(/\s+/); // split by spaces
     const action = parts[0]?.toLowerCase(); // "a" or "r"
-    const referralId = parts[1]; // "125225"
+    const referralId = parts[1]; // "5AW0BELHL51HPFI"
     const reason = (parts.slice(2) || []).join(" "); // "some reason" or ""
 
     if (!["a", "r"].includes(action)) {
       return sendBotMessage(
         chatId,
-        `⛔ Invalid action \`${action}\`.\nUse *a* for accept or *r* for reject.\nExample: \`/letter a 125225\``,
+        `⛔ Invalid action \`${action}\`.\nUse *a* for accept or *r* for reject.\nExample: \`/letter a 5AW0BELHL51HPFI\``,
       );
     }
 
-    if (!referralId || !/^\d+$/.test(referralId)) {
+    // Wasla referral ids are alphanumeric (e.g. "5AW0BELHL51HPFI"), unlike
+    // the old GlobeMed system's purely numeric ones this check used to
+    // assume - a digits-only regex here rejected every real Wasla id.
+    if (!referralId || !/^[A-Za-z0-9]+$/.test(referralId)) {
       return sendBotMessage(
         chatId,
-        `⛔ Invalid referral ID \`${referralId}\`.\nExample: \`/letter a 125225\``,
+        `⛔ Invalid referral ID \`${referralId}\`.\nExample: \`/letter a 5AW0BELHL51HPFI\``,
       );
     }
 

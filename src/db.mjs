@@ -376,12 +376,21 @@ const getPatient = (referralId) =>
 const getOldestPatient = () =>
   db.prepare(`SELECT * FROM patients ORDER BY id ASC LIMIT 1`).get() || null;
 
+// Excludes cases whose window has already closed - re-applied per
+// instruction. Note: this function's only real caller (index.mjs, startup
+// rehydration of patientsStore's non-claimable-cases queue) means a case
+// that was still unresolved when the app restarted, but whose window
+// closed before that restart, won't be re-queued for a claim-status check.
+// Rows with no referralEndTimestamp at all are still included (we don't
+// know they're expired, so don't silently drop them).
 const getCasesWithEmptyClaimStatusStatement = db.prepare(
-  `SELECT * FROM patients WHERE claimed IS NULL`,
+  `SELECT * FROM patients
+   WHERE claimed IS NULL
+     AND (referralEndTimestamp IS NULL OR referralEndTimestamp > @now)`,
 );
 
 const getCasesWithEmptyClaimStatus = () =>
-  getCasesWithEmptyClaimStatusStatement.all();
+  getCasesWithEmptyClaimStatusStatement.all({ now: Date.now() });
 
 const clearClaimedStatusStatement = db.prepare(
   `UPDATE patients SET claimed = NULL WHERE referralId = ?`,
@@ -402,9 +411,9 @@ const clearAllClaimedStatuses = () => clearAllClaimedStatusesStatement.run();
 // whose claimed status looks stale/wrong. Requires explicit referralId(s)
 // rather than defaulting to "clear everything", same as deletePatients.
 const clearClaimedStatus = (referralIds) => {
-  const ids = (
-    Array.isArray(referralIds) ? referralIds : [referralIds]
-  ).filter(Boolean);
+  const ids = (Array.isArray(referralIds) ? referralIds : [referralIds]).filter(
+    Boolean,
+  );
   if (!ids.length) return;
 
   if (ids.length === 1) {

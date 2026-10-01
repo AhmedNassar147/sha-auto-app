@@ -19,6 +19,7 @@ import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
+import showPageSnackbar from "./showPageSnackbar.mjs";
 import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
@@ -125,6 +126,48 @@ const reportFailure = async (
   ]);
 };
 
+/**
+ * Builds the Telegram message reporting the direct-API accept/reject
+ * attempt's outcome - shared by the success and failure branches so the
+ * header/footer structure (ReferralId/ID/actionButtonTimingLine) isn't
+ * hand-duplicated between them.
+ *
+ * @param {{
+ *   success: boolean,
+ *   isAcceptanceAction: boolean,
+ *   referralId: string,
+ *   navigationId: string,
+ *   apiResult: Awaited<ReturnType<typeof import("./submitWaslaReferralViaApi.mjs").default>>,
+ *   actionButtonTimingLine: string,
+ * }} params
+ * @returns {string}
+ */
+const buildDirectApiTelegramMessage = ({
+  success,
+  isAcceptanceAction,
+  referralId,
+  navigationId,
+  apiResult,
+  actionButtonTimingLine,
+}) => {
+  const title = success
+    ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
+    : `*Direct API ${isAcceptanceAction ? "accept" : "reject"} attempt failed*`;
+
+  const detailLine = success
+    ? `Message: ${apiResult.data?.message ?? "(no message)"}`
+    : `Message: step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, url=\`${apiResult.url}\`, error=\`${apiResult.error}\``;
+
+  return (
+    `ReferralId: \`${referralId}\`\n` +
+    `ID: \`${navigationId}\`\n` +
+    `${title}\n` +
+    `${detailLine}\n\n` +
+    actionButtonTimingLine +
+    (success ? "" : "\nFalling back to the UI.")
+  );
+};
+
 const handleSubmitReferral =
   ({
     actionType,
@@ -209,22 +252,11 @@ const handleSubmitReferral =
 
       const actionButtonWaitMs = Date.now() - tActionButtonWaitStart;
 
-      createConsoleMessage(
-        "info",
-        `⏱️ actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after ${actionButtonWaitMs}ms for referralId=${referralId} (navigationId=${navigationId})`,
-        "handleSubmitReferral",
-      );
-
-      // const files = [
-      //   {
-      //     fileName: randomFileName,
-      //     fileData: filebase64,
-      //     fileExtension: 0,
-      //     userCode: CLIENT_NAME,
-      //     idAttachmentType: 14,
-      //     languageCode: 1,
-      //   },
-      // ];
+      // createConsoleMessage(
+      //   "info",
+      //   `⏱️ actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after ${actionButtonWaitMs}ms for referralId=${referralId} (navigationId=${navigationId})`,
+      //   "handleSubmitReferral",
+      // );
 
       // Computed up front (not just inside the modal-filling step below) so
       // the same text is used both for the direct-API attempt's "notes" and
@@ -234,6 +266,15 @@ const handleSubmitReferral =
       const description = isAcceptanceAction
         ? randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(navigationId)
         : undefined;
+
+      // Not awaited - purely visual (showPageSnackbar never throws, it
+      // logs and swallows internally), so it shouldn't serialize an extra
+      // page.evaluate round-trip onto this time-critical path in front of
+      // the actual submit call.
+      showPageSnackbar(page, {
+        message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
+        severity: "info",
+      });
 
       const apiResult = await submitWaslaReferralViaApi({
         page,
@@ -245,34 +286,39 @@ const handleSubmitReferral =
         isAccept: isAcceptanceAction,
       });
 
-      if (apiResult.success) {
-        await sendTelegramMessage?.(
-          `✅ *[${actionType}]* Wasla ${isAcceptanceAction ? "accepted" : "rejected"} referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) via direct API.`,
-        );
+      showPageSnackbar(page, {
+        message: apiResult.success
+          ? `${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API`
+          : `Direct API ${isAcceptanceAction ? "accept" : "reject"} failed - falling back to UI`,
+        severity: apiResult.success ? "success" : "error",
+      });
 
+      const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
+
+      await sendTelegramMessage?.(
+        buildDirectApiTelegramMessage({
+          success: apiResult.success,
+          isAcceptanceAction,
+          referralId,
+          navigationId,
+          apiResult,
+          actionButtonTimingLine,
+        }),
+      );
+
+      if (apiResult.success) {
         createConsoleMessage(
           "success",
           `✅ [${actionType}] ${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API for referralId=${referralId} (navigationId=${navigationId})`,
           "handleSubmitReferral",
         );
 
-        // Matches handleCaseAcceptanceOrRejection.mjs: only acceptance
-        // needs its claimed status double-checked later - a rejection
-        // has nothing further to verify.
+        // this is not supports rejection and accteptance
         await sleep(SLEEP_AFTER_CONFIRMATION_MS);
         patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
+
         return;
       }
-
-      await sendTelegramMessage?.(
-        `⚠️ *[${actionType}]* Direct API attempt failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) - step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, url=\`${apiResult.url}\` error=\`${apiResult.error}\`. Falling back to the UI.`,
-      );
-
-      createConsoleMessage(
-        "warn",
-        `⚠️ Direct API ${isAcceptanceAction ? "accept" : "reject"} failed (step=${apiResult.step}, error=${apiResult.error}) for referralId=${referralId} (navigationId=${navigationId}) attachmentId=${apiResult.attachmentId} url=${apiResult.url} - falling back to UI flow`,
-        "handleSubmitReferral",
-      );
 
       if (!actionButtonHandle) {
         await reportFailure(
@@ -295,10 +341,6 @@ const handleSubmitReferral =
         );
         return;
       }
-
-      await sendTelegramMessage?.(
-        `⏱️ *[${actionType}]* actionButtonHandle ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\` for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`)`,
-      );
 
       createConsoleMessage(
         "success",
