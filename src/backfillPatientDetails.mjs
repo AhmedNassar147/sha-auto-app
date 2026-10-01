@@ -79,7 +79,7 @@ try {
   }
 
   const {
-    frameReady,
+    success: frameReady,
     frame,
     message: frameMessage,
   } = await getWaslaReferralFrame(newPage);
