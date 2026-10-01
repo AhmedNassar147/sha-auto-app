@@ -160,10 +160,15 @@ const renderCell = (column, value, row) => {
       : "";
 
     const refreshHtml = row?.navigationId
-      ? ` <a class="refresh-link" href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
+      ? `<a class="refresh-link" href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
       : "";
 
-    return (linksHtml || '<span class="empty-cell">—</span>') + refreshHtml;
+    return (
+      `<div class="attachments-cell">` +
+      `<span>${linksHtml || '<span class="empty-cell">—</span>'}</span>` +
+      refreshHtml +
+      `</div>`
+    );
   }
   if (value === null || value === undefined || value === "") {
     return '<span class="empty-cell">—</span>';
@@ -349,7 +354,8 @@ const renderDbPage = ({ rows, filters = {} }) => {
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
   .badge-red { background: var(--badge-red-bg); color: var(--badge-red-text); }
   .empty-cell { color: var(--muted); }
-  .refresh-link { display: inline-block; font-size: 18px; line-height: 1; color: var(--text); text-decoration: none; vertical-align: middle; }
+  .attachments-cell { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .refresh-link { display: inline-block; flex-shrink: 0; font-size: 18px; line-height: 1; color: var(--text); text-decoration: none; vertical-align: middle; }
   .refresh-link:hover { color: var(--accent); }
   .state-msg { padding: 40px 24px; text-align: center; color: var(--muted); }
 </style>

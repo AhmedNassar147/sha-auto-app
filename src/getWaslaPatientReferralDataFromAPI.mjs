@@ -55,6 +55,7 @@ import {
  *   specialty?: string,
  *   subSpecialty?: string,
  *   sourceProvider?: string,
+ *   requestedBedType?: string,
  *   note?: string,
  *   medicalData?: string,
  *   files?: object[],
@@ -174,6 +175,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           subSpeciality,
           providerName,
           additionalInformation,
+          requestedBedType,
         } = caseInfo || {};
 
         // Prefer the English name where the API has one - falls back to
@@ -306,6 +308,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           specialty: speciality?.name,
           subSpecialty: subSpeciality?.name,
           sourceProvider: providerName?.name,
+          requestedBedType: requestedBedType?.name,
           note: additionalInformation,
           medicalData: medicalDataText,
           files,

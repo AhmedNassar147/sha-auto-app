@@ -186,7 +186,6 @@ const processCollectingPatients = async ({
         referralId,
         createdAt,
         randomFileName,
-        requestedBedType,
         ...getWaslaCaseWindow(
           broadcastedAt,
           cutoffTimeMs,
@@ -212,6 +211,7 @@ const processCollectingPatients = async ({
         navigationId,
         transferUrl,
         ...patientData,
+        requestedBedType: requestedBedType || patientData.requestedBedType,
         letterType,
         tab: 1,
         tabName: "Referrals",

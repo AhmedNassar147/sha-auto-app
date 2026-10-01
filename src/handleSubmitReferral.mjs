@@ -169,7 +169,7 @@ const buildDirectApiTelegramMessage = ({
   );
 };
 
-const waitedBeforeActionMs = 1000;
+const waitedBeforeActionMs = 950;
 
 const handleSubmitReferral = (options) => async (patient) => {
   const {
@@ -288,6 +288,25 @@ const handleSubmitReferral = (options) => async (patient) => {
     const targetButtonTexts = isAcceptanceAction
       ? ACCEPT_BUTTON_TEXTS
       : REJECT_BUTTON_TEXTS;
+
+    // Scrolls the window AND any element whose own content overflows -
+    // this page's layout may scroll via an inner MUI content pane rather
+    // than document.body/window (confirmed live: a plain window.scrollTo
+    // here stopped having any visible effect), so rather than guess at one
+    // specific container's selector, this just scrolls everything that
+    // can scroll. Purely for the human operator left looking at this tab
+    // afterward (see file docblock) - doesn't gate the actual button
+    // click below, which Puppeteer already scrolls into view itself.
+    await page
+      .evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+        document.querySelectorAll("*").forEach((el) => {
+          if (el.scrollHeight > el.clientHeight + 10) {
+            el.scrollTop = el.scrollHeight;
+          }
+        });
+      })
+      .catch(() => {});
 
     // Confirmed live: the accept/reject button starts disabled and only
     // becomes clickable later (same shape as the Confirm button further
