@@ -161,7 +161,7 @@ const performArrivalConfirmation = async ({
 
     return {
       success: true,
-      message: `✅ Patient arrival confirmed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) at \`${arrivalAt}\` \nMessage: ${result.message}.`,
+      message: `✅ Patient arrival confirmed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`) at \`${arrivalAt}\` \nMessage: ${result.data?.message ?? "(no message)"}..`,
     };
   } catch (error) {
     createConsoleMessage(
