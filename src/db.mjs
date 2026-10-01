@@ -376,17 +376,20 @@ const getPatient = (referralId) =>
 const getOldestPatient = () =>
   db.prepare(`SELECT * FROM patients ORDER BY id ASC LIMIT 1`).get() || null;
 
-// Excludes cases whose window has already closed - re-applied per
-// instruction. Note: this function's only real caller (index.mjs, startup
-// rehydration of patientsStore's non-claimable-cases queue) means a case
-// that was still unresolved when the app restarted, but whose window
-// closed before that restart, won't be re-queued for a claim-status check.
-// Rows with no referralEndTimestamp at all are still included (we don't
-// know they're expired, so don't silently drop them).
+// Only includes cases whose window has already closed - claimed-status
+// verification is meaningful once referralEndTimestamp < now, since only
+// then should an accept/reject have actually happened (checking earlier,
+// while the window's still open, has nothing to verify yet). This is also
+// exactly right for this function's one real caller (index.mjs, startup
+// rehydration of patientsStore's non-claimable-cases queue): on restart it
+// re-queues precisely the cases whose window already closed and still need
+// their outcome checked. Rows with no referralEndTimestamp at all are
+// still included (we don't know they're not due yet, so don't silently
+// drop them).
 const getCasesWithEmptyClaimStatusStatement = db.prepare(
   `SELECT * FROM patients
    WHERE claimed IS NULL
-     AND (referralEndTimestamp IS NULL OR referralEndTimestamp > @now)`,
+     AND (referralEndTimestamp IS NULL OR referralEndTimestamp < @now)`,
 );
 
 const getCasesWithEmptyClaimStatus = () =>
