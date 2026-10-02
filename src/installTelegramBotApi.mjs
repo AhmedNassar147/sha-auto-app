@@ -551,6 +551,76 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     ).catch(() => {});
   };
 
+  /**
+   * Sends a letter to the given chat and caches its Telegram file_id under
+   * its own (action-specific) key - a Telegram file_id can only ever be
+   * minted by actually sending the file somewhere, there's no "upload
+   * without sending" option. Used by the callback_query handler's
+   * onAcceptOrRejectForFileUpload to cache both the taken action's letter
+   * and (best-effort) the other one.
+   *
+   * @param {object} params
+   * @param {string} params.referralId
+   * @param {string} params.letterAction - "accept" or "reject".
+   * @param {string} params.messageChatId
+   * @param {number} params.msgId
+   * @returns {Promise<string | null>} The Telegram file_id, or null if the
+   *   letter wasn't available or the send failed.
+   */
+  const sendAndCacheLetter = async ({
+    referralId,
+    letterAction,
+    messageChatId,
+    msgId,
+  }) => {
+    const { fileData } =
+      (await getCurrentActionLetterFile(referralId, letterAction, true).catch(
+        () => null,
+      )) || {};
+
+    if (!fileData) {
+      createConsoleMessage(
+        "error",
+        `❌ fileData not found for action=${letterAction} and referralId=${referralId}`,
+      );
+      return null;
+    }
+
+    const fileName = `${letterAction}_${referralId}`;
+
+    const documentResponse = await bot
+      .sendDocument(
+        messageChatId,
+        fileData,
+        { reply_to_message_id: msgId, caption: `📎 ${fileName}` },
+        { filename: `${fileName}.pdf`, contentType: "application/pdf" },
+      )
+      .catch((err) => {
+        createConsoleMessage(
+          "error",
+          err?.message || err,
+          `sendDocument ${fileName}`,
+        );
+
+        return null;
+      });
+
+    const fileId = documentResponse?.document?.file_id;
+
+    if (fileId) {
+      upsertCaseFile(referralId, letterAction, fileId);
+    } else if (documentResponse) {
+      // sendDocument resolved but the response had no file_id - distinct
+      // from the already-logged send failure above (that one rejects).
+      createConsoleMessage(
+        "error",
+        `❌ sendDocument for ${fileName} resolved without a file_id`,
+      );
+    }
+
+    return fileId ?? null;
+  };
+
   const safeOnText = (regex, handler) => {
     bot.onText(regex, async (msg, match) => {
       try {
@@ -1570,38 +1640,44 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         referralId,
         action,
         onAcceptOrRejectForFileUpload: async () => {
-          const { fileData } =
-            (await getCurrentActionLetterFile(referralId, action, true)) || {};
+          const currentFileId = await sendAndCacheLetter({
+            referralId,
+            letterAction: action,
+            messageChatId,
+            msgId,
+          });
 
-          if (!fileData) {
-            const _message = `❌ fileData not found for action=${action} and referralId=${referralId}`;
-            createConsoleMessage("error", _message);
-            return await reply(_message);
+          if (!currentFileId) {
+            // sendAndCacheLetter already logged the specific reason to the
+            // console - this is just the operator-facing notification.
+            return await reply(
+              `❌ fileData not found for action=${action} and referralId=${referralId}`,
+            );
           }
 
-          const fileName = `${action}_${referralId}`;
+          // Also cache the OTHER action's letter (e.g. reject, right
+          // after an accept) - a doctor can change their mind later
+          // (accept now, reject with a custom reason after), and the
+          // /letter cache only ever had whichever action was taken here,
+          // never the other one. Best-effort - doesn't block or fail this
+          // handler (the real action already succeeded), but still tells
+          // the operator the secondary cache didn't get populated.
+          const otherAction =
+            action === USER_ACTION_TYPES.ACCEPT
+              ? USER_ACTION_TYPES.REJECT
+              : USER_ACTION_TYPES.ACCEPT;
 
-          const actionDocumentResponse = await bot
-            .sendDocument(
-              messageChatId,
-              fileData,
-              { reply_to_message_id: msgId, caption: `📎 ${fileName}` },
-              { filename: `${fileName}.pdf`, contentType: "application/pdf" },
-            )
-            .catch((err) => {
-              createConsoleMessage(
-                "error",
-                err?.message || err,
-                `sendDocument ${fileName}`,
-              );
+          const otherFileId = await sendAndCacheLetter({
+            referralId,
+            letterAction: otherAction,
+            messageChatId,
+            msgId,
+          }).catch(() => null);
 
-              return null;
-            });
-
-          const fileId = actionDocumentResponse?.document?.file_id;
-
-          if (fileId) {
-            upsertCaseFile(referralId, action, fileId);
+          if (!otherFileId) {
+            await reply(
+              `⚠️ Could not cache the ${otherAction} letter for referralId=${referralId} (the ${action} above still went through fine).`,
+            );
           }
         },
         onAnotherAction: () =>

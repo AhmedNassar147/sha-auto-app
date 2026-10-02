@@ -220,7 +220,7 @@ const notifyWatcherOfAcceptance = async ({
   ).catch(() => {});
 };
 
-const waitedBeforeActionMs = 805;
+const waitedBeforeActionMs = 810;
 
 const handleSubmitReferral = (options) => async (patient) => {
   const {
@@ -257,6 +257,7 @@ const handleSubmitReferral = (options) => async (patient) => {
   let page;
 
   try {
+    const startTime = Date.now();
     page = await browser.newPage();
 
     const [, { filePath: letterFilePath, fileData: letterFileBase64 }] =
@@ -282,6 +283,10 @@ const handleSubmitReferral = (options) => async (patient) => {
       ? randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(navigationId)
       : undefined;
 
+    const targetButtonTexts = isAcceptanceAction
+      ? ACCEPT_BUTTON_TEXTS
+      : REJECT_BUTTON_TEXTS;
+
     // Not awaited - purely visual (showPageSnackbar never throws, it
     // logs and swallows internally), so it shouldn't serialize an extra
     // page.evaluate round-trip onto this time-critical path in front of
@@ -290,6 +295,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
       severity: "info",
     });
+    const timeTaken = Date.now() - startTime;
 
     const apiResult = await submitWaslaReferralViaApi({
       page,
@@ -308,9 +314,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       severity: apiResult.success ? "success" : "error",
     });
 
-    // const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
-
-    const waitedBeforeActionLine = `waitedBeforeAction: ${waitedBeforeActionMs}ms\n`;
+    const waitedBeforeActionLine = `waitedBeforeAction: ${waitedBeforeActionMs}ms\nelapsedBeforeActionMs=${timeTaken}ms`;
 
     await sendTelegramMessage?.(
       buildDirectApiTelegramMessage({
@@ -346,9 +350,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       return;
     }
 
-    const targetButtonTexts = isAcceptanceAction
-      ? ACCEPT_BUTTON_TEXTS
-      : REJECT_BUTTON_TEXTS;
+    // const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
 
     // Scrolls the window AND any element whose own content overflows -
     // this page's layout may scroll via an inner MUI content pane rather
