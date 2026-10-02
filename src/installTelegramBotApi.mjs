@@ -519,6 +519,38 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     }
   };
 
+  /**
+   * Mirrors an /arrived or /withdraw result to the watcher chat, unless
+   * that's already where it was triggered from (clicking the Confirm
+   * Arrival/Withdraw button, whose message only ever lives in the watcher
+   * chat - see checkReferralSelectedStatus.mjs/handleSubmitReferral.mjs)
+   * - otherwise the watcher would get the same result message twice.
+   *
+   * @param {string} triggeringChatId - The chat the action was actually
+   *   run from (the slash command's own chatId, or the callback_query's
+   *   messageChatId for a button click).
+   * @param {string} message
+   * @returns {Promise<void>}
+   */
+  const notifyWatcherIfDifferentChat = async (triggeringChatId, message) => {
+    const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
+
+    if (!VERIFICATION_CODE_WATCHER_CHAT_ID) return;
+    if (
+      String(triggeringChatId) === String(VERIFICATION_CODE_WATCHER_CHAT_ID)
+    ) {
+      return;
+    }
+
+    await sendTelegramMessage(
+      message,
+      [],
+      undefined,
+      VERIFICATION_CODE_WATCHER_CHAT_ID,
+      true,
+    ).catch(() => {});
+  };
+
   const safeOnText = (regex, handler) => {
     bot.onText(regex, async (msg, match) => {
       try {
@@ -1110,6 +1142,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       notes,
     });
 
+    await notifyWatcherIfDifferentChat(chatId, message);
+
     return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
   });
 
@@ -1128,6 +1162,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     const notes = parts.slice(1).join(" ");
 
     const { message } = await performWithdrawal({ browser, idArg, notes });
+
+    await notifyWatcherIfDifferentChat(chatId, message);
 
     return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
   });
@@ -1506,6 +1542,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           idArg: referralId,
         });
 
+        await notifyWatcherIfDifferentChat(messageChatId, arrivalMessage);
+
         return reply(arrivalMessage);
       }
 
@@ -1517,6 +1555,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           browser,
           idArg: referralId,
         });
+
+        await notifyWatcherIfDifferentChat(messageChatId, withdrawMessage);
 
         return reply(withdrawMessage);
       }
