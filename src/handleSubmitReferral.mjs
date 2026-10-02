@@ -19,6 +19,7 @@ import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
+import submitWaslaAction from "./submitWaslaAction.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
@@ -131,27 +132,37 @@ const reportFailure = async (
 /**
  * Builds the Telegram message reporting the direct-API accept/reject
  * attempt's outcome - shared by the success and failure branches so the
- * header/footer structure (ReferralId/ID/actionButtonTimingLine) isn't
+ * header/footer structure (ReferralId/ID/timing diagnostics) isn't
  * hand-duplicated between them.
  *
  * @param {{
- *   success: boolean,
  *   isAcceptanceAction: boolean,
  *   referralId: string,
  *   navigationId: string,
  *   apiResult: Awaited<ReturnType<typeof import("./submitWaslaReferralViaApi.mjs").default>>,
- *   waitedBeforeActionLine: string,
+ *   preUploadResult: Awaited<ReturnType<typeof import("./submitWaslaAction.mjs").default>>,
+ *   diffMs: number,
+ *   sleepMs: number,
+ *   boundarySafetyMarginMs: number,
+ *   reloadTimeMs: number,
+ *   elapsedBeforeActionMs: number,
  * }} params
  * @returns {string}
  */
 const buildDirectApiTelegramMessage = ({
-  success,
   isAcceptanceAction,
   referralId,
   navigationId,
   apiResult,
-  waitedBeforeActionLine,
+  preUploadResult,
+  diffMs,
+  sleepMs,
+  boundarySafetyMarginMs,
+  reloadTimeMs,
+  elapsedBeforeActionMs,
 }) => {
+  const { success } = apiResult;
+
   const title = success
     ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
     : `*Direct API ${isAcceptanceAction ? "accept" : "reject"} attempt failed*`;
@@ -160,12 +171,29 @@ const buildDirectApiTelegramMessage = ({
     ? `Message: ${apiResult.data?.message ?? "(no message)"}`
     : `Message: step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, url=\`${apiResult.url}\`, error=\`${apiResult.error}\``;
 
+  // Lets a failed pre-upload (silently retried inline by
+  // submitWaslaReferralViaApi, since it's also given fileBase64/fileName
+  // as a fallback) show up here instead of looking identical to a run
+  // where the pre-upload worked as intended - useful for noticing extra
+  // latency that retry adds to a given run.
+  const preUploadLine = preUploadResult?.success
+    ? `PreUpload: ok (attachmentId=\`${preUploadResult.attachmentId}\`)`
+    : `PreUpload: failed (step=\`${preUploadResult?.step}\`, error=\`${preUploadResult?.error}\`) - retried inline`;
+
+  const timingLine =
+    `boundaryDiffMs=${diffMs}\n` +
+    `sleepMs=${sleepMs}\n` +
+    `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
+    `reloadTimeMs=${reloadTimeMs}\n` +
+    `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms`;
+
   return (
     `ReferralId: \`${referralId}\`\n` +
     `ID: \`${navigationId}\`\n` +
     `${title}\n` +
     `${detailLine}\n\n` +
-    waitedBeforeActionLine +
+    `${preUploadLine}\n\n` +
+    timingLine +
     (success ? "" : "\nFalling back to the UI.")
   );
 };
@@ -220,13 +248,11 @@ const notifyWatcherOfAcceptance = async ({
   ).catch(() => {});
 };
 
-const waitedBeforeActionMs = 810;
-
 const handleSubmitReferral = (options) => async (patient) => {
   const {
     actionType,
     sendTelegramMessage,
-    continueFetchingPatientsIfPaused,
+    // continueFetchingPatientsIfPaused,
     browser,
     patientsStore,
   } = options;
@@ -235,7 +261,6 @@ const handleSubmitReferral = (options) => async (patient) => {
     navigationId,
     referralId,
     referralEndTimestamp,
-    providerName,
     randomFileName,
     patientName,
   } = patient;
@@ -250,6 +275,16 @@ const handleSubmitReferral = (options) => async (patient) => {
     return;
   }
 
+  const parsedBoundarySafetyMarginMs = process.env.BOUNDARY_SAFETY_MARGIN_MS
+    ? Number(process.env.BOUNDARY_SAFETY_MARGIN_MS)
+    : 10;
+
+  const BOUNDARY_SAFETY_MARGIN_MS = Number.isFinite(
+    parsedBoundarySafetyMarginMs,
+  )
+    ? parsedBoundarySafetyMarginMs
+    : 10;
+
   const isAcceptanceAction = actionType === ACCEPT;
 
   const url = `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`;
@@ -260,6 +295,10 @@ const handleSubmitReferral = (options) => async (patient) => {
     const startTime = Date.now();
     page = await browser.newPage();
 
+    // Land on a neutral, lightweight page first (in parallel with the
+    // letter-file read) - mainly so the browser/tab is already warmed up
+    // (DNS/TLS/connection) before the real case-page navigation below,
+    // which is the one that matters for timing.
     const [, { filePath: letterFilePath, fileData: letterFileBase64 }] =
       await Promise.all([
         page.goto(url, {
@@ -271,8 +310,6 @@ const handleSubmitReferral = (options) => async (patient) => {
           isAcceptanceAction ? actionType : REJECT,
         ),
       ]);
-
-    await sleep(waitedBeforeActionMs);
 
     // Computed up front (not just inside the modal-filling step below) so
     // the same text is used both for the direct-API attempt's "notes" and
@@ -287,6 +324,43 @@ const handleSubmitReferral = (options) => async (patient) => {
       ? ACCEPT_BUTTON_TEXTS
       : REJECT_BUTTON_TEXTS;
 
+    // Upload the letter now, well ahead of the facility review-window
+    // boundary - no url/payload given, so submitWaslaAction skips its own
+    // POST step entirely and this is just the upload, split out of the
+    // time-critical path (see submitWaslaAction.mjs's own docblock).
+    const uploadResult = await submitWaslaAction({
+      page,
+      fileBase64: letterFileBase64,
+      fileName: randomFileName,
+      postStepLabel: "accept-json",
+    });
+
+    // The real synchronization point: sleep out whatever's actually left
+    // until the boundary (cutoffTimeMs already gave this function a head
+    // start before it, so diff is normally still positive here - if the
+    // prep work above overran that head start, diff goes negative and we
+    // just proceed immediately rather than sleeping a negative amount),
+    // plus a small deliberate margin - see BOUNDARY_SAFETY_MARGIN_MS.
+    // This is what actually guarantees landing on the right side of the
+    // boundary, rather than hoping prep work happened to take long enough.
+    const diffMs = referralEndTimestamp - Date.now();
+    const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
+    await sleep(sleepMS);
+
+    const reloadStartTime = Date.now();
+    try {
+      await page.reload({
+        waitUntil: "domcontentloaded",
+      });
+    } catch (error) {
+      createConsoleMessage(
+        "error",
+        `❌ Failed to reload referral view for referralId=${referralId} (navigationId=${navigationId}): ${error.message}`,
+        "handleSubmitReferral",
+      );
+    }
+    const reloadTimeMs = Date.now() - reloadStartTime;
+
     // Not awaited - purely visual (showPageSnackbar never throws, it
     // logs and swallows internally), so it shouldn't serialize an extra
     // page.evaluate round-trip onto this time-critical path in front of
@@ -295,16 +369,19 @@ const handleSubmitReferral = (options) => async (patient) => {
       message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
       severity: "info",
     });
+
     const timeTaken = Date.now() - startTime;
 
     const apiResult = await submitWaslaReferralViaApi({
       page,
       navigationId,
-      fileBase64: letterFileBase64,
-      fileName: randomFileName,
       notes: description,
       rejectionReasonId: REJECTION_REASON_ID,
       isAccept: isAcceptanceAction,
+      attachmentId: uploadResult.attachmentId,
+      // we pass these incase the letter file was not pre-uploaded, so we can upload it now
+      fileBase64: letterFileBase64,
+      fileName: randomFileName,
     });
 
     showPageSnackbar(page, {
@@ -314,16 +391,23 @@ const handleSubmitReferral = (options) => async (patient) => {
       severity: apiResult.success ? "success" : "error",
     });
 
-    const waitedBeforeActionLine = `waitedBeforeAction: ${waitedBeforeActionMs}ms\nelapsedBeforeActionMs=${timeTaken}ms`;
+    // A failed pre-upload is reported the same way a failed upload from
+    // inside submitWaslaAction's own upload branch would be (same shape:
+    // success/step/error/url, no data/attachmentId) - the accept-json call
+    // is simply skipped since there's nothing to reference.
 
     await sendTelegramMessage?.(
       buildDirectApiTelegramMessage({
-        success: apiResult.success,
         isAcceptanceAction,
         referralId,
         navigationId,
         apiResult,
-        waitedBeforeActionLine,
+        preUploadResult: uploadResult,
+        diffMs,
+        sleepMs: sleepMS,
+        boundarySafetyMarginMs: BOUNDARY_SAFETY_MARGIN_MS,
+        reloadTimeMs,
+        elapsedBeforeActionMs: timeTaken,
       }),
     );
 
@@ -363,11 +447,11 @@ const handleSubmitReferral = (options) => async (patient) => {
     await page
       .evaluate(() => {
         window.scrollTo(0, document.body.scrollHeight);
-        document.querySelectorAll("*").forEach((el) => {
-          if (el.scrollHeight > el.clientHeight + 10) {
-            el.scrollTop = el.scrollHeight;
-          }
-        });
+        // document.querySelectorAll("*").forEach((el) => {
+        //   if (el.scrollHeight > el.clientHeight + 10) {
+        //     el.scrollTop = el.scrollHeight;
+        //   }
+        // });
       })
       .catch(() => {});
 
@@ -571,6 +655,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       // whether Wasla actually accepted the submission.
       await sleep(SLEEP_AFTER_CONFIRMATION_MS);
       patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
+      await closePageSafely(page);
     }
   } catch (error) {
     await reportFailure(

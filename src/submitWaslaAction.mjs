@@ -6,16 +6,28 @@
  * (submitWaslaReferralViaApi.mjs's accept/reject, submitWithdrawalViaApi.mjs,
  * submitArrivalConfirmationViaApi.mjs) - optionally uploads a file via
  * API_URLS.UPLOAD_ATTACHMENT, merges its id into the caller's payload as
- * `file`, then POSTs that payload to the caller's own url. All in one
- * page.evaluate() call (not two) - upload and post are sequential either
- * way (post needs the upload's own attachment id first), so one evaluate
- * saves a Node<->browser CDP round-trip, same reasoning
- * submitWaslaReferralViaApi.mjs's original version used before this got
- * extracted.
+ * `file`, then POSTs that payload to the caller's own url. Always one
+ * page.evaluate() call - upload and post are sequential either way when
+ * both happen here, so one evaluate saves a Node<->browser CDP round-trip.
  *
- * Pass `fileBase64`/`fileName` for actions that need an attachment first
- * (accept/reject/withdrawal); omit both to just POST `payload` as-is
- * (arrival confirmation, which takes no file at all).
+ * Three modes, picked by which params are given:
+ *   - fileBase64/fileName + url/payload, no attachmentId: upload then post
+ *     (withdrawal's only use - no timing pressure, so there's no reason to
+ *     split its upload out ahead of time).
+ *   - attachmentId + url/payload (already uploaded earlier - see
+ *     handleSubmitReferral.mjs pre-uploading well ahead of the facility
+ *     review-window boundary): skips the upload step entirely, just posts
+ *     with that id merged in - the one fast call that actually needs to
+ *     happen right at/after the boundary.
+ *   - fileBase64/fileName, no url: no url to post to means there's nothing
+ *     to do but the upload, so that's all this does, returning just the
+ *     upload outcome - the other half of the pre-upload split, run well
+ *     ahead of time. (Not a separate flag - inferred from url being
+ *     absent, since that's the actual thing that matters: whichever
+ *     caller doesn't pass url/payload never intended a POST in the first
+ *     place.)
+ *   - neither fileBase64 nor attachmentId: posts `payload` as-is, no file
+ *     at all (arrival confirmation).
  *
  */
 import { API_URLS } from "./constants.mjs";
@@ -24,13 +36,19 @@ import { API_URLS } from "./constants.mjs";
  * @param {object} params
  * @param {import("puppeteer").Page} params.page - Must already be on the
  *   weslah.seha.sa origin.
- * @param {string} params.url - Final POST target.
- * @param {object} params.payload - JSON-serializable request body. When
- *   fileBase64 is given, the uploaded attachment's id is merged in as
- *   `file` (a string) after upload succeeds - don't set `file` yourself.
+ * @param {string} [params.url] - Final POST target; required unless
+ *   ignoreFinalAction is true.
+ * @param {object} [params.payload] - JSON-serializable request body;
+ *   required unless ignoreFinalAction is true. The resolved attachment id
+ *   (from fileBase64 upload or the given attachmentId) is merged in as
+ *   `file` (a string) - don't set `file` yourself.
  * @param {string} [params.fileBase64] - Base64-encoded file; omit to skip
- *   the upload step entirely.
+ *   the upload step entirely (requires attachmentId instead, or no file at
+ *   all).
  * @param {string} [params.fileName]
+ * @param {string | number} [params.attachmentId] - Already-uploaded
+ *   attachment id; when given, the upload step (and fileBase64/fileName)
+ *   is skipped entirely.
  * @param {string} [params.postStepLabel="submit"] - Prefixed onto `step` on
  *   any failure (both the upload sub-steps and the final POST) so a shared
  *   function serving multiple actions (accept/withdraw/arrival) still
@@ -51,6 +69,7 @@ const submitWaslaAction = async ({
   payload,
   fileBase64,
   fileName,
+  attachmentId,
   postStepLabel = "submit",
 }) => {
   const uploadUrl = API_URLS.UPLOAD_ATTACHMENT;
@@ -63,6 +82,7 @@ const submitWaslaAction = async ({
       url,
       payload,
       postStepLabel,
+      knownAttachmentId,
     }) => {
       // Same persist:auth double-JSON-parse as
       // getWaslaPatientReferralDataFromAPI.mjs's getAuthHeaders() - the
@@ -88,9 +108,9 @@ const submitWaslaAction = async ({
 
       const headers = getWaslaAuthHeaders();
 
-      let attachmentId;
+      let attachmentId = knownAttachmentId;
 
-      if (fileBase64) {
+      if (!attachmentId && fileBase64) {
         const byteChars = atob(fileBase64);
         const byteNumbers = new Array(byteChars.length);
         for (let i = 0; i < byteChars.length; i++) {
@@ -145,6 +165,12 @@ const submitWaslaAction = async ({
         }
       }
 
+      // No url means no POST was ever intended - whichever caller left it
+      // out only wanted the upload (see this file's own docblock).
+      if (!url) {
+        return { success: true, attachmentId };
+      }
+
       const finalPayload =
         attachmentId != null
           ? { ...payload, file: String(attachmentId) }
@@ -183,7 +209,15 @@ const submitWaslaAction = async ({
         };
       }
     },
-    { fileBase64, fileName, uploadUrl, url, payload, postStepLabel },
+    {
+      fileBase64,
+      fileName,
+      uploadUrl,
+      url,
+      payload,
+      postStepLabel,
+      knownAttachmentId: attachmentId,
+    },
   );
 };
 

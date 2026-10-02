@@ -17,10 +17,15 @@
  * Required Bed" / "عدم توفر السرير المطلوب") - supplied by the caller
  * rather than hardcoded here.
  *
- * Upload + accept-json share one page.evaluate() call via
- * submitWaslaAction.mjs (also used by submitWithdrawalViaApi.mjs/
- * submitArrivalConfirmationViaApi.mjs) rather than duplicating that dance
- * here.
+ * Pass `attachmentId` when the letter's already been uploaded ahead of
+ * time (see handleSubmitReferral.mjs, which calls submitWaslaAction
+ * directly with ignoreFinalAction:true to pre-upload well before the
+ * facility review-window boundary opens) - submitWaslaAction then skips
+ * its own upload step and does just the one fast accept-json POST, which
+ * is what actually needs to happen right at/after the boundary. Pass
+ * `fileBase64`/`fileName` instead for a standalone upload-then-post call
+ * (not used by the time-critical path anymore, kept for flexibility/
+ * testing).
  *
  */
 import { API_URLS } from "./constants.mjs";
@@ -33,11 +38,16 @@ import submitWaslaAction from "./submitWaslaAction.mjs";
  *   handleSubmitReferral.mjs opens).
  * @param {string} params.navigationId - The internal Wasla case id used to
  *   build the accept-json URL.
- * @param {string} params.fileBase64 - The letter PDF, base64-encoded (e.g.
+ * @param {string | number} [params.attachmentId] - Already-uploaded
+ *   attachment id - when given, skips the upload step entirely. Mutually
+ *   exclusive with fileBase64/fileName.
+ * @param {string} [params.fileBase64] - The letter PDF, base64-encoded (e.g.
  *   getCurrentActionLetterFile()'s fileData, which is already base64 by
- *   default - no need to pass returnBuffer/re-encode for this).
- * @param {string} params.fileName - Attachment file name, e.g.
- *   `${actionType}-${referralId}.pdf`.
+ *   default - no need to pass returnBuffer/re-encode for this). Only used
+ *   when attachmentId isn't given.
+ * @param {string} [params.fileName] - Attachment file name, e.g.
+ *   `${actionType}-${referralId}.pdf`. Only used when attachmentId isn't
+ *   given.
  * @param {string} [params.notes] - Accept-only notes text; ignored when
  *   isAccept is false.
  * @param {number} [params.rejectionReasonId] - Reject-only lookup id from
@@ -55,6 +65,7 @@ import submitWaslaAction from "./submitWaslaAction.mjs";
 const submitWaslaReferralViaApi = async ({
   page,
   navigationId,
+  attachmentId,
   fileBase64,
   fileName,
   notes,
@@ -67,16 +78,19 @@ const submitWaslaReferralViaApi = async ({
   // Accept sends free-text "notes"; reject has no "notes" field at all
   // and instead needs "rejectionReasonId" - a lookup id from the portal's
   // own rejection-reasons list (scripts/reject-case.js), supplied by the
-  // caller. `file` gets merged in by submitWaslaAction once the upload
-  // succeeds - don't set it here.
+  // caller.
   const payload = isAccept
     ? { accept: true, notes }
     : { accept: false, rejectionReasonId };
 
+  // submitWaslaAction skips the upload step entirely when attachmentId is
+  // given (merging it into payload itself) - without one, it falls back
+  // to uploading fileBase64/fileName and merging the result in instead.
   return await submitWaslaAction({
     page,
     url,
     payload,
+    attachmentId,
     fileBase64,
     fileName,
     postStepLabel: "accept-json",
