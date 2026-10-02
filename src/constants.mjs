@@ -122,7 +122,7 @@ export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 // zero - two separately-edited constants that merely happened to match
 // would let a future one-line change to just one of them silently shrink
 // the "can still process" window, cutting it off before the timer fires.
-export const cutoffTimeMs = 1020;
+export const cutoffTimeMs = 1010;
 export const searchIfAcceptacneButtonShownMS = cutoffTimeMs;
 
 export const USER_MESSAGES = {
