@@ -145,7 +145,10 @@ const reportFailure = async (
  *   sleepMs: number,
  *   boundarySafetyMarginMs: number,
  *   reloadTimeMs: number,
+ *   reloadFunctionExecutionTimeMs: number,
  *   elapsedBeforeActionMs: number,
+ *   actionTimeMs: number,
+ *   actionTakenAfterEndMs: number,
  * }} params
  * @returns {string}
  */
@@ -160,6 +163,9 @@ const buildDirectApiTelegramMessage = ({
   boundarySafetyMarginMs,
   reloadTimeMs,
   elapsedBeforeActionMs,
+  actionTimeMs,
+  actionTakenAfterEndMs,
+  reloadFunctionExecutionTimeMs,
 }) => {
   const { success } = apiResult;
 
@@ -181,11 +187,14 @@ const buildDirectApiTelegramMessage = ({
     : `PreUpload: failed (step=\`${preUploadResult?.step}\`, error=\`${preUploadResult?.error}\`) - retried inline`;
 
   const timingLine =
+    `reloadFunctionExecutionTimeMs=${reloadFunctionExecutionTimeMs}ms\n` +
     `boundaryDiffMs=${diffMs}\n` +
-    `sleepMs=${sleepMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
+    `fullSleepMs=${sleepMs}\n` +
     `reloadTimeMs=${reloadTimeMs}\n` +
-    `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms`;
+    `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
+    `actionTimeMs=${actionTimeMs}ms\n` +
+    `actionTakenAfterEndMs=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n`;
 
   return (
     `ReferralId: \`${referralId}\`\n` +
@@ -343,9 +352,24 @@ const handleSubmitReferral = (options) => async (patient) => {
     // plus a small deliberate margin - see BOUNDARY_SAFETY_MARGIN_MS.
     // This is what actually guarantees landing on the right side of the
     // boundary, rather than hoping prep work happened to take long enough.
-    const diffMs = referralEndTimestamp - Date.now();
+    // 20 ms is safe margin for executing reload (not the reload time it self)
+    const reloadFunctionExecutionTimeMs = 20;
+    const diffMs =
+      referralEndTimestamp - Date.now() - reloadFunctionExecutionTimeMs;
     const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
-    await sleep(sleepMS);
+
+    if (sleepMS > 0) {
+      await sleep(sleepMS);
+    }
+
+    // If you want to fully close that gap rather than just make it unlikely,
+    // the robust fix is a direct guard right before the POST fires — e.g.
+    // if (Date.now() < referralEndTimestamp) await sleep(referralEndTimestamp - Date.now())
+    // immediately before calling submitWaslaReferralViaApi — so correctness doesn't depend
+    // on the reload/margin arithmetic lining up, no matter how fast the reload happens to be.
+    // Not required if you're comfortable with the current odds, just flagging it since
+    // it's the one place where timing assumptions (rather than a hard check) are still
+    // doing the safety work.
 
     const reloadStartTime = Date.now();
     try {
@@ -370,8 +394,9 @@ const handleSubmitReferral = (options) => async (patient) => {
       severity: "info",
     });
 
-    const timeTaken = Date.now() - startTime;
+    const elapsedBeforeActionMs = Date.now() - startTime;
 
+    const actionTimeStart = Date.now();
     const apiResult = await submitWaslaReferralViaApi({
       page,
       navigationId,
@@ -383,6 +408,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       fileBase64: letterFileBase64,
       fileName: randomFileName,
     });
+    const actionTimeMs = Date.now() - actionTimeStart;
 
     showPageSnackbar(page, {
       message: apiResult.success
@@ -391,10 +417,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       severity: apiResult.success ? "success" : "error",
     });
 
-    // A failed pre-upload is reported the same way a failed upload from
-    // inside submitWaslaAction's own upload branch would be (same shape:
-    // success/step/error/url, no data/attachmentId) - the accept-json call
-    // is simply skipped since there's nothing to reference.
+    const actionTakenAfterEndMs = actionTimeStart - referralEndTimestamp;
 
     await sendTelegramMessage?.(
       buildDirectApiTelegramMessage({
@@ -407,7 +430,10 @@ const handleSubmitReferral = (options) => async (patient) => {
         sleepMs: sleepMS,
         boundarySafetyMarginMs: BOUNDARY_SAFETY_MARGIN_MS,
         reloadTimeMs,
-        elapsedBeforeActionMs: timeTaken,
+        elapsedBeforeActionMs,
+        actionTimeMs,
+        actionTakenAfterEndMs,
+        reloadFunctionExecutionTimeMs,
       }),
     );
 
