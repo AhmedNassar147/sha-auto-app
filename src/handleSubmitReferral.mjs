@@ -220,7 +220,7 @@ const notifyWatcherOfAcceptance = async ({
   ).catch(() => {});
 };
 
-const waitedBeforeActionMs = 810;
+const waitedBeforeActionMs = 805;
 
 const handleSubmitReferral = (options) => async (patient) => {
   const {
