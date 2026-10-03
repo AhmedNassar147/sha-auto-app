@@ -55,8 +55,6 @@ const MODAL_FILE_INPUT_SELECTOR = "input[type='file']";
 // `textarea` order isn't safe long-term; `name="notes"` on the real one is.
 const MODAL_TEXTAREA_SELECTOR = "textarea[name='notes']";
 const MODAL_TIMEOUT_MS = 15_000;
-const DESCRIPTION_TYPE_DELAY_MS = 8;
-const DESCRIPTION_TYPE_DELAY_JITTER_MS = 20;
 
 // Confirmed unique in both html/details/accept-modal.html and
 // rejection-modal.html: the forward action (accept's "Confirm", reject's
@@ -72,6 +70,8 @@ const SLEEP_AFTER_CONFIRMATION_MS = 17_000;
 // reject-case.js) - "Unavailability of Required Bed" / "عدم توفر السرير
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
+
+const MAX_ACTION_RETRIES = 3;
 
 // Only the accept modal has a Description field - a different random
 // sentence each time rather than one fixed string.
@@ -144,11 +144,13 @@ const reportFailure = async (
  *   diffMs: number,
  *   sleepMs: number,
  *   boundarySafetyMarginMs: number,
- *   reloadTimeMs: number,
- *   reloadFunctionExecutionTimeMs: number,
+ *   waitingBeforeFinalActionMS: number,
  *   elapsedBeforeActionMs: number,
  *   actionTimeMs: number,
  *   actionTakenAfterEndMs: number,
+ *   attemptsMade: number,
+ *   retryReason: string,
+ *   sleepWhenAcceptOrRejectRetryMs: number,
  * }} params
  * @returns {string}
  */
@@ -161,11 +163,13 @@ const buildDirectApiTelegramMessage = ({
   diffMs,
   sleepMs,
   boundarySafetyMarginMs,
-  reloadTimeMs,
+  waitingBeforeFinalActionMS,
   elapsedBeforeActionMs,
   actionTimeMs,
   actionTakenAfterEndMs,
-  reloadFunctionExecutionTimeMs,
+  attemptsMade,
+  retryReason,
+  sleepWhenAcceptOrRejectRetryMs,
 }) => {
   const { success } = apiResult;
 
@@ -186,15 +190,23 @@ const buildDirectApiTelegramMessage = ({
     ? `PreUpload: ok (attachmentId=\`${preUploadResult.attachmentId}\`)`
     : `PreUpload: failed (step=\`${preUploadResult?.step}\`, error=\`${preUploadResult?.error}\`) - retried inline`;
 
+  // Human-readable rather than a raw key=value dump like the rest of
+  // timingLine - this one's meant to be read at a glance ("did it retry,
+  // and why") rather than cross-referenced against the code.
+  const retryCount = attemptsMade - 1;
+  const retryLine =
+    retryCount > 0
+      ? `🔁 Retried ${retryCount} time${retryCount > 1 ? "s" : ""} (${sleepWhenAcceptOrRejectRetryMs}ms apart) after: \`${retryReason}\`\n\n`
+      : "";
+
   const timingLine =
-    `reloadFunctionExecutionTimeMs=${reloadFunctionExecutionTimeMs}ms\n` +
     `boundaryDiffMs=${diffMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
-    `fullSleepMs=${sleepMs}\n` +
-    `reloadTimeMs=${reloadTimeMs}\n` +
+    `sleepMs=${sleepMs}\n` +
+    `waitingBeforeFinalActionMS=${waitingBeforeFinalActionMS}\n` +
     `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
-    `actionTimeMs=${actionTimeMs}ms\n` +
-    `actionTakenAfterEndMs=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n`;
+    `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
+    `finalRequestTakesMs=${actionTimeMs}ms\n`;
 
   return (
     `ReferralId: \`${referralId}\`\n` +
@@ -202,6 +214,7 @@ const buildDirectApiTelegramMessage = ({
     `${title}\n` +
     `${detailLine}\n\n` +
     `${preUploadLine}\n\n` +
+    retryLine +
     timingLine +
     (success ? "" : "\nFalling back to the UI.")
   );
@@ -257,6 +270,24 @@ const notifyWatcherOfAcceptance = async ({
   ).catch(() => {});
 };
 
+/**
+ * Reads a numeric env var with a safe fallback - guards against both a
+ * missing/empty value (`Number("")` is `0`, not `NaN`, so an empty string
+ * can't silently become a real "0" override) and a non-numeric value.
+ *
+ * @param {string} name - Env var name, e.g. "BOUNDARY_SAFETY_MARGIN_MS".
+ * @param {number} defaultValue - Used when the env var is unset, empty, or
+ *   not a finite number.
+ * @returns {number}
+ */
+const getEnvVariableAsNumber = (name, defaultValue) => {
+  const value = process.env[name];
+
+  const _value = value ? Number(value) : defaultValue;
+
+  return Number.isFinite(_value) ? _value : defaultValue;
+};
+
 const handleSubmitReferral = (options) => async (patient) => {
   const {
     actionType,
@@ -284,15 +315,20 @@ const handleSubmitReferral = (options) => async (patient) => {
     return;
   }
 
-  const parsedBoundarySafetyMarginMs = process.env.BOUNDARY_SAFETY_MARGIN_MS
-    ? Number(process.env.BOUNDARY_SAFETY_MARGIN_MS)
-    : 10;
+  const BOUNDARY_SAFETY_MARGIN_MS = getEnvVariableAsNumber(
+    "BOUNDARY_SAFETY_MARGIN_MS",
+    10,
+  );
 
-  const BOUNDARY_SAFETY_MARGIN_MS = Number.isFinite(
-    parsedBoundarySafetyMarginMs,
-  )
-    ? parsedBoundarySafetyMarginMs
-    : 10;
+  const SLEEP_BEFORE_ACCEPT_OR_REJECT_MS = getEnvVariableAsNumber(
+    "SLEEP_BEFORE_ACCEPT_OR_REJECT_MS",
+    280,
+  );
+
+  const SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS = getEnvVariableAsNumber(
+    "SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS",
+    80,
+  );
 
   const isAcceptanceAction = actionType === ACCEPT;
 
@@ -352,13 +388,10 @@ const handleSubmitReferral = (options) => async (patient) => {
     // plus a small deliberate margin - see BOUNDARY_SAFETY_MARGIN_MS.
     // This is what actually guarantees landing on the right side of the
     // boundary, rather than hoping prep work happened to take long enough.
-    // 20 ms is safe margin for executing reload (not the reload time it self)
-    const reloadFunctionExecutionTimeMs = 20;
-    const diffMs =
-      referralEndTimestamp - Date.now() - reloadFunctionExecutionTimeMs;
+    const diffMs = referralEndTimestamp - Date.now();
     const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
 
-    if (sleepMS > 0) {
+    if (diffMs > 0) {
       await sleep(sleepMS);
     }
 
@@ -371,19 +404,13 @@ const handleSubmitReferral = (options) => async (patient) => {
     // it's the one place where timing assumptions (rather than a hard check) are still
     // doing the safety work.
 
-    const reloadStartTime = Date.now();
-    try {
-      await page.reload({
-        waitUntil: "domcontentloaded",
-      });
-    } catch (error) {
-      createConsoleMessage(
-        "error",
-        `❌ Failed to reload referral view for referralId=${referralId} (navigationId=${navigationId}): ${error.message}`,
-        "handleSubmitReferral",
-      );
+    let waitingBeforeFinalActionMS = 0;
+
+    if (diffMs > 0) {
+      const reloadStartTime = Date.now();
+      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
+      waitingBeforeFinalActionMS = Date.now() - reloadStartTime;
     }
-    const reloadTimeMs = Date.now() - reloadStartTime;
 
     // Not awaited - purely visual (showPageSnackbar never throws, it
     // logs and swallows internally), so it shouldn't serialize an extra
@@ -396,48 +423,81 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const elapsedBeforeActionMs = Date.now() - startTime;
 
+    let currentRetryCount = 1;
+    let retryReason = "";
+
     const actionTimeStart = Date.now();
-    const apiResult = await submitWaslaReferralViaApi({
-      page,
-      navigationId,
-      notes: description,
-      rejectionReasonId: REJECTION_REASON_ID,
-      isAccept: isAcceptanceAction,
-      attachmentId: uploadResult.attachmentId,
-      // we pass these incase the letter file was not pre-uploaded, so we can upload it now
-      fileBase64: letterFileBase64,
-      fileName: randomFileName,
-    });
+    let apiResult = null;
+
+    while (currentRetryCount <= MAX_ACTION_RETRIES) {
+      apiResult = await submitWaslaReferralViaApi({
+        page,
+        navigationId,
+        notes: description,
+        rejectionReasonId: REJECTION_REASON_ID,
+        isAccept: isAcceptanceAction,
+        attachmentId: uploadResult.attachmentId,
+        // we pass these incase the letter file was not pre-uploaded, so we can upload it now
+        fileBase64: letterFileBase64,
+        fileName: randomFileName,
+      });
+
+      const { success, error } = apiResult;
+
+      if (success) {
+        break;
+      }
+
+      if (error?.includes?.("review window has elapsed")) {
+        retryReason = error;
+        await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
+        currentRetryCount++;
+      } else {
+        break;
+      }
+    }
+
     const actionTimeMs = Date.now() - actionTimeStart;
 
-    showPageSnackbar(page, {
-      message: apiResult.success
-        ? `${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API`
-        : `Direct API ${isAcceptanceAction ? "accept" : "reject"} failed - falling back to UI`,
-      severity: apiResult.success ? "success" : "error",
-    });
+    // currentRetryCount overshoots by 1 when retries are exhausted (it's
+    // bumped once more before the while condition re-checks and exits),
+    // so it's clamped here rather than reported as-is - otherwise an
+    // exhausted-retries run would claim one more attempt than actually
+    // happened.
+    const attemptsMade = Math.min(currentRetryCount, MAX_ACTION_RETRIES);
 
-    const actionTakenAfterEndMs = actionTimeStart - referralEndTimestamp;
+    if (apiResult) {
+      showPageSnackbar(page, {
+        message: apiResult.success
+          ? `${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API`
+          : `Direct API ${isAcceptanceAction ? "accept" : "reject"} failed - falling back to UI`,
+        severity: apiResult.success ? "success" : "error",
+      });
 
-    await sendTelegramMessage?.(
-      buildDirectApiTelegramMessage({
-        isAcceptanceAction,
-        referralId,
-        navigationId,
-        apiResult,
-        preUploadResult: uploadResult,
-        diffMs,
-        sleepMs: sleepMS,
-        boundarySafetyMarginMs: BOUNDARY_SAFETY_MARGIN_MS,
-        reloadTimeMs,
-        elapsedBeforeActionMs,
-        actionTimeMs,
-        actionTakenAfterEndMs,
-        reloadFunctionExecutionTimeMs,
-      }),
-    );
+      const actionTakenAfterEndMs = actionTimeStart - referralEndTimestamp;
 
-    if (apiResult.success) {
+      await sendTelegramMessage?.(
+        buildDirectApiTelegramMessage({
+          isAcceptanceAction,
+          referralId,
+          navigationId,
+          apiResult,
+          preUploadResult: uploadResult,
+          diffMs,
+          sleepMs: sleepMS,
+          boundarySafetyMarginMs: BOUNDARY_SAFETY_MARGIN_MS,
+          waitingBeforeFinalActionMS,
+          elapsedBeforeActionMs,
+          actionTimeMs,
+          actionTakenAfterEndMs,
+          attemptsMade,
+          retryReason,
+          sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
+        }),
+      );
+    }
+
+    if (apiResult?.success) {
       createConsoleMessage(
         "success",
         `✅ [${actionType}] ${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API for referralId=${referralId} (navigationId=${navigationId})`,
@@ -595,11 +655,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       }
 
       await descriptionHandle.focus();
-      await page.keyboard.type(description, {
-        delay:
-          DESCRIPTION_TYPE_DELAY_MS +
-          Math.random() * DESCRIPTION_TYPE_DELAY_JITTER_MS,
-      });
+      await page.keyboard.type(description);
     }
 
     if (letterFilePath) {
