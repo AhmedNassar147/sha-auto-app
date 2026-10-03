@@ -151,6 +151,7 @@ const reportFailure = async (
  *   attemptsMade: number,
  *   retryReason: string,
  *   sleepWhenAcceptOrRejectRetryMs: number,
+ *   uploadDurationMs: number
  * }} params
  * @returns {string}
  */
@@ -170,6 +171,7 @@ const buildDirectApiTelegramMessage = ({
   attemptsMade,
   retryReason,
   sleepWhenAcceptOrRejectRetryMs,
+  uploadDurationMs,
 }) => {
   const { success } = apiResult;
 
@@ -203,6 +205,7 @@ const buildDirectApiTelegramMessage = ({
     `boundaryDiffMs=${diffMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
     `sleepMs=${sleepMs}\n` +
+    `uploadDurationMs=${uploadDurationMs}ms\n` +
     `waitingBeforeFinalActionMS=${waitingBeforeFinalActionMS}\n` +
     `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
     `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
@@ -379,12 +382,14 @@ const handleSubmitReferral = (options) => async (patient) => {
     // boundary - no url/payload given, so submitWaslaAction skips its own
     // POST step entirely and this is just the upload, split out of the
     // time-critical path (see submitWaslaAction.mjs's own docblock).
+    const uploadStartTime = Date.now();
     const uploadResult = await submitWaslaAction({
       page,
       fileBase64: letterFileBase64,
       fileName: randomFileName,
       postStepLabel: "accept-json",
     });
+    const uploadDurationMs = Date.now() - uploadStartTime;
 
     // Kept for the Telegram diagnostics (boundaryDiffMs/sleepMs) even
     // though nothing sleeps on it anymore - the actual synchronization
@@ -506,6 +511,7 @@ const handleSubmitReferral = (options) => async (patient) => {
           attemptsMade,
           retryReason,
           sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
+          uploadDurationMs,
         }),
       );
     }
