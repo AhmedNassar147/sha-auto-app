@@ -1,9 +1,14 @@
 // One-off utility: backfills the patient-detail columns added to the
 // `patients` table (nationality, specialty, subSpecialty, sourceProvider,
-// mobileNumber, note, medicalData, attachmentUrls) for rows saved before
-// those columns existed, by re-calling GET /api/referrals/{navigationId} -
-// the same endpoint getWaslaPatientReferralDataFromAPI.mjs already uses for
+// mobileNumber, note, medicalData) for rows saved before those columns
+// existed, by re-calling GET /api/referrals/{navigationId} - the same
+// endpoint getWaslaPatientReferralDataFromAPI.mjs already uses for
 // newly-collected cases, so this script just re-runs that for old rows.
+// Also backfills attachmentFileBase64/attachmentFileName/
+// attachmentFileMimeType (the single case-report file, see
+// buildCaseReportFile.mjs) for any row missing it - independently of the
+// detail-fields backfill above, since a row can already have one without
+// the other.
 //
 // Needs a live, logged-in Wasla session, so it opens its own Puppeteer
 // browser against the SAME Chrome profile the main bot uses
@@ -25,6 +30,7 @@ import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
+import buildCaseReportFile from "./buildCaseReportFile.mjs";
 import sleep from "./sleep.mjs";
 import { HOME_PAGE_URL } from "./constants.mjs";
 
@@ -36,7 +42,11 @@ const rowsToProcess = requestedIds.length
   ? requestedIds.map((id) => getPatient(id)).filter(Boolean)
   : allPatientsStatement
       .all()
-      .filter((row) => row.navigationId && row.nationality == null);
+      .filter(
+        (row) =>
+          row.navigationId &&
+          (row.nationality == null || row.attachmentFileBase64 == null),
+      );
 
 if (!rowsToProcess.length) {
   console.log("Nothing to backfill.");
@@ -101,11 +111,13 @@ try {
       continue;
     }
 
+    const needsAttachment = row.attachmentFileBase64 == null;
+
     const patientData = await getWaslaPatientReferralDataFromAPI(
       frame,
       navigationId,
       referralId,
-      true, // skippAttachments - attachmentUrls metadata is captured regardless, no need for the full base64 download here
+      !needsAttachment, // skippAttachments - only download the files when this row doesn't have a cached report yet
     );
 
     const { patientDetailsError } = patientData || {};
@@ -127,8 +139,35 @@ try {
       requestedBedType,
       note,
       medicalData,
-      attachmentUrls,
+      files,
     } = patientData;
+
+    // Built as a separate object (rather than destructured `let`s passed
+    // directly into updatePatients) so a row that didn't need/get an
+    // attachment this pass never sends an explicit `undefined` for these
+    // keys - toDbRow's `oldRow` merge treats an explicitly-present
+    // `undefined` key as "overwrite with null", which would wipe out an
+    // already-cached attachment on a row that's only here for the
+    // nationality backfill.
+    const attachmentUpdate = {};
+
+    if (needsAttachment && files?.length) {
+      const reportFile = await buildCaseReportFile(files, referralId).catch(
+        (error) => {
+          console.warn(
+            `referralId=${referralId} report build failed: ${error?.message || error}`,
+          );
+          return null;
+        },
+      );
+
+      if (reportFile) {
+        attachmentUpdate.attachmentFileBase64 =
+          reportFile.buffer.toString("base64");
+        attachmentUpdate.attachmentFileName = reportFile.filename;
+        attachmentUpdate.attachmentFileMimeType = reportFile.mimeType;
+      }
+    }
 
     updatePatients({
       referralId,
@@ -140,10 +179,12 @@ try {
       requestedBedType,
       note,
       medicalData,
-      attachmentUrls,
+      ...attachmentUpdate,
     });
 
-    console.log(`referralId=${referralId} updated.`);
+    console.log(
+      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}.`,
+    );
     updatedCount++;
 
     await sleep(1000 + Math.random() * 1500);

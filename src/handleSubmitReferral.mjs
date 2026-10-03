@@ -13,6 +13,7 @@
  * see/act on - this doesn't close the tab itself.
  *
  */
+import { writeFile } from "fs/promises";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
@@ -23,7 +24,11 @@ import submitWaslaAction from "./submitWaslaAction.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
-import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+import {
+  USER_ACTION_TYPES,
+  WASLA_REFERRAL_VIEW_URL,
+  htmlFilesPath,
+} from "./constants.mjs";
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
 
@@ -391,6 +396,19 @@ const handleSubmitReferral = (options) => async (patient) => {
     });
     const uploadDurationMs = Date.now() - uploadStartTime;
 
+    await page
+      .content()
+      .then((html) =>
+        writeFile(`${htmlFilesPath}/${referralId}.html`, html, "utf8"),
+      )
+      .catch((error) => {
+        createConsoleMessage(
+          "warn",
+          error?.message || error,
+          `⚠️ saving page HTML after upload failed for referralId=${referralId}`,
+        );
+      });
+
     // Kept for the Telegram diagnostics (boundaryDiffMs/sleepMs) even
     // though nothing sleeps on it anymore - the actual synchronization
     // point is the button-wait below, which reacts directly to Wasla's own
@@ -430,10 +448,10 @@ const handleSubmitReferral = (options) => async (patient) => {
     // logs and swallows internally), so it shouldn't serialize an extra
     // page.evaluate round-trip onto this time-critical path in front of
     // the actual submit call.
-    showPageSnackbar(page, {
-      message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
-      severity: "info",
-    });
+    // showPageSnackbar(page, {
+    //   message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
+    //   severity: "info",
+    // });
 
     const elapsedBeforeActionMs = Date.now() - startTime;
 

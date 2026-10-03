@@ -13,6 +13,7 @@ import {
   upsertCaseFile,
   buildCaseFileKey,
   getPatient,
+  updatePatients,
 } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
@@ -30,6 +31,7 @@ import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
 import performArrivalConfirmation from "./telegramFunctions/performArrivalConfirmation.mjs";
 import performWithdrawal from "./telegramFunctions/performWithdrawal.mjs";
+import performSendReportAttachment from "./telegramFunctions/performSendReportAttachment.mjs";
 
 const execAsync = promisify(exec);
 
@@ -99,6 +101,12 @@ const COMMANDS = {
     description:
       "Withdraw acceptance. Example: /withdraw 13509 OR /withdraw 5AW0BELHL51HPFI reason",
     command: "withdraw",
+  },
+  getReferralAttachment: {
+    value: /\/report (.+)/,
+    description:
+      "Get the referral Report. Example: /attach 13509 OR /attach 5AW0BELHL51HPFI",
+    command: "report",
   },
   getInvoiceFile: {
     value: /\/invoice(?:\s+(.*))?$/,
@@ -363,6 +371,43 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     }, ONLINE_CONFIRM_TIMEOUT_MS);
   };
 
+  /**
+   * Best-effort caches a case's report/merged attachment as base64 on its
+   * patients row - unlike /letter's tgFileId cache, this never expires and
+   * doesn't depend on Telegram at all (works via /attach or the Report
+   * button regardless of which channel first delivered the case, Telegram,
+   * ntfy, or WhatsApp). A write failure (e.g. the row not existing yet)
+   * shouldn't affect the actual send, so this only logs.
+   *
+   * @param {object} params
+   * @param {string} params.referralId
+   * @param {Buffer} params.buffer
+   * @param {string} params.filename
+   * @param {string} params.mimeType
+   * @returns {void}
+   */
+  const saveAttachmentFileToDb = ({
+    referralId,
+    buffer,
+    filename,
+    mimeType,
+  }) => {
+    try {
+      updatePatients({
+        referralId,
+        attachmentFileBase64: buffer.toString("base64"),
+        attachmentFileName: filename,
+        attachmentFileMimeType: mimeType,
+      });
+    } catch (error) {
+      createConsoleMessage(
+        "warn",
+        error?.message || error,
+        `⚠️ saveAttachmentFileToDb failed for referralId=${referralId}`,
+      );
+    }
+  };
+
   const sendTelegramMessage = async (
     message,
     _files = [],
@@ -445,6 +490,15 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           { filename: filename, contentType: mimeType },
         );
 
+        if (targetReferralIdForButtons) {
+          saveAttachmentFileToDb({
+            referralId: targetReferralIdForButtons,
+            buffer,
+            filename,
+            mimeType,
+          });
+        }
+
         return;
       }
 
@@ -456,6 +510,16 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           { reply_to_message_id: messageId, caption: caption },
           { filename: filename, contentType: mimeType },
         );
+
+        if (targetReferralIdForButtons) {
+          saveAttachmentFileToDb({
+            referralId: targetReferralIdForButtons,
+            buffer,
+            filename,
+            mimeType,
+          });
+        }
+
         return;
       }
 
@@ -488,6 +552,15 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
           contentType: "application/pdf",
         },
       );
+
+      if (targetReferralIdForButtons) {
+        saveAttachmentFileToDb({
+          referralId: targetReferralIdForButtons,
+          buffer: compressedMerged,
+          filename: finalMergedFileName,
+          mimeType: "application/pdf",
+        });
+      }
 
       // Send photos as album (batches of 10)
       for (let i = 0; i < photos.length; i += 10) {
@@ -1238,6 +1311,29 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
   });
 
+  safeOnText(COMMANDS.getReferralAttachment.value, async (msg, match) => {
+    const { unAuthorizedMessage, chatId, msgId } =
+      getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
+    }
+
+    const idArg = (match[1] || "").trim().split(/\s+/)[0];
+
+    const { success, message } = await performSendReportAttachment({
+      bot,
+      idArg,
+      chatId,
+      msgId,
+    });
+
+    if (!success) {
+      return sendBotMessage(chatId, message, { reply_to_message_id: msgId });
+    }
+  });
+
   // safeOnText(COMMANDS.getInvoiceFile.value, async (msg, match) => {
   //   const { unAuthorizedMessage, chatId, msgId } = getIfNotAuthorizedMessage(
   //     msg,
@@ -1629,6 +1725,21 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         await notifyWatcherIfDifferentChat(messageChatId, withdrawMessage);
 
         return reply(withdrawMessage);
+      }
+
+      // The "📎 Report" button sent alongside every watcher-chat status
+      // update (see checkReferralSelectedStatus.mjs) - resends whatever
+      // report/merged attachment file was cached for this case (same
+      // lookup /attach uses), regardless of claimed status.
+      if (action === "report") {
+        const { message: reportMessage } = await performSendReportAttachment({
+          bot,
+          idArg: referralId,
+          chatId: messageChatId,
+          msgId,
+        });
+
+        return reply(reportMessage);
       }
 
       const {

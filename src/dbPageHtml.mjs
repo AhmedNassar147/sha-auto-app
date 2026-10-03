@@ -25,6 +25,7 @@ const COLUMN_LABELS = {
   status: "Status",
   userActionName: "Action",
   claimed: "Claimed",
+  arrived: "Arrived",
   providerAction: "Provider Action",
   referralType: "Referral Type",
   referralReason: "Reason",
@@ -54,7 +55,7 @@ const COLUMN_LABELS = {
   requestedBedType: "Requested Bed Type",
   note: "Note",
   medicalData: "Medical Data",
-  attachmentUrls: "Attachments",
+  caseReport: "Case Report",
 };
 
 const COLUMNS = [
@@ -80,9 +81,13 @@ const COLUMNS = [
   "requestedBedType",
   "note",
   "medicalData",
-  "attachmentUrls",
+  // Not a real `patients` column - renderCell builds this from the row's
+  // attachmentFileBase64 (ignoring row.caseReport, undefined), same as
+  // "openCase" above.
+  "caseReport",
   "status",
   "claimed",
+  "arrived",
   "isSent",
   "isReceived",
   "payerAction",
@@ -105,6 +110,7 @@ const COLUMNS = [
 const STATUS_BADGE_COLUMNS = new Set([
   "userActionName",
   "claimed",
+  "arrived",
   "isSent",
   "isReceived",
 ]);
@@ -134,41 +140,12 @@ const renderCell = (column, value, row) => {
     );
     return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">Open</a>`;
   }
-  if (column === "attachmentUrls") {
-    // Handles its own empty case (rather than falling into the generic
-    // empty-cell check below) so the refresh link can still show even
-    // when there's nothing cached yet - each stored link is a presigned
-    // S3 url and expires (~30 min), so this is also the way to pull in
-    // fresh ones after they've gone dead.
-    let urls = [];
-    if (value) {
-      try {
-        urls = JSON.parse(value);
-      } catch {
-        urls = [];
-      }
+  if (column === "caseReport") {
+    if (!row?.attachmentFileBase64 || !row?.referralId) {
+      return '<span class="empty-cell">—</span>';
     }
-    const linksHtml = Array.isArray(urls)
-      ? urls
-          .map((url, index) => {
-            if (!url) return "";
-            const safeUrl = escapeHtml(url);
-            return `<a href="${safeUrl}" target="_blank" rel="noopener" title="${safeUrl}">${index + 1}</a>`;
-          })
-          .filter(Boolean)
-          .join(" ")
-      : "";
-
-    const refreshHtml = row?.navigationId
-      ? `<a class="refresh-link" href="/db/refresh-attachments/${encodeURIComponent(row.referralId)}" title="Fetch fresh attachment links from Wasla (these expire after ~30 min)">↻</a>`
-      : "";
-
-    return (
-      `<div class="attachments-cell">` +
-      `<span>${linksHtml || '<span class="empty-cell">—</span>'}</span>` +
-      refreshHtml +
-      `</div>`
-    );
+    const safeUrl = `/db/attachment/${encodeURIComponent(row.referralId)}`;
+    return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">👁 Preview</a>`;
   }
   if (value === null || value === undefined || value === "") {
     return '<span class="empty-cell">—</span>';
@@ -223,6 +200,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.referralDate] - "YYYY-MM-DD", labeled
  *   "Referral Date" in the UI.
  * @param {string} [params.filters.paid] - "1" (Yes) or "0" (No).
+ * @param {string} [params.filters.arrived] - "Yes" or "No".
  * @returns {string}
  */
 const renderDbPage = ({ rows, filters = {} }) => {
@@ -233,6 +211,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     status = "",
     referralDate = "",
     paid = "",
+    arrived = "",
   } = filters;
 
   return `<!doctype html>
@@ -354,9 +333,6 @@ const renderDbPage = ({ rows, filters = {} }) => {
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
   .badge-red { background: var(--badge-red-bg); color: var(--badge-red-text); }
   .empty-cell { color: var(--muted); }
-  .attachments-cell { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-  .refresh-link { display: inline-block; flex-shrink: 0; font-size: 18px; line-height: 1; color: var(--text); text-decoration: none; vertical-align: middle; }
-  .refresh-link:hover { color: var(--accent); }
   .state-msg { padding: 40px 24px; text-align: center; color: var(--muted); }
 </style>
 </head>
@@ -393,6 +369,14 @@ const renderDbPage = ({ rows, filters = {} }) => {
         <option value="">All</option>
         <option value="1"${paid === "1" ? " selected" : ""}>Yes</option>
         <option value="0"${paid === "0" ? " selected" : ""}>No</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-arrived">Arrived</label>
+      <select id="f-arrived" name="arrived">
+        <option value="">All</option>
+        <option value="Yes"${arrived === "Yes" ? " selected" : ""}>Yes</option>
+        <option value="No"${arrived === "No" ? " selected" : ""}>No</option>
       </select>
     </div>
     <div class="actions">

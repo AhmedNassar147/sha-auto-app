@@ -65,6 +65,7 @@ const casesLettersDb = new Database(casesLettersFilePath);
       userActionName TEXT,                -- accept, reject, '' (current action)
       providerAction TEXT,                -- narrative history, e.g. "accepted then cancelled"
       claimed TEXT,                       -- yes/no, NULL until an action is taken or checkReferralSelectedStatus resolves it
+      arrived TEXT,                       -- yes/no, NULL until checkReferralSelectedStatus sees status=4 (ConfirmedArrival) for an already-claimed case
       status TEXT,                        -- portal-reported status string, NULL until known
       isSent TEXT,                        -- yes/no
       isReceived TEXT,                    -- yes/no
@@ -80,7 +81,9 @@ const casesLettersDb = new Database(casesLettersFilePath);
       note TEXT,
       medicalData TEXT,
       requestedBedType TEXT,
-      attachmentUrls TEXT,                -- JSON array of presigned S3 urls - these expire (~30 min), stored anyway per explicit choice
+      attachmentFileBase64 TEXT,          -- the sent report/merged attachment file's own bytes, base64 - unlike a presigned url/tgFileId this never expires or depends on Telegram, so /attach and the Report button always work
+      attachmentFileName TEXT,
+      attachmentFileMimeType TEXT,
       createdAt TEXT DEFAULT (datetime('now')),
       updatedAt TEXT
     )
@@ -111,7 +114,10 @@ const casesLettersDb = new Database(casesLettersFilePath);
     note: "TEXT",
     medicalData: "TEXT",
     requestedBedType: "TEXT",
-    attachmentUrls: "TEXT",
+    attachmentFileBase64: "TEXT",
+    attachmentFileName: "TEXT",
+    attachmentFileMimeType: "TEXT",
+    arrived: "TEXT",
   };
 
   for (const [columnName, columnType] of Object.entries(columnsToEnsure)) {
@@ -168,6 +174,7 @@ const toDbRow = (oldRow, patient) => {
     userActionName: merged.userActionName ?? null,
     providerAction: merged.providerAction ?? null,
     claimed: merged.claimed ?? null,
+    arrived: merged.arrived ?? null,
     // String(), not a bare number - better-sqlite3 binds every plain JS
     // number as SQLite REAL (confirmed live), regardless of whether it's
     // integer-valued, and this column has TEXT affinity: a REAL->TEXT
@@ -194,15 +201,9 @@ const toDbRow = (oldRow, patient) => {
     note: merged.note ?? null,
     medicalData: merged.medicalData ?? null,
     requestedBedType: merged.requestedBedType ?? null,
-    // Stored as JSON text (TEXT column, same as every other field here) -
-    // attachmentUrls arrives as a real array from
-    // getWaslaPatientReferralDataFromAPI.mjs/processCollectingPatients.mjs,
-    // but a caller rehydrating from an old DB row (oldRow spread above)
-    // would otherwise hand back the already-stringified text as-is, so
-    // only stringify when it's still an actual array.
-    attachmentUrls: Array.isArray(merged.attachmentUrls)
-      ? JSON.stringify(merged.attachmentUrls)
-      : (merged.attachmentUrls ?? null),
+    attachmentFileBase64: merged.attachmentFileBase64 ?? null,
+    attachmentFileName: merged.attachmentFileName ?? null,
+    attachmentFileMimeType: merged.attachmentFileMimeType ?? null,
   };
 };
 
@@ -229,6 +230,7 @@ const insertPatientSQL = `
     userActionName,
     providerAction,
     claimed,
+    arrived,
     status,
     isSent,
     isReceived,
@@ -244,7 +246,9 @@ const insertPatientSQL = `
     note,
     medicalData,
     requestedBedType,
-    attachmentUrls,
+    attachmentFileBase64,
+    attachmentFileName,
+    attachmentFileMimeType,
     updatedAt
   ) VALUES (
     @referralId,
@@ -268,6 +272,7 @@ const insertPatientSQL = `
     @userActionName,
     @providerAction,
     @claimed,
+    @arrived,
     @status,
     @isSent,
     @isReceived,
@@ -283,7 +288,9 @@ const insertPatientSQL = `
     @note,
     @medicalData,
     @requestedBedType,
-    @attachmentUrls,
+    @attachmentFileBase64,
+    @attachmentFileName,
+    @attachmentFileMimeType,
     datetime('now')
   )
   ON CONFLICT(referralId) DO UPDATE SET
@@ -307,6 +314,7 @@ const insertPatientSQL = `
     userActionName        = COALESCE(excluded.userActionName, userActionName),
     providerAction        = COALESCE(excluded.providerAction, providerAction),
     claimed               = COALESCE(excluded.claimed, claimed),
+    arrived               = COALESCE(excluded.arrived, arrived),
     status                = COALESCE(excluded.status, status),
     isSent                = COALESCE(excluded.isSent, isSent),
     isReceived            = COALESCE(excluded.isReceived, isReceived),
@@ -322,7 +330,9 @@ const insertPatientSQL = `
     note                  = COALESCE(excluded.note, note),
     medicalData           = COALESCE(excluded.medicalData, medicalData),
     requestedBedType      = COALESCE(excluded.requestedBedType, requestedBedType),
-    attachmentUrls        = COALESCE(excluded.attachmentUrls, attachmentUrls),
+    attachmentFileBase64  = COALESCE(excluded.attachmentFileBase64, attachmentFileBase64),
+    attachmentFileName    = COALESCE(excluded.attachmentFileName, attachmentFileName),
+    attachmentFileMimeType = COALESCE(excluded.attachmentFileMimeType, attachmentFileMimeType),
     updatedAt             = datetime('now')
 `;
 
@@ -348,6 +358,7 @@ const updatePatientSQL = `
     userActionName = @userActionName,
     providerAction = @providerAction,
     claimed = @claimed,
+    arrived = @arrived,
     status = @status,
     isSent = @isSent,
     isReceived = @isReceived,
@@ -363,7 +374,9 @@ const updatePatientSQL = `
     note = @note,
     medicalData = @medicalData,
     requestedBedType = @requestedBedType,
-    attachmentUrls = @attachmentUrls,
+    attachmentFileBase64 = @attachmentFileBase64,
+    attachmentFileName = @attachmentFileName,
+    attachmentFileMimeType = @attachmentFileMimeType,
     updatedAt = datetime('now')
   WHERE referralId = @referralId
 `;
@@ -484,6 +497,22 @@ const getCasesWithEmptyClaimStatusStatement = db.prepare(
 const getCasesWithEmptyClaimStatus = () =>
   getCasesWithEmptyClaimStatusStatement.all({ now: Date.now() });
 
+// The other half of checkReferralSelectedStatus.mjs's rehydrated queue
+// (alongside getCasesWithEmptyClaimStatus above): cases already confirmed
+// claimed=Yes but not yet confirmed arrived - kept in the same
+// non-claimable-cases queue so they keep getting polled after a restart,
+// purely to catch the later Confirmed -> ConfirmedArrival transition
+// (status 4). No referralEndTimestamp gate here (unlike the claim-status
+// query) since arrival can happen well after the window closed.
+const getClaimedNotArrivedCasesStatement = db.prepare(
+  `SELECT * FROM patients
+   WHERE claimed = 'Yes'
+     AND (arrived IS NULL OR arrived != 'Yes')`,
+);
+
+const getClaimedNotArrivedCases = () =>
+  getClaimedNotArrivedCasesStatement.all();
+
 const clearClaimedStatusStatement = db.prepare(
   `UPDATE patients SET claimed = NULL WHERE referralId = ?`,
 );
@@ -539,6 +568,7 @@ const FILTERABLE_LIKE_COLUMNS = [
  *   `referralDate` column (see toDbRow above) - distinct from this table's
  *   own `createdAt` column, which is just row-insertion bookkeeping.
  * @param {string} [filters.paid] - "1" (Yes) or "0" (No). Exact match.
+ * @param {string} [filters.arrived] - "Yes" or "No". Exact match.
  * @param {number} [filters.limit=500] - Clamped to [1, 2000].
  * @returns {object[]}
  */
@@ -549,6 +579,7 @@ const getPatientsFiltered = ({
   status,
   referralDate,
   paid,
+  arrived,
   limit = 500,
 } = {}) => {
   const values = { referralId, patientNationalId, navigationId };
@@ -584,6 +615,15 @@ const getPatientsFiltered = ({
   if (paid !== undefined && paid !== null && paid !== "") {
     clauses.push(`paid = @paid`);
     params.paid = Number(paid) ? 1 : 0;
+  }
+
+  // Rows are never actually written arrived='No' (see getClaimedNotArrivedCases)
+  // - "not yet arrived" is just NULL - so "No" here means that, not an
+  // exact-match lookup that would otherwise always return zero rows.
+  if (arrived === "Yes") {
+    clauses.push(`arrived = 'Yes'`);
+  } else if (arrived === "No") {
+    clauses.push(`(arrived IS NULL OR arrived != 'Yes')`);
   }
 
   const whereSQL = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
@@ -675,6 +715,7 @@ export {
   getPatient,
   getPatientByNavigationId,
   getCasesWithEmptyClaimStatus,
+  getClaimedNotArrivedCases,
   clearClaimedStatus,
   clearAllClaimedStatuses,
   getPatientsFiltered,

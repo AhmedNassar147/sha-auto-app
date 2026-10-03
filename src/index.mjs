@@ -36,26 +36,22 @@ import {
   rawReferralResponsesFolderDirectory,
   TABS_COLLECTION_TYPES,
   APP_URL,
-  WASLA_REFERRAL_VIEW_URL,
   // FAKE_REJECT_PROBE,
 } from "./constants.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import installTelegramBotApi from "./installTelegramBotApi.mjs";
 import {
-  clearAllClaimedStatuses,
   deleteOldCaseFiles,
   getCasesWithEmptyClaimStatus,
+  getClaimedNotArrivedCases,
   getPatientsFiltered,
   getPatient,
-  updatePatients,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import handleSubmitReferral from "./handleSubmitReferral.mjs";
-import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
-import closePageSafely from "./closePageSafely.mjs";
 // import generatePdfs from "./generatePdfs.mjs";
 
 // https://github.com/FiloSottile/mkcert/releases
@@ -218,7 +214,16 @@ import closePageSafely from "./closePageSafely.mjs";
     );
 
     // clearAllClaimedStatuses();
-    const nonClaimableCases = getCasesWithEmptyClaimStatus();
+    // Both queried sets share the same {referralId, referralEndTimestamp}
+    // shape PatientStore's nonClaimableCases queue expects - cases still
+    // waiting on their claim outcome, and cases already claimed=Yes but not
+    // yet confirmed arrived (see checkReferralSelectedStatus.mjs, which
+    // re-checks the latter silently, without notifying, until arrival
+    // actually happens).
+    const nonClaimableCases = [
+      ...getCasesWithEmptyClaimStatus(),
+      ...getClaimedNotArrivedCases(),
+    ];
 
     const patientsStore = new PatientStore(
       collectedPatients || [],
@@ -392,6 +397,7 @@ import closePageSafely from "./closePageSafely.mjs";
           status,
           referralDate,
           paid,
+          arrived,
         } = req.query;
         const rows = getPatientsFiltered({
           referralId,
@@ -400,6 +406,7 @@ import closePageSafely from "./closePageSafely.mjs";
           status,
           referralDate,
           paid,
+          arrived,
         });
 
         res.type("html").send(
@@ -412,6 +419,7 @@ import closePageSafely from "./closePageSafely.mjs";
               status,
               referralDate,
               paid,
+              arrived,
             },
           }),
         );
@@ -423,59 +431,25 @@ import closePageSafely from "./closePageSafely.mjs";
       }
     });
 
-    // Attachment links on /db are presigned S3 urls that expire (~30 min
-    // per X-Amz-Expires) - this re-fetches fresh ones live from Wasla for
-    // a single case. weslah.seha.sa is also directly visitable as its own
-    // standalone site (not just embedded as an iframe in seha.sa), sharing
-    // the same browser context's cookies/localStorage per-origin - so this
-    // just opens that case's own view page directly rather than going
-    // through seha.sa's login+dashboard+widget-click flow. A Page's own
-    // .evaluate() works identically to a Frame's, so it can be passed
-    // straight into getWaslaPatientReferralDataFromAPI unchanged.
-    app.get("/db/refresh-attachments/:referralId", async (req, res) => {
+    // Serves the cached case-report file (attachmentFileBase64, see
+    // db.mjs/buildCaseReportFile.mjs) straight from the DB - the /db page's
+    // "Preview" link opens this in a new tab. "inline" (not "attachment")
+    // so the browser renders it directly (PDF viewer/image) rather than
+    // forcing a download.
+    app.get("/db/attachment/:referralId", (req, res) => {
       const { referralId } = req.params;
-      const redirectTo = `/db?referralId=${encodeURIComponent(referralId)}`;
+      const patient = getPatient(referralId);
 
-      let newPage;
-
-      try {
-        const storedPatient = getPatient(referralId);
-
-        if (!storedPatient?.navigationId) {
-          return res.redirect(redirectTo);
-        }
-
-        newPage = await browser.newPage();
-        await newPage.goto(
-          `${WASLA_REFERRAL_VIEW_URL}/${storedPatient.navigationId}`,
-          { waitUntil: "domcontentloaded" },
-        );
-
-        const patientData = await getWaslaPatientReferralDataFromAPI(
-          newPage,
-          storedPatient.navigationId,
-          referralId,
-          true,
-        );
-
-        if (patientData?.attachmentUrls) {
-          updatePatients({
-            referralId,
-            attachmentUrls: patientData.attachmentUrls,
-          });
-        }
-
-        return res.redirect(redirectTo);
-      } catch (error) {
-        createConsoleMessage(
-          "error",
-          error,
-          `❌ refresh-attachments failed for referralId=${referralId}:`,
-        );
-        return res.redirect(redirectTo);
-      } finally {
-        await closePageSafely(newPage);
+      if (!patient?.attachmentFileBase64) {
+        return res.status(404).type("text/plain").send("No attachment found.");
       }
+
+      const filename = patient.attachmentFileName || `${referralId}_attachment`;
+
+      res
+        .type(patient.attachmentFileMimeType || "application/pdf")
+        .set("Content-Disposition", `inline; filename="${filename}"`)
+        .send(Buffer.from(patient.attachmentFileBase64, "base64"));
     });
 
     // Create HTTPS server
