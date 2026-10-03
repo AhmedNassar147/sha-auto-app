@@ -64,7 +64,7 @@ const MODAL_TIMEOUT_MS = 15_000;
 // validate, so this waits for that rather than a fixed delay.
 const CONFIRM_BUTTON_SELECTOR = "button.MuiButton-containedPrimary";
 const CONFIRM_BUTTON_TIMEOUT_MS = 15_000;
-const SLEEP_AFTER_CONFIRMATION_MS = 17_000;
+const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 
 // Lookup id from the portal's own rejection-reasons list (scripts/
 // reject-case.js) - "Unavailability of Required Bed" / "عدم توفر السرير
