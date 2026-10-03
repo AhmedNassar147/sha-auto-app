@@ -37,7 +37,7 @@ const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 // click.
 const ACCEPT_BUTTON_TEXTS = ["قبول الإحالة", "Accept Referral"];
 const REJECT_BUTTON_TEXTS = ["رفض الإحالة", "Reject Referral"];
-const ACTION_BUTTON_TIMEOUT_MS = 15_000;
+const ACTION_BUTTON_TIMEOUT_MS = 10_000;
 
 // The confirmation popup after clicking accept/reject (html/details/
 // rejection-modal.html, html/details/accept-modal.html) - stable MUI base
@@ -322,12 +322,12 @@ const handleSubmitReferral = (options) => async (patient) => {
 
   const SLEEP_BEFORE_ACCEPT_OR_REJECT_MS = getEnvVariableAsNumber(
     "SLEEP_BEFORE_ACCEPT_OR_REJECT_MS",
-    280,
+    0,
   );
 
   const SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS = getEnvVariableAsNumber(
     "SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS",
-    80,
+    40,
   );
 
   const isAcceptanceAction = actionType === ACCEPT;
@@ -369,6 +369,12 @@ const handleSubmitReferral = (options) => async (patient) => {
       ? ACCEPT_BUTTON_TEXTS
       : REJECT_BUTTON_TEXTS;
 
+    const currentLeftTime = referralEndTimestamp - Date.now();
+
+    if (currentLeftTime > 1300) {
+      await sleep(currentLeftTime - 1300);
+    }
+
     // Upload the letter now, well ahead of the facility review-window
     // boundary - no url/payload given, so submitWaslaAction skips its own
     // POST step entirely and this is just the upload, split out of the
@@ -380,37 +386,40 @@ const handleSubmitReferral = (options) => async (patient) => {
       postStepLabel: "accept-json",
     });
 
-    // The real synchronization point: sleep out whatever's actually left
-    // until the boundary (cutoffTimeMs already gave this function a head
-    // start before it, so diff is normally still positive here - if the
-    // prep work above overran that head start, diff goes negative and we
-    // just proceed immediately rather than sleeping a negative amount),
-    // plus a small deliberate margin - see BOUNDARY_SAFETY_MARGIN_MS.
-    // This is what actually guarantees landing on the right side of the
-    // boundary, rather than hoping prep work happened to take long enough.
+    // Kept for the Telegram diagnostics (boundaryDiffMs/sleepMs) even
+    // though nothing sleeps on it anymore - the actual synchronization
+    // point is the button-wait below, which reacts directly to Wasla's own
+    // client-side "is the review window over" check instead of our own
+    // clock-based guess.
     const diffMs = referralEndTimestamp - Date.now();
     const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
 
-    if (diffMs > 0) {
-      await sleep(sleepMS);
-    }
+    const tActionButtonWaitStart = Date.now();
 
-    // If you want to fully close that gap rather than just make it unlikely,
-    // the robust fix is a direct guard right before the POST fires — e.g.
-    // if (Date.now() < referralEndTimestamp) await sleep(referralEndTimestamp - Date.now())
-    // immediately before calling submitWaslaReferralViaApi — so correctness doesn't depend
-    // on the reload/margin arithmetic lining up, no matter how fast the reload happens to be.
-    // Not required if you're comfortable with the current odds, just flagging it since
-    // it's the one place where timing assumptions (rather than a hard check) are still
-    // doing the safety work.
+    const actionButtonHandle = await page
+      .waitForFunction(
+        (texts) => {
+          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
 
-    let waitingBeforeFinalActionMS = 0;
+          const buttons = [...document.querySelectorAll("button")];
 
-    if (diffMs > 0) {
-      const reloadStartTime = Date.now();
-      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
-      waitingBeforeFinalActionMS = Date.now() - reloadStartTime;
-    }
+          const matchedButton = buttons.find(
+            (button) =>
+              texts.includes(normalize(button.textContent)) && !button.disabled,
+          );
+
+          if (matchedButton) {
+            matchedButton.scrollIntoView({ block: "end" });
+          }
+
+          return matchedButton || null;
+        },
+        { timeout: ACTION_BUTTON_TIMEOUT_MS },
+        targetButtonTexts,
+      )
+      .catch(() => null);
+
+    const waitingBeforeFinalActionMS = Date.now() - tActionButtonWaitStart;
 
     // Not awaited - purely visual (showPageSnackbar never throws, it
     // logs and swallows internally), so it shouldn't serialize an extra
@@ -428,6 +437,10 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const actionTimeStart = Date.now();
     let apiResult = null;
+
+    if (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS) {
+      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
+    }
 
     while (currentRetryCount <= MAX_ACTION_RETRIES) {
       apiResult = await submitWaslaReferralViaApi({
@@ -520,56 +533,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       return;
     }
 
-    // const actionButtonTimingLine = `actionButtonHandle: ${actionButtonHandle ? "resolved" : "timed out"} after \`${actionButtonWaitMs}ms\``;
-
-    // Scrolls the window AND any element whose own content overflows -
-    // this page's layout may scroll via an inner MUI content pane rather
-    // than document.body/window (confirmed live: a plain window.scrollTo
-    // here stopped having any visible effect), so rather than guess at one
-    // specific container's selector, this just scrolls everything that
-    // can scroll. Purely for the human operator left looking at this tab
-    // afterward (see file docblock) - doesn't gate the actual button
-    // click below, which Puppeteer already scrolls into view itself.
-    await page
-      .evaluate(() => {
-        window.scrollTo(0, document.body.scrollHeight);
-        // document.querySelectorAll("*").forEach((el) => {
-        //   if (el.scrollHeight > el.clientHeight + 10) {
-        //     el.scrollTop = el.scrollHeight;
-        //   }
-        // });
-      })
-      .catch(() => {});
-
-    // Confirmed live: the accept/reject button starts disabled and only
-    // becomes clickable later (same shape as the Confirm button further
-    // down) - matching by text alone found it while still disabled, so
-    // the real click landed (native focus happened) but React's handler
-    // no-op'd on the disabled state, and the popup never opened.
-    const tActionButtonWaitStart = Date.now();
-
-    const actionButtonHandle = await page
-      .waitForFunction(
-        (texts) => {
-          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
-
-          const buttons = [...document.querySelectorAll("button")];
-
-          return (
-            buttons.find(
-              (button) =>
-                texts.includes(normalize(button.textContent)) &&
-                !button.disabled,
-            ) || null
-          );
-        },
-        { timeout: ACTION_BUTTON_TIMEOUT_MS },
-        targetButtonTexts,
-      )
-      .catch(() => null);
-
-    const actionButtonWaitMs = Date.now() - tActionButtonWaitStart;
-
     if (!actionButtonHandle) {
       await reportFailure(
         page,
@@ -591,12 +554,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       );
       return;
     }
-
-    createConsoleMessage(
-      "success",
-      `✅ [${actionType}] Clicked ${isAcceptanceAction ? "accept" : "reject"} button for referralId=${referralId} (navigationId=${navigationId})`,
-      "handleSubmitReferral",
-    );
 
     const modalHandle = await page
       .waitForSelector(MODAL_SELECTOR, { timeout: MODAL_TIMEOUT_MS })
