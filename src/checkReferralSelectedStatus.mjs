@@ -7,7 +7,7 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import sleep from "./sleep.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
-import { updatePatients, getPatient } from "./db.mjs";
+import { updatePatients } from "./db.mjs";
 import {
   CLAIMED_STATUS_CODES,
   WASLA_STATUS_TYPES,
@@ -153,17 +153,6 @@ const updateAndNotifyUser = async ({
 
   const updates = { referralId, status, claimed, tabName };
 
-  // Covers the edge case where arrival happens so fast it's already
-  // ConfirmedArrival on this case's very first resolution (claimed=Yes and
-  // arrived=Yes in the same check) - without this, the case would be
-  // removed from the queue right here and never get a chance to be
-  // re-checked for arrival separately (see checkReferralSelectedStatus's
-  // own arrival-tracking branch below, which only runs for cases already
-  // known claimed=Yes before this particular check).
-  if (statusID === "ConfirmedArrival") {
-    updates.arrived = "Yes";
-  }
-
   updatePatients(updates);
 
   // Same shared/admin watcher pattern as loginWithNafathCredentials.mjs's
@@ -228,17 +217,11 @@ const updateAndNotifyUser = async ({
 };
 
 /**
- * Drains PatientStore's "non-claimable" queue - cases whose final Wasla
- * outcome isn't known yet, and separately, cases already known claimed=Yes
- * but not yet confirmed arrived (see db.mjs's getCasesWithEmptyClaimStatus/
- * getClaimedNotArrivedCases, both fed into this same queue at startup). Each
- * is re-checked against the "myOrders" tab; a not-yet-claimed case that's
- * finalized (accepted/confirmed, rejected, withdrawn, etc.) updates storage
- * and notifies the operator as before, while an already-claimed case only
- * updates storage silently, and only once arrival is actually confirmed
- * (status 4, ConfirmedArrival) - no notification, since that outcome was
- * already reported once. Cases still stuck at WaitingAcceptance, or
- * claimed but not yet arrived, are left in the queue for the next pass.
+ * Drains PatientStore's "non-claimable" queue (cases we accepted but whose
+ * final Wasla outcome isn't known yet) - re-checks each one against the
+ * "myOrders" tab, and for any that have finalized (accepted/confirmed,
+ * rejected, withdrawn, etc.), updates storage and pings the operator. Cases
+ * still stuck at WaitingAcceptance are left in the queue for the next pass.
  *
  * @param {import("puppeteer").Frame} waslaFrame - The Wasla widget's iframe
  *   frame, from getWaslaReferralFrame.mjs.
@@ -275,24 +258,6 @@ const checkReferralSelectedStatus = async (
     const results = settledResults.filter((item) => item.shouldUpdateAndNotify);
 
     for (const item of results) {
-      // A case already known claimed=Yes before this check is only in the
-      // queue for arrival-tracking (see db.mjs's getClaimedNotArrivedCases,
-      // fed in at startup alongside getCasesWithEmptyClaimStatus) - its
-      // claim outcome was already notified once, so this silently updates
-      // the DB and says nothing further, only actually acting once arrival
-      // is confirmed. Any other status here just leaves it queued for the
-      // next pass.
-      const wasAlreadyClaimed = getPatient(item.referralId)?.claimed === "Yes";
-
-      if (wasAlreadyClaimed) {
-        if (item.statusID === "ConfirmedArrival") {
-          updatePatients({ referralId: item.referralId, arrived: "Yes" });
-          patientsStore.removeNonClaimableCase(item.referralId);
-        }
-
-        continue;
-      }
-
       await updateAndNotifyUser({
         sendTelegramMessage,
         ...item,

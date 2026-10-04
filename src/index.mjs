@@ -43,7 +43,6 @@ import installTelegramBotApi from "./installTelegramBotApi.mjs";
 import {
   deleteOldCaseFiles,
   getCasesWithEmptyClaimStatus,
-  getClaimedNotArrivedCases,
   getPatientsFiltered,
   getPatient,
 } from "./db.mjs";
@@ -214,16 +213,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
     );
 
     // clearAllClaimedStatuses();
-    // Both queried sets share the same {referralId, referralEndTimestamp}
-    // shape PatientStore's nonClaimableCases queue expects - cases still
-    // waiting on their claim outcome, and cases already claimed=Yes but not
-    // yet confirmed arrived (see checkReferralSelectedStatus.mjs, which
-    // re-checks the latter silently, without notifying, until arrival
-    // actually happens).
-    const nonClaimableCases = [
-      ...getCasesWithEmptyClaimStatus(),
-      ...getClaimedNotArrivedCases(),
-    ];
+    const nonClaimableCases = getCasesWithEmptyClaimStatus();
 
     const patientsStore = new PatientStore(
       collectedPatients || [],

@@ -14,7 +14,11 @@
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
-import { getPatientByNavigationId, getPatient } from "../db.mjs";
+import {
+  getPatientByNavigationId,
+  getPatient,
+  updatePatients,
+} from "../db.mjs";
 import { WASLA_STATUS_TYPES, WASLA_REFERRAL_VIEW_URL } from "../constants.mjs";
 import submitArrivalConfirmationViaApi from "../submitArrivalConfirmationViaApi.mjs";
 import closePageSafely from "../closePageSafely.mjs";
@@ -158,6 +162,11 @@ const performArrivalConfirmation = async ({
         message: `⛔ Arrival confirmation failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`): ${result.error}`,
       };
     }
+
+    // Set directly here, at the moment we know arrival actually succeeded -
+    // simpler and more immediate than polling Wasla's status tab later to
+    // detect the same thing indirectly.
+    updatePatients({ referralId, arrived: "Yes" });
 
     return {
       success: true,

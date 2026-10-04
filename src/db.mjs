@@ -497,22 +497,6 @@ const getCasesWithEmptyClaimStatusStatement = db.prepare(
 const getCasesWithEmptyClaimStatus = () =>
   getCasesWithEmptyClaimStatusStatement.all({ now: Date.now() });
 
-// The other half of checkReferralSelectedStatus.mjs's rehydrated queue
-// (alongside getCasesWithEmptyClaimStatus above): cases already confirmed
-// claimed=Yes but not yet confirmed arrived - kept in the same
-// non-claimable-cases queue so they keep getting polled after a restart,
-// purely to catch the later Confirmed -> ConfirmedArrival transition
-// (status 4). No referralEndTimestamp gate here (unlike the claim-status
-// query) since arrival can happen well after the window closed.
-const getClaimedNotArrivedCasesStatement = db.prepare(
-  `SELECT * FROM patients
-   WHERE claimed = 'Yes'
-     AND (arrived IS NULL OR arrived != 'Yes')`,
-);
-
-const getClaimedNotArrivedCases = () =>
-  getClaimedNotArrivedCasesStatement.all();
-
 const clearClaimedStatusStatement = db.prepare(
   `UPDATE patients SET claimed = NULL WHERE referralId = ?`,
 );
@@ -617,9 +601,9 @@ const getPatientsFiltered = ({
     params.paid = Number(paid) ? 1 : 0;
   }
 
-  // Rows are never actually written arrived='No' (see getClaimedNotArrivedCases)
-  // - "not yet arrived" is just NULL - so "No" here means that, not an
-  // exact-match lookup that would otherwise always return zero rows.
+  // Rows are never actually written arrived='No' - "not yet arrived" is
+  // just NULL - so "No" here means that, not an exact-match lookup that
+  // would otherwise always return zero rows.
   if (arrived === "Yes") {
     clauses.push(`arrived = 'Yes'`);
   } else if (arrived === "No") {
@@ -715,7 +699,6 @@ export {
   getPatient,
   getPatientByNavigationId,
   getCasesWithEmptyClaimStatus,
-  getClaimedNotArrivedCases,
   clearClaimedStatus,
   clearAllClaimedStatuses,
   getPatientsFiltered,
