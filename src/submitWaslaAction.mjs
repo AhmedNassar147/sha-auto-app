@@ -205,7 +205,12 @@ const submitWaslaAction = async ({
           };
         }
 
-        return { success: true, attachmentId, data: await res.json() };
+        return {
+          success: true,
+          attachmentId,
+          uploadIgnored,
+          data: await res.json(),
+        };
       } catch (err) {
         return {
           success: false,
