@@ -60,6 +60,7 @@ import submitWaslaAction from "./submitWaslaAction.mjs";
  *   error?: string,
  *   step?: "upload" | "accept-json",
  *   url?: string,
+ *   uploadIgnored: boolean,
  * }>}
  */
 const submitWaslaReferralViaApi = async ({

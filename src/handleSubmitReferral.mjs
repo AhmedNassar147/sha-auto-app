@@ -222,6 +222,7 @@ const buildDirectApiTelegramMessage = ({
       : "";
 
   const timingLine =
+    `uploadIgnored=${apiResult.uploadIgnored}\n` +
     `boundaryDiffMs=${diffMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
     `sleepMs=${sleepMs}\n` +
@@ -490,11 +491,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         ? buttonEnabledAfterMs - reviewBadgeGoneAfterMs
         : null;
 
-    // showPageSnackbar(page, {
-    //   message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
-    //   severity: "info",
-    // });
-
     const elapsedBeforeActionMs = Date.now() - startTime;
 
     let currentRetryCount = 1;
@@ -514,6 +510,14 @@ const handleSubmitReferral = (options) => async (patient) => {
         // we pass these incase the letter file was not pre-uploaded, so we can upload it now
         fileBase64: letterFileBase64,
         fileName: randomFileName,
+        // Not awaited inside submitWaslaAction - fires right as the real
+        // accept/reject POST is about to go out, without its own
+        // page.evaluate() round-trip delaying that submit.
+        // onBeforeSubmit: () =>
+        //   showPageSnackbar(page, {
+        //     message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
+        //     severity: "info",
+        //   }),
       });
 
       const { success, error } = apiResult;

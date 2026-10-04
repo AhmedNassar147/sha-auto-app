@@ -61,6 +61,7 @@ import { API_URLS } from "./constants.mjs";
  *   error?: string,
  *   step?: string,
  *   url?: string,
+ *   uploadIgnored: boolean,
  * }>}
  */
 const submitWaslaAction = async ({
@@ -74,7 +75,7 @@ const submitWaslaAction = async ({
 }) => {
   const uploadUrl = API_URLS.UPLOAD_ATTACHMENT;
 
-  return await page.evaluate(
+  const result = await page.evaluate(
     async ({
       fileBase64,
       fileName,
@@ -109,8 +110,10 @@ const submitWaslaAction = async ({
       const headers = getWaslaAuthHeaders();
 
       let attachmentId = knownAttachmentId;
+      let uploadIgnored = true;
 
       if (!attachmentId && fileBase64) {
+        uploadIgnored = false;
         const byteChars = atob(fileBase64);
         const byteNumbers = new Array(byteChars.length);
         for (let i = 0; i < byteChars.length; i++) {
@@ -138,6 +141,7 @@ const submitWaslaAction = async ({
               success: false,
               step: `${postStepLabel}-upload-notOk`,
               url: uploadUrl,
+              uploadIgnored,
               error: `Status ${uploadRes.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
             };
           }
@@ -152,6 +156,7 @@ const submitWaslaAction = async ({
               success: false,
               step: `${postStepLabel}-upload-no-id`,
               url: uploadUrl,
+              uploadIgnored,
               error: `No attachment id in response (hadAuthHeader=${Boolean(headers.Authorization)})`,
             };
           }
@@ -160,6 +165,7 @@ const submitWaslaAction = async ({
             success: false,
             step: `${postStepLabel}-upload-catch`,
             url: uploadUrl,
+            uploadIgnored,
             error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
@@ -168,7 +174,7 @@ const submitWaslaAction = async ({
       // No url means no POST was ever intended - whichever caller left it
       // out only wanted the upload (see this file's own docblock).
       if (!url) {
-        return { success: true, attachmentId };
+        return { success: true, attachmentId, uploadIgnored };
       }
 
       const finalPayload =
@@ -194,6 +200,7 @@ const submitWaslaAction = async ({
             step: `${postStepLabel}-notOk`,
             attachmentId,
             url,
+            uploadIgnored,
             error: `Status ${res.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
@@ -205,6 +212,7 @@ const submitWaslaAction = async ({
           step: `${postStepLabel}-catch`,
           attachmentId,
           url,
+          uploadIgnored,
           error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
         };
       }
@@ -219,6 +227,8 @@ const submitWaslaAction = async ({
       knownAttachmentId: attachmentId,
     },
   );
+
+  return result;
 };
 
 export default submitWaslaAction;
