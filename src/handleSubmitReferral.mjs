@@ -382,11 +382,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         ),
       ]);
 
-    // Computed up front (not just inside the modal-filling step below) so
-    // the same text is used both for the direct-API attempt's "notes" and
-    // for the UI fallback's Description field, rather than picking twice.
-    // Reject has no notes/description at all (submitWaslaReferralViaApi
-    // sends rejectionReasonId instead), so this stays undefined there.
     const description = isAcceptanceAction
       ? randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(navigationId)
       : undefined;
@@ -401,10 +396,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(currentLeftTime - 1400);
     }
 
-    // Upload the letter now, well ahead of the facility review-window
-    // boundary - no url/payload given, so submitWaslaAction skips its own
-    // POST step entirely and this is just the upload, split out of the
-    // time-critical path (see submitWaslaAction.mjs's own docblock).
     const uploadStartTime = Date.now();
     const uploadResult = await submitWaslaAction({
       page,
@@ -414,24 +405,19 @@ const handleSubmitReferral = (options) => async (patient) => {
     });
     const uploadDurationMs = Date.now() - uploadStartTime;
 
-    await page
-      .content()
-      .then((html) =>
-        writeFile(`${htmlFilesPath}/${referralId}.html`, html, "utf8"),
-      )
-      .catch((error) => {
-        createConsoleMessage(
-          "warn",
-          error?.message || error,
-          `⚠️ saving page HTML after upload failed for referralId=${referralId}`,
-        );
-      });
+    // await page
+    //   .content()
+    //   .then((html) =>
+    //     writeFile(`${htmlFilesPath}/${referralId}.html`, html, "utf8"),
+    //   )
+    //   .catch((error) => {
+    //     createConsoleMessage(
+    //       "warn",
+    //       error?.message || error,
+    //       `⚠️ saving page HTML after upload failed for referralId=${referralId}`,
+    //     );
+    //   });
 
-    // Kept for the Telegram diagnostics (boundaryDiffMs/sleepMs) even
-    // though nothing sleeps on it anymore - the actual synchronization
-    // point is the button-wait below, which reacts directly to Wasla's own
-    // client-side "is the review window over" check instead of our own
-    // clock-based guess.
     const diffMs = referralEndTimestamp - Date.now();
     const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
 
@@ -470,19 +456,24 @@ const handleSubmitReferral = (options) => async (patient) => {
     // Resolves once the "In Review" badge is no longer on the page (either
     // removed or its text changed away from that marker) - run alongside
     // the button-wait rather than after it, so neither delays the other.
-    const reviewBadgeGonePromise = page
-      .waitForFunction(
-        (marker) =>
-          ![...document.querySelectorAll("span")].some((el) =>
-            el.textContent?.includes(marker),
-          ),
-        { timeout: ACTION_BUTTON_TIMEOUT_MS },
-        REVIEW_BADGE_TEXT_MARKER,
-      )
-      .then(() => {
-        reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
-      })
-      .catch(() => null);
+    // Reject-only: accept is the time-critical, race-to-be-first path, and
+    // even a second concurrent polling loop in the page is extra overhead
+    // this diagnostic isn't worth risking there - reject has no such race.
+    const reviewBadgeGonePromise = isAcceptanceAction
+      ? Promise.resolve(null)
+      : page
+          .waitForFunction(
+            (marker) =>
+              ![...document.querySelectorAll("span")].some((el) =>
+                el.textContent?.includes(marker),
+              ),
+            { timeout: ACTION_BUTTON_TIMEOUT_MS },
+            REVIEW_BADGE_TEXT_MARKER,
+          )
+          .then(() => {
+            reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
+          })
+          .catch(() => null);
 
     const [actionButtonHandle] = await Promise.all([
       actionButtonPromise,
@@ -499,10 +490,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         ? buttonEnabledAfterMs - reviewBadgeGoneAfterMs
         : null;
 
-    // Not awaited - purely visual (showPageSnackbar never throws, it
-    // logs and swallows internally), so it shouldn't serialize an extra
-    // page.evaluate round-trip onto this time-critical path in front of
-    // the actual submit call.
     // showPageSnackbar(page, {
     //   message: `Submitting ${isAcceptanceAction ? "acceptance" : "rejection"} via direct API...`,
     //   severity: "info",
@@ -515,10 +502,6 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const actionTimeStart = Date.now();
     let apiResult = null;
-
-    if (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS) {
-      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
-    }
 
     while (currentRetryCount <= MAX_ACTION_RETRIES) {
       apiResult = await submitWaslaReferralViaApi({

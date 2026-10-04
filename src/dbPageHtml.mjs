@@ -56,6 +56,7 @@ const COLUMN_LABELS = {
   note: "Note",
   medicalData: "Medical Data",
   caseReport: "Case Report",
+  removeRow: "",
 };
 
 const COLUMNS = [
@@ -103,6 +104,10 @@ const COLUMNS = [
   "tabName",
   "createdAt",
   "updatedAt",
+  // Not a real `patients` column - renderCell builds this from the row's
+  // referralId (ignoring row.removeRow, undefined), same as "openCase"
+  // above. Kept last so it's always the rightmost column.
+  "removeRow",
 ];
 
 // "status" is handled separately in renderCell (needs the WASLA_STATUS_TYPES
@@ -147,6 +152,32 @@ const renderCell = (column, value, row) => {
     const safeUrl = `/db/attachment/${encodeURIComponent(row.referralId)}`;
     return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">👁 Preview</a>`;
   }
+  if (column === "removeRow") {
+    if (!row?.referralId) return '<span class="empty-cell">—</span>';
+    const safeUrl = `/db/delete/${encodeURIComponent(row.referralId)}`;
+    // Real referralIds are always alphanumeric (validated the same way
+    // elsewhere, e.g. performArrivalConfirmation.mjs) - stripped rather
+    // than HTML-escaped here specifically because this value is embedded
+    // inside a single-quoted JS string literal (the onsubmit attribute),
+    // not plain HTML text; HTML-escaping a `'` to `&#39;` would just
+    // decode back to a literal `'` once the browser parses the attribute,
+    // still breaking out of the JS string.
+    const jsSafeReferralId = String(row.referralId).replace(
+      /[^A-Za-z0-9]/g,
+      "",
+    );
+    // A POST form (not a GET link) since this is destructive - a GET
+    // request shouldn't cause a side effect (crawlers/prefetch could
+    // trigger it). The confirm() is the one bit of inline JS this
+    // otherwise JS-free page uses, same tradeoff as any plain-HTML admin
+    // page needing a delete confirmation.
+    return (
+      `<form method="POST" action="${safeUrl}" style="display:inline" ` +
+      `onsubmit="return confirm('Delete referralId ${jsSafeReferralId}? This cannot be undone.')">` +
+      `<button type="submit" class="btn-link danger">🗑 Remove</button>` +
+      `</form>`
+    );
+  }
   if (value === null || value === undefined || value === "") {
     return '<span class="empty-cell">—</span>';
   }
@@ -168,15 +199,32 @@ const renderCell = (column, value, row) => {
   return `<span title="${escapeHtml(value)}">${escapeHtml(value)}</span>`;
 };
 
-const renderRows = (rows) => {
+// Highlights the row the referralId filter was actually looking for (exact
+// match, case-insensitive) - the filter itself is a partial/LIKE match, so
+// a search can still return several rows, and this makes the one that was
+// actually typed in stand out among them rather than requiring a manual
+// scan.
+const renderRows = (rows, selectedReferralId) => {
   if (!rows.length) {
     return `<tr><td colspan="${COLUMNS.length}"><div class="state-msg">No cases match these filters.</div></td></tr>`;
   }
+  const normalizedSelectedReferralId = selectedReferralId?.toLowerCase().trim();
+
   return rows
-    .map(
-      (row) =>
-        `<tr>${COLUMNS.map((col) => `<td>${renderCell(col, row[col], row)}</td>`).join("")}</tr>`,
-    )
+    .map((row) => {
+      const isSelected =
+        !!normalizedSelectedReferralId &&
+        String(row.referralId ?? "").toLowerCase() ===
+          normalizedSelectedReferralId;
+
+      return (
+        `<tr class="${isSelected ? "selected-row" : ""}">` +
+        COLUMNS.map((col) => `<td>${renderCell(col, row[col], row)}</td>`).join(
+          "",
+        ) +
+        `</tr>`
+      );
+    })
     .join("");
 };
 
@@ -291,6 +339,11 @@ const renderDbPage = ({ rows, filters = {} }) => {
     border: 1px solid var(--panel-border);
     color: var(--text);
   }
+  .btn-link.danger {
+    background: var(--badge-red-bg);
+    color: var(--badge-red-text);
+    border: 1px solid var(--badge-red-text);
+  }
   .meta-row {
     padding: 0 24px 10px;
     color: var(--muted);
@@ -328,6 +381,12 @@ const renderDbPage = ({ rows, filters = {} }) => {
   }
   tbody tr:nth-child(even) { background: var(--row-alt); }
   tbody tr:hover { background: var(--row-hover); }
+  tbody tr.selected-row,
+  tbody tr.selected-row:nth-child(even) {
+    background: rgba(79, 140, 255, 0.18);
+    box-shadow: inset 3px 0 0 var(--accent);
+  }
+  tbody tr.selected-row:hover { background: rgba(79, 140, 255, 0.26); }
   .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
   .badge-neutral { background: var(--badge-neutral-bg); color: var(--badge-neutral-text); }
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
@@ -392,7 +451,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
       <thead>
         <tr>${COLUMNS.map((col) => `<th>${COLUMN_LABELS[col] || col}</th>`).join("")}</tr>
       </thead>
-      <tbody>${renderRows(rows)}</tbody>
+      <tbody>${renderRows(rows, referralId)}</tbody>
     </table>
   </div>
 </body>

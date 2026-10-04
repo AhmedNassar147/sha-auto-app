@@ -42,6 +42,7 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import installTelegramBotApi from "./installTelegramBotApi.mjs";
 import {
   deleteOldCaseFiles,
+  deletePatients,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
   getPatient,
@@ -456,6 +457,19 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           `inline; filename="${asciiFallbackFilename}"; filename*=UTF-8''${encodeURIComponent(rawFilename)}`,
         )
         .send(Buffer.from(patient.attachmentFileBase64, "base64"));
+    });
+
+    // The /db page's per-row "Remove" button - POST (not GET) since this
+    // is destructive and shouldn't be triggerable as a side effect of a
+    // plain navigation/prefetch. Redirects back to wherever the request
+    // came from so the admin stays on the same filtered view, falling
+    // back to the unfiltered page if there's no Referer header.
+    app.post("/db/delete/:referralId", (req, res) => {
+      const { referralId } = req.params;
+
+      deletePatients(referralId);
+
+      res.redirect(req.get("Referer") || "/db");
     });
 
     // Create HTTPS server
