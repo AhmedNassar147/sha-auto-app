@@ -431,9 +431,9 @@ const handleSubmitReferral = (options) => async (patient) => {
               texts.includes(normalize(button.textContent)) && !button.disabled,
           );
 
-          if (matchedButton) {
-            matchedButton.scrollIntoView({ block: "end" });
-          }
+          // if (matchedButton) {
+          //   matchedButton.scrollIntoView({ block: "end" });
+          // }
 
           return matchedButton || null;
         },
