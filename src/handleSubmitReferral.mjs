@@ -44,6 +44,15 @@ const ACCEPT_BUTTON_TEXTS = ["قبول الإحالة", "Accept Referral"];
 const REJECT_BUTTON_TEXTS = ["رفض الإحالة", "Reject Referral"];
 const ACTION_BUTTON_TIMEOUT_MS = 10_000;
 
+// Confirmed live (html/details/details-page-with-review-timer.html): the
+// "In Review - Ends in M:SS" badge has no id/data-testid either - matched
+// by this text substring the same way the accept/reject buttons are. Used
+// as a second, independent "is the review window over" signal to compare
+// against the button's own disabled state - they're driven by separate
+// code in Wasla's bundle and aren't guaranteed to resolve at the exact
+// same instant.
+const REVIEW_BADGE_TEXT_MARKER = "In Review";
+
 // The confirmation popup after clicking accept/reject (html/details/
 // rejection-modal.html, html/details/accept-modal.html) - stable MUI base
 // classes (not the hashed per-build "mui-xxxxxx" ones) and plain
@@ -156,7 +165,10 @@ const reportFailure = async (
  *   attemptsMade: number,
  *   retryReason: string,
  *   sleepWhenAcceptOrRejectRetryMs: number,
- *   uploadDurationMs: number
+ *   uploadDurationMs: number,
+ *   reviewBadgeGoneAfterMs: number | null,
+ *   buttonEnabledAfterMs: number | null,
+ *   buttonVsReviewBadgeDeltaMs: number | null,
  * }} params
  * @returns {string}
  */
@@ -177,6 +189,9 @@ const buildDirectApiTelegramMessage = ({
   retryReason,
   sleepWhenAcceptOrRejectRetryMs,
   uploadDurationMs,
+  reviewBadgeGoneAfterMs,
+  buttonEnabledAfterMs,
+  buttonVsReviewBadgeDeltaMs,
 }) => {
   const { success } = apiResult;
 
@@ -212,6 +227,9 @@ const buildDirectApiTelegramMessage = ({
     `sleepMs=${sleepMs}\n` +
     `uploadDurationMs=${uploadDurationMs}ms\n` +
     `waitingBeforeFinalActionMS=${waitingBeforeFinalActionMS}\n` +
+    `reviewBadgeGoneAfterMs=${reviewBadgeGoneAfterMs}\n` +
+    `buttonEnabledAfterMs=${buttonEnabledAfterMs}\n` +
+    `buttonVsReviewBadgeDeltaMs=${buttonVsReviewBadgeDeltaMs}\n` +
     `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
     `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
     `finalRequestTakesMs=${actionTimeMs}ms\n`;
@@ -419,7 +437,10 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const tActionButtonWaitStart = Date.now();
 
-    const actionButtonHandle = await page
+    let buttonEnabledAfterMs = null;
+    let reviewBadgeGoneAfterMs = null;
+
+    const actionButtonPromise = page
       .waitForFunction(
         (texts) => {
           const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
@@ -440,9 +461,43 @@ const handleSubmitReferral = (options) => async (patient) => {
         { timeout: ACTION_BUTTON_TIMEOUT_MS },
         targetButtonTexts,
       )
+      .then((handle) => {
+        buttonEnabledAfterMs = Date.now() - tActionButtonWaitStart;
+        return handle;
+      })
       .catch(() => null);
 
+    // Resolves once the "In Review" badge is no longer on the page (either
+    // removed or its text changed away from that marker) - run alongside
+    // the button-wait rather than after it, so neither delays the other.
+    const reviewBadgeGonePromise = page
+      .waitForFunction(
+        (marker) =>
+          ![...document.querySelectorAll("span")].some((el) =>
+            el.textContent?.includes(marker),
+          ),
+        { timeout: ACTION_BUTTON_TIMEOUT_MS },
+        REVIEW_BADGE_TEXT_MARKER,
+      )
+      .then(() => {
+        reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
+      })
+      .catch(() => null);
+
+    const [actionButtonHandle] = await Promise.all([
+      actionButtonPromise,
+      reviewBadgeGonePromise,
+    ]);
+
     const waitingBeforeFinalActionMS = Date.now() - tActionButtonWaitStart;
+
+    // Positive: the button became clickable AFTER the badge said review
+    // was over (some lag between the two signals). Negative: the button
+    // beat the badge. null: one or both never resolved within the timeout.
+    const buttonVsReviewBadgeDeltaMs =
+      buttonEnabledAfterMs != null && reviewBadgeGoneAfterMs != null
+        ? buttonEnabledAfterMs - reviewBadgeGoneAfterMs
+        : null;
 
     // Not awaited - purely visual (showPageSnackbar never throws, it
     // logs and swallows internally), so it shouldn't serialize an extra
@@ -530,6 +585,9 @@ const handleSubmitReferral = (options) => async (patient) => {
           retryReason,
           sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
           uploadDurationMs,
+          reviewBadgeGoneAfterMs,
+          buttonEnabledAfterMs,
+          buttonVsReviewBadgeDeltaMs,
         }),
       );
     }
