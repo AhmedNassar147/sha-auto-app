@@ -397,8 +397,8 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 1300) {
-      await sleep(currentLeftTime - 1300);
+    if (currentLeftTime > 1400) {
+      await sleep(currentLeftTime - 1400);
     }
 
     // Upload the letter now, well ahead of the facility review-window
