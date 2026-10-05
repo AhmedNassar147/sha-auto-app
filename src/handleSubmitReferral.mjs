@@ -300,7 +300,7 @@ const fillInpatientAdmissionDetailsModal = async ({
         `input[name="${name}"]`,
         { timeout: 5_000 },
       );
-      await handle.click({ clickCount: 2 });
+      await handle.click({ clickCount: 3 });
       await handle.type(String(value));
       results[name] = true;
     } catch {
@@ -784,12 +784,17 @@ const handleSubmitReferral = (options) => async (patient) => {
         .map(([field, ok]) => `${ok ? "✅" : "❌"} ${field}`)
         .join("\n");
 
+      const admissionDetailsLine = admissionDetails
+        ? `🏥 Admission Details: departmentId=\`${admissionDetails.departmentId}\`, room=\`${admissionDetails.roomNumber}\`, bed=\`${admissionDetails.bedNumber}\`, fileNumber=\`${admissionDetails.patientFileNumber}\`, startDate=\`${admissionDetails.startDate}\`\n\n`
+        : "";
+
       await sendTelegramMessage?.(
         `🔴 *Inpatient Admission Details - Review Before Confirming*\n` +
           `────────────────────────\n` +
           `🔢 *Referral ID:* \`${referralId}\`\n` +
           `🔢 *ID:* \`${navigationId}\`\n` +
           (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
+          admissionDetailsLine +
           `\nBest-effort filled (not confirmed):\n${fieldsSummary}\n\n` +
           `⚠️ Please open the case and verify/confirm manually - this bot does not click Confirm for Inpatient referrals.`,
       );
