@@ -202,7 +202,7 @@ const buildDirectApiTelegramMessage = ({
   buttonVsReviewBadgeDeltaMs,
   admissionDetails,
 }) => {
-  const { success } = apiResult;
+  const { success, timing } = apiResult;
 
   const title = success
     ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
@@ -242,7 +242,6 @@ const buildDirectApiTelegramMessage = ({
   // find out where that figure's mysteriously large (12-15s, confirmed
   // live) duration actually goes, since the plain before/after diff alone
   // can't say which phase is slow.
-  const { timing } = apiResult;
   const requestBreakdownLine = timing
     ? `⏱ Request breakdown: dns=${timing.dnsMs}ms connect=${timing.connectMs}ms tls=${timing.tlsMs}ms ttfb=${timing.ttfbMs}ms download=${timing.downloadMs}ms total=${timing.totalMs}ms (protocol=${timing.nextHopProtocol}, transferSize=${timing.transferSize})\n`
     : "";
@@ -587,12 +586,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       })
       .catch(() => null);
 
-    // Resolves once the "In Review" badge is no longer on the page (either
-    // removed or its text changed away from that marker) - run alongside
-    // the button-wait rather than after it, so neither delays the other.
-    // Reject-only: accept is the time-critical, race-to-be-first path, and
-    // even a second concurrent polling loop in the page is extra overhead
-    // this diagnostic isn't worth risking there - reject has no such race.
     const reviewBadgeGonePromise = isAcceptanceAction
       ? null
       : page

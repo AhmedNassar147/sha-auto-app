@@ -85,6 +85,19 @@ const submitWaslaAction = async ({
       postStepLabel,
       knownAttachmentId,
     }) => {
+      // The Resource Timing buffer has a default cap (~250 entries in
+      // Chrome) - Wasla's own page easily loads that many JS chunks/
+      // images/API calls before our time-critical fetch(es) below ever
+      // run, after which the browser silently stops recording *new*
+      // entries entirely (not evicting old ones) until the buffer is
+      // cleared. Without this, getResourceTiming() below could find
+      // nothing for our own fetch even though it genuinely happened -
+      // clearing and raising the cap here guarantees room for it.
+      try {
+        performance.setResourceTimingBufferSize(500);
+        performance.clearResourceTimings();
+      } catch {}
+
       // Same persist:auth double-JSON-parse as
       // getWaslaPatientReferralDataFromAPI.mjs's getAuthHeaders() - the
       // page calling this is on the weslah.seha.sa origin directly, not
