@@ -53,7 +53,10 @@ import {
  *   nationality?: string,
  *   gender?: string|number,
  *   specialty?: string,
+ *   specialtyId?: string,
  *   subSpecialty?: string,
+ *   subReferralTypeId?: string,
+ *   subReferralTypeName?: string,
  *   sourceProvider?: string,
  *   requestedBedType?: string,
  *   note?: string,
@@ -175,6 +178,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           providerName,
           additionalInformation,
           requestedBedType,
+          subReferralType,
         } = caseInfo || {};
 
         // Prefer the English name where the API has one - falls back to
@@ -299,7 +303,18 @@ const getWaslaPatientReferralDataFromAPI = async (
           gender: genderLabel,
           nationality: nationality?.name,
           specialty: speciality?.name,
+          // Wasla's own frontend sends the specialty id (not name) as the
+          // Admission Details modal's "department" field for Inpatient
+          // referrals (html/details-js-code.js's jr component) - see
+          // buildAdmissionDetails.mjs.
+          specialtyId: speciality?.id,
           subSpecialty: subSpeciality?.name,
+          // Distinct from referralType (Routine/Urgent/etc.) - this is
+          // Inpatient/Outpatient, confirmed live (id "1" = "Inpatient") in
+          // results/raw-referral-responses/*.json. Only Inpatient referrals
+          // show Wasla's extra Admission Details step before accepting.
+          subReferralTypeId: subReferralType?.id,
+          subReferralTypeName: subReferralType?.name,
           sourceProvider: providerName?.name,
           requestedBedType: requestedBedType?.name,
           note: additionalInformation,

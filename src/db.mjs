@@ -65,7 +65,7 @@ const casesLettersDb = new Database(casesLettersFilePath);
       userActionName TEXT,                -- accept, reject, '' (current action)
       providerAction TEXT,                -- narrative history, e.g. "accepted then cancelled"
       claimed TEXT,                       -- yes/no, NULL until an action is taken or checkReferralSelectedStatus resolves it
-      arrived TEXT,                       -- yes/no, NULL until checkReferralSelectedStatus sees status=4 (ConfirmedArrival) for an already-claimed case
+      arrived TEXT,                       -- yes/no, NULL until performArrivalConfirmation.mjs actually confirms arrival
       status TEXT,                        -- portal-reported status string, NULL until known
       isSent TEXT,                        -- yes/no
       isReceived TEXT,                    -- yes/no
@@ -75,7 +75,10 @@ const casesLettersDb = new Database(casesLettersFilePath);
       payerAction TEXT,                   -- confirmed or dropped
       nationality TEXT,
       specialty TEXT,
+      specialtyId TEXT,                   -- used as the "department" field when building admission details for Inpatient referrals (see buildAdmissionDetails.mjs)
       subSpecialty TEXT,
+      subReferralTypeId TEXT,             -- Inpatient/Outpatient/etc - id "1" = Inpatient, distinct from referralType (Routine/Urgent/etc)
+      subReferralTypeName TEXT,
       sourceProvider TEXT,
       mobileNumber TEXT,
       note TEXT,
@@ -118,6 +121,9 @@ const casesLettersDb = new Database(casesLettersFilePath);
     attachmentFileName: "TEXT",
     attachmentFileMimeType: "TEXT",
     arrived: "TEXT",
+    specialtyId: "TEXT",
+    subReferralTypeId: "TEXT",
+    subReferralTypeName: "TEXT",
   };
 
   for (const [columnName, columnType] of Object.entries(columnsToEnsure)) {
@@ -195,7 +201,10 @@ const toDbRow = (oldRow, patient) => {
     payerAction: merged.payerAction ?? null,
     nationality: merged.nationality ?? null,
     specialty: merged.specialty ?? null,
+    specialtyId: merged.specialtyId ?? null,
     subSpecialty: merged.subSpecialty ?? null,
+    subReferralTypeId: merged.subReferralTypeId ?? null,
+    subReferralTypeName: merged.subReferralTypeName ?? null,
     sourceProvider: merged.sourceProvider ?? null,
     mobileNumber: merged.mobileNumber ?? null,
     note: merged.note ?? null,
@@ -240,7 +249,10 @@ const insertPatientSQL = `
     payerAction,
     nationality,
     specialty,
+    specialtyId,
     subSpecialty,
+    subReferralTypeId,
+    subReferralTypeName,
     sourceProvider,
     mobileNumber,
     note,
@@ -282,7 +294,10 @@ const insertPatientSQL = `
     @payerAction,
     @nationality,
     @specialty,
+    @specialtyId,
     @subSpecialty,
+    @subReferralTypeId,
+    @subReferralTypeName,
     @sourceProvider,
     @mobileNumber,
     @note,
@@ -324,7 +339,10 @@ const insertPatientSQL = `
     payerAction           = COALESCE(excluded.payerAction, payerAction),
     nationality           = COALESCE(excluded.nationality, nationality),
     specialty             = COALESCE(excluded.specialty, specialty),
+    specialtyId           = COALESCE(excluded.specialtyId, specialtyId),
     subSpecialty          = COALESCE(excluded.subSpecialty, subSpecialty),
+    subReferralTypeId     = COALESCE(excluded.subReferralTypeId, subReferralTypeId),
+    subReferralTypeName   = COALESCE(excluded.subReferralTypeName, subReferralTypeName),
     sourceProvider        = COALESCE(excluded.sourceProvider, sourceProvider),
     mobileNumber          = COALESCE(excluded.mobileNumber, mobileNumber),
     note                  = COALESCE(excluded.note, note),
@@ -368,7 +386,10 @@ const updatePatientSQL = `
     payerAction = @payerAction,
     nationality = @nationality,
     specialty = @specialty,
+    specialtyId = @specialtyId,
     subSpecialty = @subSpecialty,
+    subReferralTypeId = @subReferralTypeId,
+    subReferralTypeName = @subReferralTypeName,
     sourceProvider = @sourceProvider,
     mobileNumber = @mobileNumber,
     note = @note,

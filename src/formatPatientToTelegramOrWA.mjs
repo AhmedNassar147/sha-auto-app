@@ -37,7 +37,18 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     sourceProvider,
     note,
     medicalData,
+    subReferralTypeId,
+    subReferralTypeName,
   } = patient;
+
+  // id "1" = Inpatient (confirmed live, caseInfo.subReferralType - see
+  // buildAdmissionDetails.mjs) - flagged here, right when the case first
+  // arrives, since accepting it needs Wasla's own Admission Details form
+  // filled in (not fully automatable yet), so the operator should know
+  // upfront rather than finding out only once they try to accept it.
+  const isInpatientReferral =
+    String(subReferralTypeId) === "1" ||
+    (subReferralTypeName || "").toLowerCase() === "inpatient";
 
   const referralReasonText = Array.isArray(referralReason)
     ? referralReason.join(" - ")
@@ -62,9 +73,17 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     ? `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`
     : undefined;
 
+  const inpatientWarningHtml = isInpatientReferral
+    ? `🔴 <b>INPATIENT - needs Admission Details form, review before accepting</b>\n\n`
+    : "";
+  const inpatientWarningMarkdown = isInpatientReferral
+    ? `🔴 *INPATIENT - needs Admission Details form, review before accepting*\n\n`
+    : "";
+
   if (forTelegram) {
     message =
       `🚨 <b>New Case Alert!</b> 🚨\n\n` +
+      inpatientWarningHtml +
       `🏢 <b>ORG:</b> <code>${orgLabel}</code>\n` +
       `🕐 <b>Actionable At:</b> ${referralEndDateActionablAt}\n` +
       `🕐 <b>cutoffTime:</b> ${label}\n` +
@@ -94,6 +113,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   } else {
     message =
       `🚨 *New Case Alert!* 🚨\n\n` +
+      inpatientWarningMarkdown +
       `🏢 *ORG:* \`${orgLabel}\`\n` +
       `🕐 *Actionable At*: ${referralEndDateActionablAt}\n` +
       `🕐 *cutoffTime*: ${label}\n` +

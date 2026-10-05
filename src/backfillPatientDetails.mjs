@@ -1,9 +1,10 @@
 // One-off utility: backfills the patient-detail columns added to the
-// `patients` table (nationality, specialty, subSpecialty, sourceProvider,
-// mobileNumber, note, medicalData) for rows saved before those columns
-// existed, by re-calling GET /api/referrals/{navigationId} - the same
-// endpoint getWaslaPatientReferralDataFromAPI.mjs already uses for
-// newly-collected cases, so this script just re-runs that for old rows.
+// `patients` table (nationality, specialty, specialtyId, subSpecialty,
+// sourceProvider, mobileNumber, subReferralTypeId, subReferralTypeName,
+// note, medicalData) for rows saved before those columns existed, by
+// re-calling GET /api/referrals/{navigationId} - the same endpoint
+// getWaslaPatientReferralDataFromAPI.mjs already uses for newly-collected
+// cases, so this script just re-runs that for old rows.
 // Also backfills attachmentFileBase64/attachmentFileName/
 // attachmentFileMimeType (the single case-report file, see
 // buildCaseReportFile.mjs) for any row missing it - independently of the
@@ -45,7 +46,10 @@ const rowsToProcess = requestedIds.length
       .filter(
         (row) =>
           row.navigationId &&
-          (row.nationality == null || row.attachmentFileBase64 == null),
+          (row.nationality == null ||
+            row.attachmentFileBase64 == null ||
+            row.specialtyId == null ||
+            row.subReferralTypeId == null),
       );
 
 if (!rowsToProcess.length) {
@@ -133,10 +137,13 @@ try {
     const {
       nationality,
       specialty,
+      specialtyId,
       subSpecialty,
       sourceProvider,
       mobileNumber,
       requestedBedType,
+      subReferralTypeId,
+      subReferralTypeName,
       note,
       medicalData,
       files,
@@ -173,10 +180,13 @@ try {
       referralId,
       nationality,
       specialty,
+      specialtyId,
       subSpecialty,
       sourceProvider,
       mobileNumber,
       requestedBedType,
+      subReferralTypeId,
+      subReferralTypeName,
       note,
       medicalData,
       ...attachmentUpdate,

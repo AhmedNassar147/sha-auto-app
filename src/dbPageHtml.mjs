@@ -49,6 +49,7 @@ const COLUMN_LABELS = {
   updatedAt: "Updated At",
   nationality: "Nationality",
   specialty: "Specialty",
+  subReferralTypeName: "Sub Referral Type",
   subSpecialty: "Sub-specialty",
   sourceProvider: "Source Provider",
   mobileNumber: "Mobile",
@@ -63,25 +64,6 @@ const COLUMNS = [
   // Not a real `patients` column - renderCell builds this straight from
   // the row's navigationId (see below), ignoring row.openCase (undefined).
   "openCase",
-  "referralDate",
-  "broadcastedAt",
-  "referralEndDate",
-  "navigationId",
-  "referralId",
-  "referralReferenceId",
-  "patientNationalId",
-  "patientName",
-  "referralType",
-  "referralReason",
-  "providerRegion",
-  "nationality",
-  "specialty",
-  "subSpecialty",
-  "sourceProvider",
-  "mobileNumber",
-  "requestedBedType",
-  "note",
-  "medicalData",
   // Not a real `patients` column - renderCell builds this from the row's
   // attachmentFileBase64 (ignoring row.caseReport, undefined), same as
   // "openCase" above.
@@ -89,19 +71,39 @@ const COLUMNS = [
   "status",
   "claimed",
   "arrived",
+  "tabName",
+  "paid",
+  "patientName",
+  "patientNationalId",
+  "navigationId",
+  "referralId",
+  "referralDate",
+  "broadcastedAt",
+  "referralEndDate",
+  "referralReferenceId",
+  "referralType",
+  "referralReason",
+  "providerRegion",
+  "nationality",
+  "specialty",
+  "subReferralTypeName",
+  "subSpecialty",
+  "sourceProvider",
+  "mobileNumber",
+  "requestedBedType",
   "isSent",
   "isReceived",
   "payerAction",
   "userActionName",
+  "note",
+  "medicalData",
   "scheduledAt",
   "providerAction",
-  "paid",
   "facilityReviewWindowMinutes",
   "acceptanceWindowMinutes",
   "extendScopeWindowMinutes",
   "letterType",
   "transferUrl",
-  "tabName",
   "createdAt",
   "updatedAt",
   // Not a real `patients` column - renderCell builds this from the row's
@@ -357,25 +359,25 @@ const renderDbPage = ({ rows, filters = {} }) => {
     background: var(--panel);
     max-height: calc(100vh - 210px);
   }
-  table { border-collapse: collapse; width: 100%; font-size: 12.5px; white-space: nowrap; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; white-space: nowrap; }
   thead th {
     position: sticky;
     top: 0;
     background: #1a2136;
     color: var(--text);
     text-align: left;
-    padding: 10px 12px;
+    padding: 6px 8px;
     font-weight: 600;
     text-transform: uppercase;
-    font-size: 10.5px;
+    font-size: 10px;
     letter-spacing: 0.04em;
     border-bottom: 1px solid var(--panel-border);
     z-index: 1;
   }
   tbody td {
-    padding: 8px 12px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--panel-border);
-    max-width: 260px;
+    max-width: 200px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
@@ -383,11 +385,12 @@ const renderDbPage = ({ rows, filters = {} }) => {
   tbody tr:hover { background: var(--row-hover); }
   tbody tr.selected-row,
   tbody tr.selected-row:nth-child(even) {
-    background: rgba(79, 140, 255, 0.18);
+    background: rgba(140, 180, 255, 0.4);
     box-shadow: inset 3px 0 0 var(--accent);
   }
-  tbody tr.selected-row:hover { background: rgba(79, 140, 255, 0.26); }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  tbody tr.selected-row:hover { background: rgba(140, 180, 255, 0.5); }
+  td .btn-link, td button { padding: 4px 10px; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
   .badge-neutral { background: var(--badge-neutral-bg); color: var(--badge-neutral-text); }
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
   .badge-red { background: var(--badge-red-bg); color: var(--badge-red-text); }
