@@ -204,6 +204,7 @@ const buildDirectApiTelegramMessage = ({
   attemptDurationsMs,
   preFireRaceWinner,
   preFireRaceDurationMs,
+  sleepBeforeAcceptOrRejectMs,
 }) => {
   const { success, timing, responseHeaders } = apiResult;
 
@@ -267,6 +268,7 @@ const buildDirectApiTelegramMessage = ({
 
   const timingLine =
     `uploadIgnored=${apiResult.uploadIgnored}\n` +
+    `sleepBeforeAcceptOrRejectMs=${sleepBeforeAcceptOrRejectMs}\n` +
     `preFireRaceWinner=${preFireRaceWinner} (${preFireRaceDurationMs}ms)\n` +
     `boundaryDiffMs=${diffMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
@@ -636,7 +638,6 @@ const handleSubmitReferral = (options) => async (patient) => {
     let currentRetryCount = 1;
     let retryReason = "";
 
-    const actionTimeStart = Date.now();
     let apiResult = null;
 
     // Races the fixed pre-fire buffer against the DOM button-enabled signal
@@ -664,6 +665,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     // specific to a genuine accept - locking the case, notifying other
     // facilities, etc. - that a quick 400 rejection never reaches).
     const attemptDurationsMs = [];
+    const actionTimeStart = Date.now();
 
     while (currentRetryCount <= MAX_ACTION_RETRIES) {
       const attemptStart = Date.now();
@@ -750,6 +752,7 @@ const handleSubmitReferral = (options) => async (patient) => {
           attemptDurationsMs,
           preFireRaceWinner,
           preFireRaceDurationMs,
+          sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
         }),
       );
     }
