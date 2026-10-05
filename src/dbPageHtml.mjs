@@ -219,8 +219,17 @@ const renderRows = (rows, selectedReferralId) => {
         String(row.referralId ?? "").toLowerCase() ===
           normalizedSelectedReferralId;
 
+      const isRejected = row.userActionName === "reject";
+
+      const rowClasses = [
+        isSelected ? "selected-row" : "",
+        isRejected ? "rejected-row" : "",
+      ]
+        .filter(Boolean)
+        .join(" ");
+
       return (
-        `<tr class="${isSelected ? "selected-row" : ""}">` +
+        `<tr class="${rowClasses}">` +
         COLUMNS.map((col) => `<td>${renderCell(col, row[col], row)}</td>`).join(
           "",
         ) +
@@ -383,6 +392,11 @@ const renderDbPage = ({ rows, filters = {} }) => {
   }
   tbody tr:nth-child(even) { background: var(--row-alt); }
   tbody tr:hover { background: var(--row-hover); }
+  tbody tr.rejected-row,
+  tbody tr.rejected-row:nth-child(even) {
+    background: rgba(248, 113, 113, 0.14);
+  }
+  tbody tr.rejected-row:hover { background: rgba(248, 113, 113, 0.22); }
   tbody tr.selected-row,
   tbody tr.selected-row:nth-child(even) {
     background: rgba(140, 180, 255, 0.4);
