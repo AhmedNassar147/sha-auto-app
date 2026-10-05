@@ -551,16 +551,17 @@ const handleSubmitReferral = (options) => async (patient) => {
 
           const buttons = [...document.querySelectorAll("button")];
 
-          const matchedButton = buttons.find(
-            (button) =>
-              texts.includes(normalize(button.textContent)) && !button.disabled,
+          const matchedButton = buttons.find((button) =>
+            texts.includes(normalize(button.textContent)),
           );
 
-          // if (matchedButton) {
-          //   matchedButton.scrollIntoView({ block: "end" });
-          // }
+          if (matchedButton) {
+            matchedButton.scrollIntoView({ block: "end" });
+          }
 
-          return matchedButton || null;
+          return matchedButton && !matchedButton.disabled
+            ? matchedButton
+            : null;
         },
         { timeout: ACTION_BUTTON_TIMEOUT_MS },
         targetButtonTexts,

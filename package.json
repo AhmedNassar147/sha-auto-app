@@ -10,7 +10,8 @@
     "start": "nodemon --watch src --ext mjs,js,json --ignore .git ./src/index.mjs",
     "fill-db": "node ./src/backfillPatientDetails.mjs",
     "normalize-status": "node ./src/normalizeStatus.mjs",
-    "clear-claimed": "node ./src/clearClaimedStatus.mjs"
+    "clear-claimed": "node ./src/clearClaimedStatus.mjs",
+    "calibrate-clock": "node ./src/calibrateServerClockDrift.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
