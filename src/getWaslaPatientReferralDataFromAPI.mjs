@@ -146,6 +146,19 @@ const getWaslaPatientReferralDataFromAPI = async (
         const serverResponseTimeMS = (finishedDateMS - apiFiresAtMS) / 2;
         const serverDate = res.headers.get("Date");
         const serverNow = serverDate ? new Date(serverDate).getTime() : null;
+        // Captured so the saved raw-response dump below carries every
+        // header the response actually had (not just Date) - for later
+        // inspection (e.g. anything timing-related) without needing to
+        // re-fetch/re-trace against the live site.
+        const responseHeaders = Object.fromEntries(res.headers.entries());
+        // How far this machine's clock is from the server's (per its Date
+        // header) at roughly the same real moment - positive means this
+        // machine's clock is ahead of the server's. Only as precise as the
+        // Date header itself (whole seconds), but still useful as a rough
+        // drift signal across many saved responses over time.
+        if (serverNow != null) {
+          responseHeaders.diffMs = finishedDateMS - serverNow;
+        }
 
         if (!res.ok) {
           return {
@@ -325,7 +338,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           detailsAPiServerResponseTimeMS: Math.trunc(serverResponseTimeMS),
           serverDate,
           serverNow,
-          rawResponse: data,
+          rawResponse: { ...data, responseHeaders },
         };
       } catch (err) {
         return {
