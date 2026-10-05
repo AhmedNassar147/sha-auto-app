@@ -86,7 +86,7 @@ const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
 
-const MAX_ACTION_RETRIES = 3;
+const MAX_ACTION_RETRIES = 10;
 
 // Confirmed live (results/raw-referral-responses/*.json,
 // caseInfo.subReferralType): id "1" = "Inpatient" - distinct from
@@ -237,6 +237,16 @@ const buildDirectApiTelegramMessage = ({
     ? `🏥 Admission Details: departmentId=\`${admissionDetails.departmentId}\`, room=\`${admissionDetails.roomNumber}\`, bed=\`${admissionDetails.bedNumber}\`, fileNumber=\`${admissionDetails.patientFileNumber}\`, startDate=\`${admissionDetails.startDate}\`\n\n`
     : "";
 
+  // Breaks finalRequestTakesMs down into actual network phases (Resource
+  // Timing API, captured in submitWaslaAction.mjs) - added specifically to
+  // find out where that figure's mysteriously large (12-15s, confirmed
+  // live) duration actually goes, since the plain before/after diff alone
+  // can't say which phase is slow.
+  const { timing } = apiResult;
+  const requestBreakdownLine = timing
+    ? `⏱ Request breakdown: dns=${timing.dnsMs}ms connect=${timing.connectMs}ms tls=${timing.tlsMs}ms ttfb=${timing.ttfbMs}ms download=${timing.downloadMs}ms total=${timing.totalMs}ms (protocol=${timing.nextHopProtocol}, transferSize=${timing.transferSize})\n`
+    : "";
+
   const timingLine =
     `uploadIgnored=${apiResult.uploadIgnored}\n` +
     `boundaryDiffMs=${diffMs}\n` +
@@ -249,7 +259,8 @@ const buildDirectApiTelegramMessage = ({
     `buttonVsReviewBadgeDeltaMs=${buttonVsReviewBadgeDeltaMs}\n` +
     `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
     `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
-    `finalRequestTakesMs=${actionTimeMs}ms\n`;
+    `finalRequestTakesMs=${actionTimeMs}ms\n` +
+    requestBreakdownLine;
 
   return (
     `ReferralId: \`${referralId}\`\n` +
@@ -518,9 +529,9 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 1400) {
-      await sleep(currentLeftTime - 1400);
-    }
+    // if (currentLeftTime > 1400) {
+    //   await sleep(currentLeftTime - 1400);
+    // }
 
     // Inpatient accept never attaches a file (confirmed live - see
     // buildAdmissionDetails.mjs/submitWaslaReferralViaApi.mjs), so there's
@@ -537,7 +548,11 @@ const handleSubmitReferral = (options) => async (patient) => {
     const uploadDurationMs = Date.now() - uploadStartTime;
 
     const diffMs = referralEndTimestamp - Date.now();
-    const sleepMS = Math.max(0, diffMs) + BOUNDARY_SAFETY_MARGIN_MS;
+    const sleepMS = Math.max(0, diffMs);
+
+    if (sleepMS > 0) {
+      await sleep(sleepMS);
+    }
 
     const tActionButtonWaitStart = Date.now();
 
@@ -594,10 +609,6 @@ const handleSubmitReferral = (options) => async (patient) => {
           })
           .catch(() => null);
 
-    const [actionButtonHandle] = await Promise.all(
-      [actionButtonPromise, reviewBadgeGonePromise].filter(Boolean),
-    );
-
     const waitingBeforeFinalActionMS = Date.now() - tActionButtonWaitStart;
 
     const buttonVsReviewBadgeDeltaMs =
@@ -612,6 +623,10 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const actionTimeStart = Date.now();
     let apiResult = null;
+
+    if (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS > 0) {
+      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
+    }
 
     while (currentRetryCount <= MAX_ACTION_RETRIES) {
       apiResult = await submitWaslaReferralViaApi({
@@ -645,6 +660,10 @@ const handleSubmitReferral = (options) => async (patient) => {
         break;
       }
     }
+
+    const [actionButtonHandle] = await Promise.all(
+      [actionButtonPromise, reviewBadgeGonePromise].filter(Boolean),
+    );
 
     const actionTimeMs = Date.now() - actionTimeStart;
 

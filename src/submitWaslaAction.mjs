@@ -107,6 +107,43 @@ const submitWaslaAction = async ({
         }
       };
 
+      // Breaks a fetch's wall-clock duration down into its actual phases
+      // (DNS/connect/TLS/TTFB/download) via the Resource Timing API -
+      // added specifically to find out where the accept-json POST's
+      // mysteriously large (12-15s, confirmed live) duration actually
+      // goes, since the plain before/after Date.now() diff around it
+      // (handleSubmitReferral.mjs's finalRequestTakesMs) can't say which
+      // phase is slow. Matches by URL - takes the most recent entry since
+      // the same URL could in principle be fetched more than once on this
+      // page (e.g. a retry).
+      const getResourceTiming = (resourceUrl) => {
+        try {
+          const entries = performance
+            .getEntriesByType("resource")
+            .filter((entry) => entry.name === resourceUrl);
+          const entry = entries[entries.length - 1];
+
+          if (!entry) return null;
+
+          return {
+            totalMs: Math.round(entry.duration),
+            redirectMs: Math.round(entry.redirectEnd - entry.redirectStart),
+            dnsMs: Math.round(entry.domainLookupEnd - entry.domainLookupStart),
+            connectMs: Math.round(entry.connectEnd - entry.connectStart),
+            tlsMs:
+              entry.secureConnectionStart > 0
+                ? Math.round(entry.connectEnd - entry.secureConnectionStart)
+                : 0,
+            ttfbMs: Math.round(entry.responseStart - entry.startTime),
+            downloadMs: Math.round(entry.responseEnd - entry.responseStart),
+            transferSize: entry.transferSize,
+            nextHopProtocol: entry.nextHopProtocol,
+          };
+        } catch {
+          return null;
+        }
+      };
+
       const headers = getWaslaAuthHeaders();
 
       let attachmentId = knownAttachmentId;
@@ -142,6 +179,7 @@ const submitWaslaAction = async ({
               step: `${postStepLabel}-upload-notOk`,
               url: uploadUrl,
               uploadIgnored,
+              uploadTiming: getResourceTiming(uploadUrl),
               error: `Status ${uploadRes.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
             };
           }
@@ -157,6 +195,7 @@ const submitWaslaAction = async ({
               step: `${postStepLabel}-upload-no-id`,
               url: uploadUrl,
               uploadIgnored,
+              uploadTiming: getResourceTiming(uploadUrl),
               error: `No attachment id in response (hadAuthHeader=${Boolean(headers.Authorization)})`,
             };
           }
@@ -166,15 +205,21 @@ const submitWaslaAction = async ({
             step: `${postStepLabel}-upload-catch`,
             url: uploadUrl,
             uploadIgnored,
+            uploadTiming: getResourceTiming(uploadUrl),
             error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
       }
 
+      // Captured once, after the upload is fully done (or never attempted),
+      // so every return from here on can carry it without recomputing -
+      // only meaningful when an upload actually happened on this call.
+      const uploadTiming = !uploadIgnored ? getResourceTiming(uploadUrl) : null;
+
       // No url means no POST was ever intended - whichever caller left it
       // out only wanted the upload (see this file's own docblock).
       if (!url) {
-        return { success: true, attachmentId, uploadIgnored };
+        return { success: true, attachmentId, uploadIgnored, uploadTiming };
       }
 
       const finalPayload =
@@ -201,6 +246,8 @@ const submitWaslaAction = async ({
             attachmentId,
             url,
             uploadIgnored,
+            uploadTiming,
+            timing: getResourceTiming(url),
             error: `Status ${res.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
@@ -209,6 +256,8 @@ const submitWaslaAction = async ({
           success: true,
           attachmentId,
           uploadIgnored,
+          uploadTiming,
+          timing: getResourceTiming(url),
           data: await res.json(),
         };
       } catch (err) {
@@ -217,6 +266,8 @@ const submitWaslaAction = async ({
           step: `${postStepLabel}-catch`,
           attachmentId,
           url,
+          uploadTiming,
+          timing: getResourceTiming(url),
           uploadIgnored,
           error: `${err.message} (hadAuthHeader=${Boolean(headers.Authorization)})`,
         };
