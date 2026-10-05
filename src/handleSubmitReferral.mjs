@@ -201,8 +201,11 @@ const buildDirectApiTelegramMessage = ({
   buttonEnabledAfterMs,
   buttonVsReviewBadgeDeltaMs,
   admissionDetails,
+  attemptDurationsMs,
+  preFireRaceWinner,
+  preFireRaceDurationMs,
 }) => {
-  const { success, timing } = apiResult;
+  const { success, timing, responseHeaders } = apiResult;
 
   const title = success
     ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
@@ -246,8 +249,25 @@ const buildDirectApiTelegramMessage = ({
     ? `⏱ Request breakdown: dns=${timing.dnsMs}ms connect=${timing.connectMs}ms tls=${timing.tlsMs}ms ttfb=${timing.ttfbMs}ms download=${timing.downloadMs}ms total=${timing.totalMs}ms (protocol=${timing.nextHopProtocol}, transferSize=${timing.transferSize})\n`
     : "";
 
+  // Dumped in full (not cherry-picked) since it's not yet known which key,
+  // if any, would actually indicate Cloudflare bot-management stepping in
+  // on this specific endpoint - see submitWaslaAction.mjs's own comment.
+  const responseHeadersLine = responseHeaders
+    ? `📨 Response headers: ${JSON.stringify(responseHeaders)}\n`
+    : "";
+
+  // Tells apart "every attempt is equally slow" (a network/connection
+  // issue on our end) from "only the final, actually-successful attempt
+  // is slow" (server-side work specific to a genuine accept - a quick 400
+  // rejection would never reach that path) - finalRequestTakesMs alone is
+  // just the sum of all of these plus the gaps between them.
+  const attemptDurationsLine = attemptDurationsMs?.length
+    ? `Per-attempt durations: [${attemptDurationsMs.join("ms, ")}ms]\n`
+    : "";
+
   const timingLine =
     `uploadIgnored=${apiResult.uploadIgnored}\n` +
+    `preFireRaceWinner=${preFireRaceWinner} (${preFireRaceDurationMs}ms)\n` +
     `boundaryDiffMs=${diffMs}\n` +
     `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
     `sleepMs=${sleepMs}\n` +
@@ -259,7 +279,9 @@ const buildDirectApiTelegramMessage = ({
     `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
     `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
     `finalRequestTakesMs=${actionTimeMs}ms\n` +
-    requestBreakdownLine;
+    attemptDurationsLine +
+    requestBreakdownLine +
+    responseHeadersLine;
 
   return (
     `ReferralId: \`${referralId}\`\n` +
@@ -617,11 +639,35 @@ const handleSubmitReferral = (options) => async (patient) => {
     const actionTimeStart = Date.now();
     let apiResult = null;
 
-    if (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS > 0) {
-      await sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS);
-    }
+    // Races the fixed pre-fire buffer against the DOM button-enabled signal
+    // instead of just sleeping the buffer unconditionally - normally these
+    // are gated by the exact same formula (see actionButtonPromise's own
+    // setup above), so "sleep" should win almost every time; this only
+    // matters as a safety net for a stale referralEndTimestamp/windowMinutes
+    // for this specific case, where the live page's own calculation could
+    // legitimately resolve first. A `null` button handle (timeout/no match)
+    // is mapped to "sleep" too, so a non-useful button resolution never
+    // gets credited as the reason we fired.
+    const preFireRaceStart = Date.now();
+
+    const preFireRaceWinner = await Promise.race([
+      sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS).then(() => "sleep"),
+      actionButtonPromise.then((handle) => (handle ? "button" : "sleep")),
+    ]);
+
+    const preFireRaceDurationMs = Date.now() - preFireRaceStart;
+
+    // Per-attempt durations, not just the retry loop's aggregate total -
+    // finalRequestTakesMs alone can't tell apart "every attempt is equally
+    // slow" (points at a network/connection issue) from "only the final,
+    // actually-successful attempt is slow" (points at server-side work
+    // specific to a genuine accept - locking the case, notifying other
+    // facilities, etc. - that a quick 400 rejection never reaches).
+    const attemptDurationsMs = [];
 
     while (currentRetryCount <= MAX_ACTION_RETRIES) {
+      const attemptStart = Date.now();
+
       apiResult = await submitWaslaReferralViaApi({
         page,
         navigationId,
@@ -638,6 +684,8 @@ const handleSubmitReferral = (options) => async (patient) => {
               fileName: randomFileName,
             }),
       });
+
+      attemptDurationsMs.push(Date.now() - attemptStart);
 
       const { success, error } = apiResult;
 
@@ -699,6 +747,9 @@ const handleSubmitReferral = (options) => async (patient) => {
           buttonEnabledAfterMs,
           buttonVsReviewBadgeDeltaMs,
           admissionDetails,
+          attemptDurationsMs,
+          preFireRaceWinner,
+          preFireRaceDurationMs,
         }),
       );
     }

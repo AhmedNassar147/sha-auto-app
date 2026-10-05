@@ -251,6 +251,14 @@ const submitWaslaAction = async ({
           body: JSON.stringify(finalPayload),
         });
 
+        // Captured on every response (success or not) - checked for any
+        // Cloudflare bot-management signal (challenge/mitigation headers)
+        // on this specific endpoint, to see whether the mysteriously large
+        // (12-21s, confirmed live) duration is something Cloudflare is
+        // deliberately imposing on this request rather than a connection/
+        // network issue on our end.
+        const responseHeaders = Object.fromEntries(res.headers.entries());
+
         if (!res.ok) {
           const bodyText = await res.text().catch(() => "");
           return {
@@ -261,9 +269,18 @@ const submitWaslaAction = async ({
             uploadIgnored,
             uploadTiming,
             timing: getResourceTiming(url),
+            responseHeaders,
             error: `Status ${res.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
+
+        // Read the body fully before computing timing (not the other way
+        // around, like an earlier version of this had it) - the Resource
+        // Timing entry's responseEnd should already be set by the time
+        // fetch() itself resolves, but there's no reason to risk racing
+        // it against the entry appearing in the performance buffer when
+        // sequencing it after costs nothing.
+        const data = await res.json();
 
         return {
           success: true,
@@ -271,7 +288,8 @@ const submitWaslaAction = async ({
           uploadIgnored,
           uploadTiming,
           timing: getResourceTiming(url),
-          data: await res.json(),
+          responseHeaders,
+          data,
         };
       } catch (err) {
         return {
