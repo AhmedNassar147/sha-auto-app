@@ -153,8 +153,10 @@ const reportFailure = async (
 /**
  * Builds the Telegram message reporting the direct-API accept/reject
  * attempt's outcome - shared by the success and failure branches so the
- * header/footer structure (ReferralId/ID/timing diagnostics) isn't
- * hand-duplicated between them.
+ * header/footer structure isn't hand-duplicated between them. Operators
+ * read this message too, not just whoever's debugging timing, so every
+ * line is a plain-English label - the numbers themselves are all still
+ * here, just not under their camelCase variable names.
  *
  * @param {{
  *   isAcceptanceAction: boolean,
@@ -162,20 +164,18 @@ const reportFailure = async (
  *   navigationId: string,
  *   apiResult: Awaited<ReturnType<typeof import("./submitWaslaReferralViaApi.mjs").default>>,
  *   preUploadResult: Awaited<ReturnType<typeof import("./submitWaslaAction.mjs").default>>,
+ *   uploadDurationMs: number,
  *   diffMs: number,
  *   sleepMs: number,
- *   boundarySafetyMarginMs: number,
- *   waitingBeforeFinalActionMS: number,
- *   elapsedBeforeActionMs: number,
- *   actionTimeMs: number,
- *   actionTakenAfterEndMs: number,
- *   attemptsMade: number,
- *   retryReason: string,
- *   sleepWhenAcceptOrRejectRetryMs: number,
- *   uploadDurationMs: number,
- *   reviewBadgeGoneAfterMs: number | null,
+ *   sleepBeforeAcceptOrRejectMs: number,
+ *   preFireRaceWinner: "timer" | "button",
+ *   preFireRaceDurationMs: number,
+ *   realFireDelayFromBoundaryMs: number,
  *   buttonEnabledAfterMs: number | null,
- *   buttonVsReviewBadgeDeltaMs: number | null,
+ *   reviewBadgeGoneAfterMs: number | null,
+ *   actionTimeMs: number,
+ *   attemptDurationsMs: number[],
+ *   attemptsMade: number,
  *   admissionDetails: object | null,
  * }} params
  * @returns {string}
@@ -186,25 +186,19 @@ const buildDirectApiTelegramMessage = ({
   navigationId,
   apiResult,
   preUploadResult,
+  uploadDurationMs,
   diffMs,
   sleepMs,
-  boundarySafetyMarginMs,
-  waitingBeforeFinalActionMS,
-  elapsedBeforeActionMs,
-  actionTimeMs,
-  actionTakenAfterEndMs,
-  attemptsMade,
-  retryReason,
-  sleepWhenAcceptOrRejectRetryMs,
-  uploadDurationMs,
-  reviewBadgeGoneAfterMs,
-  buttonEnabledAfterMs,
-  buttonVsReviewBadgeDeltaMs,
-  admissionDetails,
-  attemptDurationsMs,
+  sleepBeforeAcceptOrRejectMs,
   preFireRaceWinner,
   preFireRaceDurationMs,
-  sleepBeforeAcceptOrRejectMs,
+  realFireDelayFromBoundaryMs,
+  buttonEnabledAfterMs,
+  reviewBadgeGoneAfterMs,
+  actionTimeMs,
+  attemptDurationsMs,
+  attemptsMade,
+  admissionDetails,
 }) => {
   const { success, timing, responseHeaders } = apiResult;
 
@@ -212,27 +206,26 @@ const buildDirectApiTelegramMessage = ({
     ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
     : `*Direct API ${isAcceptanceAction ? "accept" : "reject"} attempt failed*`;
 
+  // Plain language either way - no raw step/attachmentId/url fields even
+  // on failure. apiResult.error already carries Wasla's own error text,
+  // which is the part that actually matters here.
   const detailLine = success
     ? `Message: ${apiResult.data?.message ?? "(no message)"}`
-    : `Message: step=\`${apiResult.step}\`, attachmentId=\`${apiResult.attachmentId}\`, url=\`${apiResult.url}\`, error=\`${apiResult.error}\``;
+    : `Message: ${apiResult.error ?? "(no further detail)"}`;
 
-  // Lets a failed pre-upload (silently retried inline by
-  // submitWaslaReferralViaApi, since it's also given fileBase64/fileName
-  // as a fallback) show up here instead of looking identical to a run
-  // where the pre-upload worked as intended - useful for noticing extra
-  // latency that retry adds to a given run.
   const preUploadLine = preUploadResult?.success
-    ? `PreUpload: ok (attachmentId=\`${preUploadResult.attachmentId}\`)`
-    : `PreUpload: failed (step=\`${preUploadResult?.step}\`, error=\`${preUploadResult?.error}\`) - retried inline`;
+    ? `Letter attached in advance: ✅ Yes (took ${uploadDurationMs}ms)`
+    : `Letter attached in advance: ❌ No, retried during submission (took ${uploadDurationMs}ms)`;
 
-  // Human-readable rather than a raw key=value dump like the rest of
-  // timingLine - this one's meant to be read at a glance ("did it retry,
-  // and why") rather than cross-referenced against the code.
+  // The only retriable failure is "too early" (the review window hadn't
+  // elapsed yet per Wasla's own check) - the count is still worth knowing
+  // at a glance, but the raw underlying error text isn't, since that's the
+  // one and only reason a retry ever happens here.
   const retryCount = attemptsMade - 1;
   const retryLine =
     retryCount > 0
-      ? `🔁 Retried ${retryCount} time${retryCount > 1 ? "s" : ""} (${sleepWhenAcceptOrRejectRetryMs}ms apart) after: \`${retryReason}\`\n\n`
-      : "";
+      ? `Retries needed: ${retryCount} (window hadn't quite opened yet)\n`
+      : `Retries needed: 0\n`;
 
   // Shown only for an Inpatient accept - these are fabricated placeholder
   // values (no UI to collect real ones via the direct-API path), so
@@ -241,49 +234,47 @@ const buildDirectApiTelegramMessage = ({
     ? `🏥 Admission Details: departmentId=\`${admissionDetails.departmentId}\`, room=\`${admissionDetails.roomNumber}\`, bed=\`${admissionDetails.bedNumber}\`, fileNumber=\`${admissionDetails.patientFileNumber}\`, startDate=\`${admissionDetails.startDate}\`\n\n`
     : "";
 
-  // Breaks finalRequestTakesMs down into actual network phases (Resource
-  // Timing API, captured in submitWaslaAction.mjs) - added specifically to
-  // find out where that figure's mysteriously large (12-15s, confirmed
-  // live) duration actually goes, since the plain before/after diff alone
-  // can't say which phase is slow.
-  const requestBreakdownLine = timing
-    ? `⏱ Request breakdown: dns=${timing.dnsMs}ms connect=${timing.connectMs}ms tls=${timing.tlsMs}ms ttfb=${timing.ttfbMs}ms download=${timing.downloadMs}ms total=${timing.totalMs}ms (protocol=${timing.nextHopProtocol}, transferSize=${timing.transferSize})\n`
-    : "";
-
-  // Dumped in full (not cherry-picked) since it's not yet known which key,
-  // if any, would actually indicate Cloudflare bot-management stepping in
-  // on this specific endpoint - see submitWaslaAction.mjs's own comment.
-  const responseHeadersLine = responseHeaders
-    ? `📨 Response headers: ${JSON.stringify(responseHeaders)}\n`
-    : "";
+  // Timing from the moment the pre-upload finished to actually firing the
+  // request - sleepMs/diffMs are almost always equal (sleepMs floors at 0),
+  // shown separately only because a negative diffMs (already past the
+  // boundary before the sleep even started) is itself a useful signal.
+  const timingLines =
+    `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
+    `Time spent sleeping until the boundary: ${sleepMs}ms\n` +
+    `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
+    `Fired because of: ${preFireRaceWinner} (took ${preFireRaceDurationMs}ms)\n` +
+    `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s\n` +
+    (buttonEnabledAfterMs != null
+      ? `Accept/Reject button became enabled after: ${buttonEnabledAfterMs}ms\n`
+      : "") +
+    (reviewBadgeGoneAfterMs != null
+      ? `"In Review" badge disappeared after: ${reviewBadgeGoneAfterMs}ms\n`
+      : "") +
+    `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
   // Tells apart "every attempt is equally slow" (a network/connection
   // issue on our end) from "only the final, actually-successful attempt
   // is slow" (server-side work specific to a genuine accept - a quick 400
-  // rejection would never reach that path) - finalRequestTakesMs alone is
-  // just the sum of all of these plus the gaps between them.
+  // rejection would never reach that path).
   const attemptDurationsLine = attemptDurationsMs?.length
-    ? `Per-attempt durations: [${attemptDurationsMs.join("ms, ")}ms]\n`
+    ? `Per-attempt response times: [${attemptDurationsMs.join("ms, ")}ms]\n`
     : "";
 
-  const timingLine =
-    `uploadIgnored=${apiResult.uploadIgnored}\n` +
-    `sleepBeforeAcceptOrRejectMs=${sleepBeforeAcceptOrRejectMs}\n` +
-    `preFireRaceWinner=${preFireRaceWinner} (${preFireRaceDurationMs}ms)\n` +
-    `boundaryDiffMs=${diffMs}\n` +
-    `boundarySafetyMarginMs=${boundarySafetyMarginMs}\n` +
-    `sleepMs=${sleepMs}\n` +
-    `uploadDurationMs=${uploadDurationMs}ms\n` +
-    `waitingBeforeFinalActionMS=${waitingBeforeFinalActionMS}\n` +
-    `reviewBadgeGoneAfterMs=${reviewBadgeGoneAfterMs}\n` +
-    `buttonEnabledAfterMs=${buttonEnabledAfterMs}\n` +
-    `buttonVsReviewBadgeDeltaMs=${buttonVsReviewBadgeDeltaMs}\n` +
-    `elapsedBeforeActionMs=${elapsedBeforeActionMs}ms\n` +
-    `finalRequestTakenAfterEndByMS=${actionTakenAfterEndMs}ms (${(actionTakenAfterEndMs / 1000).toFixed(2)}s)\n` +
-    `finalRequestTakesMs=${actionTimeMs}ms\n` +
-    attemptDurationsLine +
-    requestBreakdownLine +
-    responseHeadersLine;
+  // Breaks the server response time down into actual network phases
+  // (confirmed live: this runs 12-20+ seconds even on success, and it's
+  // Wasla's own server-side processing time - ttfb carries almost all of
+  // it, not dns/connect/tls/download, which is how that was confirmed to
+  // not be a connection issue on our end).
+  const requestBreakdownLine = timing
+    ? `Request breakdown: dns=${timing.dnsMs}ms, connect=${timing.connectMs}ms, tls=${timing.tlsMs}ms, time-to-first-byte=${timing.ttfbMs}ms, download=${timing.downloadMs}ms, total=${timing.totalMs}ms (${timing.nextHopProtocol}, ${timing.transferSize} bytes)\n`
+    : "";
+
+  // Dumped in full (not cherry-picked) since it's not yet known which key,
+  // if any, would actually indicate Cloudflare bot-management stepping in
+  // on this specific endpoint.
+  const responseHeadersLine = responseHeaders
+    ? `Response headers: ${JSON.stringify(responseHeaders)}\n`
+    : "";
 
   return (
     `ReferralId: \`${referralId}\`\n` +
@@ -293,7 +284,10 @@ const buildDirectApiTelegramMessage = ({
     `${preUploadLine}\n\n` +
     admissionDetailsLine +
     retryLine +
-    timingLine +
+    timingLines +
+    attemptDurationsLine +
+    requestBreakdownLine +
+    responseHeadersLine +
     (success ? "" : "\nFalling back to the UI.")
   );
 };
@@ -479,11 +473,6 @@ const handleSubmitReferral = (options) => async (patient) => {
     return;
   }
 
-  const BOUNDARY_SAFETY_MARGIN_MS = getEnvVariableAsNumber(
-    "BOUNDARY_SAFETY_MARGIN_MS",
-    10,
-  );
-
   const SLEEP_BEFORE_ACCEPT_OR_REJECT_MS = getEnvVariableAsNumber(
     "SLEEP_BEFORE_ACCEPT_OR_REJECT_MS",
     0,
@@ -501,7 +490,6 @@ const handleSubmitReferral = (options) => async (patient) => {
   let page;
 
   try {
-    const startTime = Date.now();
     page = await browser.newPage();
 
     // Land on a neutral, lightweight page first (in parallel with the
@@ -626,44 +614,32 @@ const handleSubmitReferral = (options) => async (patient) => {
           })
           .catch(() => null);
 
-    const waitingBeforeFinalActionMS = Date.now() - tActionButtonWaitStart;
-
-    const buttonVsReviewBadgeDeltaMs =
-      buttonEnabledAfterMs != null && reviewBadgeGoneAfterMs != null
-        ? buttonEnabledAfterMs - reviewBadgeGoneAfterMs
-        : null;
-
-    const elapsedBeforeActionMs = Date.now() - startTime;
-
     let currentRetryCount = 1;
-    let retryReason = "";
 
     let apiResult = null;
 
     // Races the fixed pre-fire buffer against the DOM button-enabled signal
     // instead of just sleeping the buffer unconditionally - normally these
     // are gated by the exact same formula (see actionButtonPromise's own
-    // setup above), so "sleep" should win almost every time; this only
+    // setup above), so the sleep should win almost every time; this only
     // matters as a safety net for a stale referralEndTimestamp/windowMinutes
     // for this specific case, where the live page's own calculation could
-    // legitimately resolve first. A `null` button handle (timeout/no match)
-    // is mapped to "sleep" too, so a non-useful button resolution never
-    // gets credited as the reason we fired.
+    // legitimately resolve first.
     const preFireRaceStart = Date.now();
 
     const preFireRaceWinner = await Promise.race([
-      sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS).then(() => "sleep"),
-      actionButtonPromise.then((handle) => (handle ? "button" : "sleep")),
+      sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS).then(() => "timer"),
+      actionButtonPromise.then((handle) => (handle ? "button" : "timer")),
     ]);
 
     const preFireRaceDurationMs = Date.now() - preFireRaceStart;
 
-    // Per-attempt durations, not just the retry loop's aggregate total -
-    // finalRequestTakesMs alone can't tell apart "every attempt is equally
-    // slow" (points at a network/connection issue) from "only the final,
-    // actually-successful attempt is slow" (points at server-side work
-    // specific to a genuine accept - locking the case, notifying other
-    // facilities, etc. - that a quick 400 rejection never reaches).
+    // The real-world gap between the boundary and when the request fires -
+    // how late we already were when the race started, plus however long
+    // the race itself took.
+    const realFireDelayFromBoundaryMs =
+      preFireRaceStart - referralEndTimestamp + preFireRaceDurationMs;
+
     const attemptDurationsMs = [];
     const actionTimeStart = Date.now();
 
@@ -696,7 +672,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       }
 
       if (error?.includes?.("review window has elapsed")) {
-        retryReason = error;
         await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
         currentRetryCount++;
       } else {
@@ -725,8 +700,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         severity: apiResult.success ? "success" : "error",
       });
 
-      const actionTakenAfterEndMs = actionTimeStart - referralEndTimestamp;
-
       await sendTelegramMessage?.(
         buildDirectApiTelegramMessage({
           isAcceptanceAction,
@@ -734,25 +707,19 @@ const handleSubmitReferral = (options) => async (patient) => {
           navigationId,
           apiResult,
           preUploadResult: uploadResult,
+          uploadDurationMs,
           diffMs,
           sleepMs: sleepMS,
-          boundarySafetyMarginMs: BOUNDARY_SAFETY_MARGIN_MS,
-          waitingBeforeFinalActionMS,
-          elapsedBeforeActionMs,
-          actionTimeMs,
-          actionTakenAfterEndMs,
-          attemptsMade,
-          retryReason,
-          sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
-          uploadDurationMs,
-          reviewBadgeGoneAfterMs,
-          buttonEnabledAfterMs,
-          buttonVsReviewBadgeDeltaMs,
-          admissionDetails,
-          attemptDurationsMs,
+          sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
           preFireRaceWinner,
           preFireRaceDurationMs,
-          sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
+          realFireDelayFromBoundaryMs,
+          buttonEnabledAfterMs,
+          reviewBadgeGoneAfterMs,
+          actionTimeMs,
+          attemptDurationsMs,
+          attemptsMade,
+          admissionDetails,
         }),
       );
     }
