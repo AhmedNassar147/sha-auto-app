@@ -95,7 +95,7 @@ const REJECTION_REASON_ID = 18;
 // the worst case (every attempt comes back "too early") - paired with a
 // wider SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS instead to cover more total
 // margin without raising the concurrency count further.
-const MAX_ACTION_RETRIES = 11;
+const MAX_ACTION_RETRIES = 12;
 
 // Both confirmed live as transient, timing-related failures that later
 // hedge attempts for the exact same case went on to succeed past, not
