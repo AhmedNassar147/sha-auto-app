@@ -243,7 +243,7 @@ const buildDirectApiTelegramMessage = ({
     `Time spent sleeping until the boundary: ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
     `Fired because of: ${preFireRaceWinner} (took ${preFireRaceDurationMs}ms)\n` +
-    `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s\n` +
+    `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
     (buttonEnabledAfterMs != null
       ? `Accept/Reject button became enabled after: ${buttonEnabledAfterMs}ms\n`
       : "") +
