@@ -86,26 +86,22 @@ const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
 
-// A count cap, not a time budget - paired with
-// SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS (the hedge gap between attempts),
-// (count-1)*gap is the total margin the hedging burst can cover before
-// giving up and falling back to the UI. Confirmed live: required margin
-// has ranged from near-0 up to ~900ms; kept at 10 (not higher) to bound
-// how many accept-json requests for the same case can briefly overlap in
-// the worst case (every attempt comes back "too early") - paired with a
-// wider SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS instead to cover more total
-// margin without raising the concurrency count further.
+// A count cap on sequential attempts (one at a time, see the retry loop
+// below) - paired with SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS (the gap
+// between attempts), (count-1)*gap is roughly the total margin the retry
+// loop can cover before giving up and falling back to the UI. Confirmed
+// live: required margin has ranged from near-0 up to ~900ms.
 const MAX_ACTION_RETRIES = 12;
 
-// Both confirmed live as transient, timing-related failures that later
-// hedge attempts for the exact same case went on to succeed past, not
-// permanent rejections - "review window has elapsed" (the window itself
-// not open yet) and "attachments are missing or expired" (the pre-
-// uploaded attachment id not yet recognized by the accept-processing
-// side, seen resolving itself ~500ms-1s after the pre-upload completed).
-// A hedge attempt failing for any OTHER reason is treated as decisive
-// (stops further hedging) rather than retried, since we've only ever
-// confirmed these two specific conditions to be worth retrying past.
+// Both confirmed live as transient, timing-related failures that a later
+// retry for the exact same case went on to succeed past, not permanent
+// rejections - "review window has elapsed" (the window itself not open
+// yet) and "attachments are missing or expired" (the pre-uploaded
+// attachment id not yet recognized by the accept-processing side, seen
+// resolving itself ~500ms-1s after the pre-upload completed). A failure
+// for any OTHER reason is treated as decisive (stops retrying) rather
+// than retried, since we've only ever confirmed these two specific
+// conditions to be worth retrying past.
 const RETRIABLE_ERROR_SUBSTRINGS = [
   "review window has elapsed",
   "attachments are missing or expired",
@@ -256,7 +252,7 @@ const buildDirectApiTelegramMessage = ({
     (retryCount > 0
       ? `Retries needed: ${retryCount} (window hadn't quite opened yet)\n`
       : `Retries needed: 0\n`) +
-    `Hedge gap between attempts configured: ${sleepWhenAcceptOrRejectRetryMs}ms\n`;
+    `Gap between retry attempts configured: ${sleepWhenAcceptOrRejectRetryMs}ms\n`;
 
   // Shown only for an Inpatient accept - these are fabricated placeholder
   // values (no UI to collect real ones via the direct-API path), so
@@ -287,10 +283,8 @@ const buildDirectApiTelegramMessage = ({
   // issue on our end) from "only the final, actually-successful attempt
   // is slow" (server-side work specific to a genuine accept - a quick 400
   // rejection would never reach that path). Pairs each duration with what
-  // that specific attempt actually got back - with concurrent/hedged
-  // firing, this is what reveals what Wasla's backend does with the
-  // "losing" requests once one has already succeeded (reject them
-  // cleanly? silently say success too? something else?).
+  // that specific attempt actually got back, so a run that needed retries
+  // shows exactly what each one failed with before the retry that worked.
   const attemptDurationsLine = attemptDurationsMs?.length
     ? `Per-attempt results: [${attemptDurationsMs.map((ms, i) => `${ms}ms: ${attemptOutcomes[i] ?? "unknown"}`).join(", ")}]\n`
     : "";
@@ -575,8 +569,8 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 1300) {
-      await sleep(currentLeftTime - 1300);
+    if (currentLeftTime > 1100) {
+      await sleep(currentLeftTime - 1100);
     }
 
     // Inpatient accept never attaches a file (confirmed live - see
@@ -672,93 +666,63 @@ const handleSubmitReferral = (options) => async (patient) => {
       preFireRaceStart - referralEndTimestamp + preFireRaceDurationMs;
 
     const attemptDurationsMs = [];
-    // What each individual hedge attempt actually got back from Wasla -
-    // not just the one that won. Specifically for watching what Wasla's
-    // backend does with the "losing" concurrent requests once one of them
-    // has already succeeded (reject them cleanly? silently say success
-    // too? something else?) - see this file's own history for why that's
-    // still an open question.
+    // What each individual attempt actually got back from Wasla - not just
+    // the final one, so a run that needed retries still shows why.
     const attemptOutcomes = [];
     const actionTimeStart = Date.now();
 
-    // Hedged/concurrent firing - fires a new attempt every
-    // SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS without waiting for the
-    // previous one to resolve first. The old sequential fire-then-await-
-    // then-retry design lost each failed attempt's full round-trip time
-    // (confirmed live: ~220-310ms) before the next one could even start -
-    // this is a race against other facilities, and that lost time turned
-    // out to be the difference between actually winning a case and losing
-    // it even on an eventual "success" response (see this file's own
-    // history). This deliberately accepts that more than one accept-json
-    // request for the same case can briefly be in flight at once - we
-    // don't yet know how Wasla's backend handles that overlap, so this is
-    // worth watching closely on the next live cases.
-    let stopFiring = false;
-    const attemptPromises = [];
+    // Sequential firing - one attempt at a time, waiting for its own
+    // response before deciding whether to retry. Concurrent/hedged firing
+    // (sending the next attempt without waiting, every
+    // SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS) was tried and reverted: live
+    // data showed success landing on literally the LAST fired attempt in
+    // every single burst, across many different gap/count combinations -
+    // strong evidence that sending a newer request invalidates whatever
+    // attempt is already in flight for the same case, rather than the
+    // delay being about waiting long enough. That means concurrent hedges
+    // were actively working against reaching success sooner, not helping,
+    // and also carried an unknown risk (how Wasla's backend handles
+    // multiple overlapping accept-json requests for the same case) that
+    // sequential firing avoids entirely, since only one is ever in flight.
+    let attemptCount = 0;
 
-    for (let i = 0; i < MAX_ACTION_RETRIES && !stopFiring; i++) {
+    while (attemptCount < MAX_ACTION_RETRIES) {
+      attemptCount++;
       const attemptStart = Date.now();
 
-      attemptPromises.push(
-        submitWaslaReferralViaApi({
-          page,
-          navigationId,
-          notes: description,
-          rejectionReasonId: REJECTION_REASON_ID,
-          isAccept: isAcceptanceAction,
-          admissionDetails,
-          ...(isInpatientReferral
-            ? null
-            : {
-                attachmentId: uploadResult.attachmentId,
-                // we pass these incase the letter file was not pre-uploaded, so we can upload it now
-                fileBase64: letterFileBase64,
-                fileName: randomFileName,
-              }),
-        }).then((result) => {
-          attemptDurationsMs.push(Date.now() - attemptStart);
-          attemptOutcomes.push(
-            result.success
-              ? "success"
-              : isRetriableFailure(result.error)
-                ? `retriable (${result.error})`
-                : (result.error ?? "unknown error"),
-          );
+      apiResult = await submitWaslaReferralViaApi({
+        page,
+        navigationId,
+        notes: description,
+        rejectionReasonId: REJECTION_REASON_ID,
+        isAccept: isAcceptanceAction,
+        admissionDetails,
+        ...(isInpatientReferral
+          ? null
+          : {
+              attachmentId: uploadResult.attachmentId,
+              // we pass these incase the letter file was not pre-uploaded, so we can upload it now
+              fileBase64: letterFileBase64,
+              fileName: randomFileName,
+            }),
+      });
 
-          // Never let a later-resolving hedge (even a genuine failure)
-          // clobber a success an earlier-resolving one already won -
-          // concurrent attempts don't resolve in fire order.
-          if (apiResult?.success) {
-            return result;
-          }
-
-          // Stops hedging once an attempt actually decides the outcome -
-          // either it succeeded, or it failed for a reason that isn't one
-          // of the confirmed-transient RETRIABLE_ERROR_SUBSTRINGS, in
-          // which case further hedges would almost certainly just fail
-          // the same way.
-          if (result.success || !isRetriableFailure(result.error)) {
-            stopFiring = true;
-            apiResult = result;
-          }
-
-          return result;
-        }),
+      attemptDurationsMs.push(Date.now() - attemptStart);
+      attemptOutcomes.push(
+        apiResult.success
+          ? "success"
+          : isRetriableFailure(apiResult.error)
+            ? `retriable (${apiResult.error})`
+            : (apiResult.error ?? "unknown error"),
       );
 
-      if (i < MAX_ACTION_RETRIES - 1 && !stopFiring) {
+      if (apiResult.success || !isRetriableFailure(apiResult.error)) {
+        break;
+      }
+
+      if (attemptCount < MAX_ACTION_RETRIES) {
         await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
       }
-    }
-
-    // Lets every attempt still in flight finish (so nothing here leaves an
-    // unhandled rejection or a dangling request) without changing what's
-    // reported - apiResult was already set above by whichever attempt
-    // actually decided the outcome, if any did.
-    const settledAttemptResults = await Promise.all(attemptPromises);
-
-    if (!apiResult) {
-      apiResult = settledAttemptResults[settledAttemptResults.length - 1];
     }
 
     const [actionButtonHandle] = await Promise.all(
@@ -767,7 +731,7 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const actionTimeMs = Date.now() - actionTimeStart;
 
-    const attemptsMade = attemptPromises.length;
+    const attemptsMade = attemptCount;
 
     if (apiResult) {
       showPageSnackbar(page, {
