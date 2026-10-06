@@ -97,6 +97,23 @@ const REJECTION_REASON_ID = 18;
 // margin without raising the concurrency count further.
 const MAX_ACTION_RETRIES = 11;
 
+// Both confirmed live as transient, timing-related failures that later
+// hedge attempts for the exact same case went on to succeed past, not
+// permanent rejections - "review window has elapsed" (the window itself
+// not open yet) and "attachments are missing or expired" (the pre-
+// uploaded attachment id not yet recognized by the accept-processing
+// side, seen resolving itself ~500ms-1s after the pre-upload completed).
+// A hedge attempt failing for any OTHER reason is treated as decisive
+// (stops further hedging) rather than retried, since we've only ever
+// confirmed these two specific conditions to be worth retrying past.
+const RETRIABLE_ERROR_SUBSTRINGS = [
+  "review window has elapsed",
+  "attachments are missing or expired",
+];
+
+const isRetriableFailure = (error) =>
+  RETRIABLE_ERROR_SUBSTRINGS.some((substring) => error?.includes?.(substring));
+
 // Confirmed live (results/raw-referral-responses/*.json,
 // caseInfo.subReferralType): id "1" = "Inpatient" - distinct from
 // referralType (Routine/Urgent/etc). Only Inpatient referrals need
@@ -558,9 +575,9 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    // if (currentLeftTime > 1400) {
-    //   await sleep(currentLeftTime - 1400);
-    // }
+    if (currentLeftTime > 1300) {
+      await sleep(currentLeftTime - 1300);
+    }
 
     // Inpatient accept never attaches a file (confirmed live - see
     // buildAdmissionDetails.mjs/submitWaslaReferralViaApi.mjs), so there's
@@ -703,8 +720,8 @@ const handleSubmitReferral = (options) => async (patient) => {
           attemptOutcomes.push(
             result.success
               ? "success"
-              : result.error?.includes?.("review window has elapsed")
-                ? "too early"
+              : isRetriableFailure(result.error)
+                ? `retriable (${result.error})`
                 : (result.error ?? "unknown error"),
           );
 
@@ -716,13 +733,11 @@ const handleSubmitReferral = (options) => async (patient) => {
           }
 
           // Stops hedging once an attempt actually decides the outcome -
-          // either it succeeded, or it failed for a reason other than
-          // "too early" (the one retriable condition), in which case
-          // further hedges would almost certainly just fail the same way.
-          if (
-            result.success ||
-            !result.error?.includes?.("review window has elapsed")
-          ) {
+          // either it succeeded, or it failed for a reason that isn't one
+          // of the confirmed-transient RETRIABLE_ERROR_SUBSTRINGS, in
+          // which case further hedges would almost certainly just fail
+          // the same way.
+          if (result.success || !isRetriableFailure(result.error)) {
             stopFiring = true;
             apiResult = result;
           }
