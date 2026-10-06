@@ -95,7 +95,7 @@ const REJECTION_REASON_ID = 18;
 // the worst case (every attempt comes back "too early") - paired with a
 // wider SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS instead to cover more total
 // margin without raising the concurrency count further.
-const MAX_ACTION_RETRIES = 10;
+const MAX_ACTION_RETRIES = 11;
 
 // Confirmed live (results/raw-referral-responses/*.json,
 // caseInfo.subReferralType): id "1" = "Inpatient" - distinct from
