@@ -86,7 +86,16 @@ const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
 
-const MAX_ACTION_RETRIES = 8;
+// A count cap, not a time budget - paired with
+// SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS (the hedge gap between attempts),
+// (count-1)*gap is the total margin the hedging burst can cover before
+// giving up and falling back to the UI. Confirmed live: required margin
+// has ranged from near-0 up to ~900ms; kept at 10 (not higher) to bound
+// how many accept-json requests for the same case can briefly overlap in
+// the worst case (every attempt comes back "too early") - paired with a
+// wider SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS instead to cover more total
+// margin without raising the concurrency count further.
+const MAX_ACTION_RETRIES = 10;
 
 // Confirmed live (results/raw-referral-responses/*.json,
 // caseInfo.subReferralType): id "1" = "Inpatient" - distinct from
