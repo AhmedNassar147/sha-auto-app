@@ -86,7 +86,7 @@ const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
 
-const MAX_ACTION_RETRIES = 10;
+const MAX_ACTION_RETRIES = 8;
 
 // Confirmed live (results/raw-referral-responses/*.json,
 // caseInfo.subReferralType): id "1" = "Inpatient" - distinct from
@@ -175,7 +175,9 @@ const reportFailure = async (
  *   reviewBadgeGoneAfterMs: number | null,
  *   actionTimeMs: number,
  *   attemptDurationsMs: number[],
+ *   attemptOutcomes: string[],
  *   attemptsMade: number,
+ *   sleepWhenAcceptOrRejectRetryMs: number,
  *   admissionDetails: object | null,
  * }} params
  * @returns {string}
@@ -197,7 +199,9 @@ const buildDirectApiTelegramMessage = ({
   reviewBadgeGoneAfterMs,
   actionTimeMs,
   attemptDurationsMs,
+  attemptOutcomes,
   attemptsMade,
+  sleepWhenAcceptOrRejectRetryMs,
   admissionDetails,
 }) => {
   const { success, timing, responseHeaders } = apiResult;
@@ -223,9 +227,10 @@ const buildDirectApiTelegramMessage = ({
   // one and only reason a retry ever happens here.
   const retryCount = attemptsMade - 1;
   const retryLine =
-    retryCount > 0
+    (retryCount > 0
       ? `Retries needed: ${retryCount} (window hadn't quite opened yet)\n`
-      : `Retries needed: 0\n`;
+      : `Retries needed: 0\n`) +
+    `Hedge gap between attempts configured: ${sleepWhenAcceptOrRejectRetryMs}ms\n`;
 
   // Shown only for an Inpatient accept - these are fabricated placeholder
   // values (no UI to collect real ones via the direct-API path), so
@@ -255,9 +260,13 @@ const buildDirectApiTelegramMessage = ({
   // Tells apart "every attempt is equally slow" (a network/connection
   // issue on our end) from "only the final, actually-successful attempt
   // is slow" (server-side work specific to a genuine accept - a quick 400
-  // rejection would never reach that path).
+  // rejection would never reach that path). Pairs each duration with what
+  // that specific attempt actually got back - with concurrent/hedged
+  // firing, this is what reveals what Wasla's backend does with the
+  // "losing" requests once one has already succeeded (reject them
+  // cleanly? silently say success too? something else?).
   const attemptDurationsLine = attemptDurationsMs?.length
-    ? `Per-attempt response times: [${attemptDurationsMs.join("ms, ")}ms]\n`
+    ? `Per-attempt results: [${attemptDurationsMs.map((ms, i) => `${ms}ms: ${attemptOutcomes[i] ?? "unknown"}`).join(", ")}]\n`
     : "";
 
   // Breaks the server response time down into actual network phases
@@ -598,23 +607,19 @@ const handleSubmitReferral = (options) => async (patient) => {
       })
       .catch(() => null);
 
-    const reviewBadgeGonePromise = isAcceptanceAction
-      ? null
-      : page
-          .waitForFunction(
-            (marker) =>
-              ![...document.querySelectorAll("span")].some((el) =>
-                el.textContent?.includes(marker),
-              ),
-            { timeout: ACTION_BUTTON_TIMEOUT_MS },
-            REVIEW_BADGE_TEXT_MARKER,
-          )
-          .then(() => {
-            reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
-          })
-          .catch(() => null);
-
-    let currentRetryCount = 1;
+    const reviewBadgeGonePromise = page
+      .waitForFunction(
+        (marker) =>
+          ![...document.querySelectorAll("span")].some((el) =>
+            el.textContent?.includes(marker),
+          ),
+        { timeout: ACTION_BUTTON_TIMEOUT_MS },
+        REVIEW_BADGE_TEXT_MARKER,
+      )
+      .then(() => {
+        reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
+      })
+      .catch(() => null);
 
     let apiResult = null;
 
@@ -641,42 +646,95 @@ const handleSubmitReferral = (options) => async (patient) => {
       preFireRaceStart - referralEndTimestamp + preFireRaceDurationMs;
 
     const attemptDurationsMs = [];
+    // What each individual hedge attempt actually got back from Wasla -
+    // not just the one that won. Specifically for watching what Wasla's
+    // backend does with the "losing" concurrent requests once one of them
+    // has already succeeded (reject them cleanly? silently say success
+    // too? something else?) - see this file's own history for why that's
+    // still an open question.
+    const attemptOutcomes = [];
     const actionTimeStart = Date.now();
 
-    while (currentRetryCount <= MAX_ACTION_RETRIES) {
+    // Hedged/concurrent firing - fires a new attempt every
+    // SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS without waiting for the
+    // previous one to resolve first. The old sequential fire-then-await-
+    // then-retry design lost each failed attempt's full round-trip time
+    // (confirmed live: ~220-310ms) before the next one could even start -
+    // this is a race against other facilities, and that lost time turned
+    // out to be the difference between actually winning a case and losing
+    // it even on an eventual "success" response (see this file's own
+    // history). This deliberately accepts that more than one accept-json
+    // request for the same case can briefly be in flight at once - we
+    // don't yet know how Wasla's backend handles that overlap, so this is
+    // worth watching closely on the next live cases.
+    let stopFiring = false;
+    const attemptPromises = [];
+
+    for (let i = 0; i < MAX_ACTION_RETRIES && !stopFiring; i++) {
       const attemptStart = Date.now();
 
-      apiResult = await submitWaslaReferralViaApi({
-        page,
-        navigationId,
-        notes: description,
-        rejectionReasonId: REJECTION_REASON_ID,
-        isAccept: isAcceptanceAction,
-        admissionDetails,
-        ...(isInpatientReferral
-          ? null
-          : {
-              attachmentId: uploadResult.attachmentId,
-              // we pass these incase the letter file was not pre-uploaded, so we can upload it now
-              fileBase64: letterFileBase64,
-              fileName: randomFileName,
-            }),
-      });
+      attemptPromises.push(
+        submitWaslaReferralViaApi({
+          page,
+          navigationId,
+          notes: description,
+          rejectionReasonId: REJECTION_REASON_ID,
+          isAccept: isAcceptanceAction,
+          admissionDetails,
+          ...(isInpatientReferral
+            ? null
+            : {
+                attachmentId: uploadResult.attachmentId,
+                // we pass these incase the letter file was not pre-uploaded, so we can upload it now
+                fileBase64: letterFileBase64,
+                fileName: randomFileName,
+              }),
+        }).then((result) => {
+          attemptDurationsMs.push(Date.now() - attemptStart);
+          attemptOutcomes.push(
+            result.success
+              ? "success"
+              : result.error?.includes?.("review window has elapsed")
+                ? "too early"
+                : (result.error ?? "unknown error"),
+          );
 
-      attemptDurationsMs.push(Date.now() - attemptStart);
+          // Never let a later-resolving hedge (even a genuine failure)
+          // clobber a success an earlier-resolving one already won -
+          // concurrent attempts don't resolve in fire order.
+          if (apiResult?.success) {
+            return result;
+          }
 
-      const { success, error } = apiResult;
+          // Stops hedging once an attempt actually decides the outcome -
+          // either it succeeded, or it failed for a reason other than
+          // "too early" (the one retriable condition), in which case
+          // further hedges would almost certainly just fail the same way.
+          if (
+            result.success ||
+            !result.error?.includes?.("review window has elapsed")
+          ) {
+            stopFiring = true;
+            apiResult = result;
+          }
 
-      if (success) {
-        break;
-      }
+          return result;
+        }),
+      );
 
-      if (error?.includes?.("review window has elapsed")) {
+      if (i < MAX_ACTION_RETRIES - 1 && !stopFiring) {
         await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
-        currentRetryCount++;
-      } else {
-        break;
       }
+    }
+
+    // Lets every attempt still in flight finish (so nothing here leaves an
+    // unhandled rejection or a dangling request) without changing what's
+    // reported - apiResult was already set above by whichever attempt
+    // actually decided the outcome, if any did.
+    const settledAttemptResults = await Promise.all(attemptPromises);
+
+    if (!apiResult) {
+      apiResult = settledAttemptResults[settledAttemptResults.length - 1];
     }
 
     const [actionButtonHandle] = await Promise.all(
@@ -685,12 +743,7 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const actionTimeMs = Date.now() - actionTimeStart;
 
-    // currentRetryCount overshoots by 1 when retries are exhausted (it's
-    // bumped once more before the while condition re-checks and exits),
-    // so it's clamped here rather than reported as-is - otherwise an
-    // exhausted-retries run would claim one more attempt than actually
-    // happened.
-    const attemptsMade = Math.min(currentRetryCount, MAX_ACTION_RETRIES);
+    const attemptsMade = attemptPromises.length;
 
     if (apiResult) {
       showPageSnackbar(page, {
@@ -718,7 +771,9 @@ const handleSubmitReferral = (options) => async (patient) => {
           reviewBadgeGoneAfterMs,
           actionTimeMs,
           attemptDurationsMs,
+          attemptOutcomes,
           attemptsMade,
+          sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
           admissionDetails,
         }),
       );
