@@ -33,6 +33,20 @@ import {
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
 
+// Same locale/timezone convention as formateDateToString.mjs (Saudi local
+// time, DD/MM/YYYY), but with milliseconds kept - the whole point of this
+// specific timestamp is sub-second precision for comparing attempts
+// against each other and against the boundary.
+const formatTimeWithMs = (epochMs) =>
+  new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Riyadh",
+    hour12: true,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    fractionalSecondDigits: 3,
+  }).format(epochMs);
+
 const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 
 // Confirmed live (html/details/details-frame.html): the accept/reject
@@ -190,14 +204,14 @@ const reportFailure = async (
  *   diffMs: number,
  *   sleepMs: number,
  *   sleepBeforeAcceptOrRejectMs: number,
- *   preFireRaceWinner: "timer" | "button",
- *   preFireRaceDurationMs: number,
  *   realFireDelayFromBoundaryMs: number,
- *   buttonEnabledAfterMs: number | null,
- *   reviewBadgeGoneAfterMs: number | null,
  *   actionTimeMs: number,
- *   attemptDurationsMs: number[],
- *   attemptOutcomes: string[],
+ *   attempts: {
+ *     startedAtMs: number,
+ *     startedAfterEndMs: number,
+ *     durationMs: number,
+ *     outcome: string,
+ *   }[],
  *   attemptsMade: number,
  *   sleepWhenAcceptOrRejectRetryMs: number,
  *   admissionDetails: object | null,
@@ -214,14 +228,9 @@ const buildDirectApiTelegramMessage = ({
   diffMs,
   sleepMs,
   sleepBeforeAcceptOrRejectMs,
-  preFireRaceWinner,
-  preFireRaceDurationMs,
   realFireDelayFromBoundaryMs,
-  buttonEnabledAfterMs,
-  reviewBadgeGoneAfterMs,
   actionTimeMs,
-  attemptDurationsMs,
-  attemptOutcomes,
+  attempts,
   attemptsMade,
   sleepWhenAcceptOrRejectRetryMs,
   admissionDetails,
@@ -262,31 +271,36 @@ const buildDirectApiTelegramMessage = ({
     : "";
 
   // Timing from the moment the pre-upload finished to actually firing the
-  // request - sleepMs/diffMs are almost always equal (sleepMs floors at 0),
-  // shown separately only because a negative diffMs (already past the
-  // boundary before the sleep even started) is itself a useful signal.
+  // request. diffMs is how much time was left at that moment (negative
+  // means already past the boundary before the wait even started - itself
+  // a useful signal); sleepMs is the computed target duration handed to
+  // sleep() (diffMs floored at 0, plus the configured pre-fire buffer
+  // folded in) - not an independently re-measured value. realFireDelay-
+  // FromBoundaryMs below is the actual measured position after the sleep
+  // completes, so that's the one to trust if the two ever diverge.
   const timingLines =
     `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
-    `Time spent sleeping until the boundary: ${sleepMs}ms\n` +
+    `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
-    `Fired because of: ${preFireRaceWinner} (took ${preFireRaceDurationMs}ms)\n` +
     `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
-    (buttonEnabledAfterMs != null
-      ? `Accept/Reject button became enabled after: ${buttonEnabledAfterMs}ms\n`
-      : "") +
-    (reviewBadgeGoneAfterMs != null
-      ? `"In Review" badge disappeared after: ${reviewBadgeGoneAfterMs}ms\n`
-      : "") +
     `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
   // Tells apart "every attempt is equally slow" (a network/connection
   // issue on our end) from "only the final, actually-successful attempt
   // is slow" (server-side work specific to a genuine accept - a quick 400
-  // rejection would never reach that path). Pairs each duration with what
-  // that specific attempt actually got back, so a run that needed retries
-  // shows exactly what each one failed with before the retry that worked.
-  const attemptDurationsLine = attemptDurationsMs?.length
-    ? `Per-attempt results: [${attemptDurationsMs.map((ms, i) => `${ms}ms: ${attemptOutcomes[i] ?? "unknown"}`).join(", ")}]\n`
+  // rejection would never reach that path). Shows exactly when each
+  // attempt started (both relative to the boundary and in absolute
+  // wall-clock time, for cross-referencing against other logged data)
+  // and what it actually got back from Wasla.
+  const attemptDurationsLine = attempts?.length
+    ? `Per-attempt results:\n` +
+      attempts
+        .map(
+          (a, i) =>
+            `  #${i + 1} started ${a.startedAfterEndMs}ms after window (${formatTimeWithMs(a.startedAtMs)}), took ${a.durationMs}ms: ${a.outcome}`,
+        )
+        .join("\n") +
+      "\n"
     : "";
 
   // Breaks the server response time down into actual network phases
@@ -569,8 +583,8 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 1050) {
-      await sleep(currentLeftTime - 1050);
+    if (currentLeftTime > 250) {
+      await sleep(currentLeftTime - 250);
     }
 
     // Inpatient accept never attaches a file (confirmed live - see
@@ -588,87 +602,18 @@ const handleSubmitReferral = (options) => async (patient) => {
     const uploadDurationMs = Date.now() - uploadStartTime;
 
     const diffMs = referralEndTimestamp - Date.now();
-    const sleepMS = Math.max(0, diffMs);
+
+    const sleepMS = diffMs + (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS || 0);
 
     if (sleepMS > 0) {
       await sleep(sleepMS);
     }
 
-    const tActionButtonWaitStart = Date.now();
-
-    let buttonEnabledAfterMs = null;
-    let reviewBadgeGoneAfterMs = null;
-
-    const actionButtonPromise = page
-      .waitForFunction(
-        (texts) => {
-          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
-
-          const buttons = [...document.querySelectorAll("button")];
-
-          const matchedButton = buttons.find((button) =>
-            texts.includes(normalize(button.textContent)),
-          );
-
-          if (matchedButton) {
-            matchedButton.scrollIntoView({ block: "end" });
-          }
-
-          return matchedButton && !matchedButton.disabled
-            ? matchedButton
-            : null;
-        },
-        { timeout: ACTION_BUTTON_TIMEOUT_MS },
-        targetButtonTexts,
-      )
-      .then((handle) => {
-        buttonEnabledAfterMs = Date.now() - tActionButtonWaitStart;
-        return handle;
-      })
-      .catch(() => null);
-
-    const reviewBadgeGonePromise = page
-      .waitForFunction(
-        (marker) =>
-          ![...document.querySelectorAll("span")].some((el) =>
-            el.textContent?.includes(marker),
-          ),
-        { timeout: ACTION_BUTTON_TIMEOUT_MS },
-        REVIEW_BADGE_TEXT_MARKER,
-      )
-      .then(() => {
-        reviewBadgeGoneAfterMs = Date.now() - tActionButtonWaitStart;
-      })
-      .catch(() => null);
-
     let apiResult = null;
 
-    // Races the fixed pre-fire buffer against the DOM button-enabled signal
-    // instead of just sleeping the buffer unconditionally - normally these
-    // are gated by the exact same formula (see actionButtonPromise's own
-    // setup above), so the sleep should win almost every time; this only
-    // matters as a safety net for a stale referralEndTimestamp/windowMinutes
-    // for this specific case, where the live page's own calculation could
-    // legitimately resolve first.
-    const preFireRaceStart = Date.now();
+    const realFireDelayFromBoundaryMs = Date.now() - referralEndTimestamp;
 
-    const preFireRaceWinner = await Promise.race([
-      sleep(SLEEP_BEFORE_ACCEPT_OR_REJECT_MS).then(() => "timer"),
-      actionButtonPromise.then((handle) => (handle ? "button" : "timer")),
-    ]);
-
-    const preFireRaceDurationMs = Date.now() - preFireRaceStart;
-
-    // The real-world gap between the boundary and when the request fires -
-    // how late we already were when the race started, plus however long
-    // the race itself took.
-    const realFireDelayFromBoundaryMs =
-      preFireRaceStart - referralEndTimestamp + preFireRaceDurationMs;
-
-    const attemptDurationsMs = [];
-    // What each individual attempt actually got back from Wasla - not just
-    // the final one, so a run that needed retries still shows why.
-    const attemptOutcomes = [];
+    const attempts = [];
     const actionTimeStart = Date.now();
 
     // Sequential firing - one attempt at a time, waiting for its own
@@ -707,14 +652,16 @@ const handleSubmitReferral = (options) => async (patient) => {
             }),
       });
 
-      attemptDurationsMs.push(Date.now() - attemptStart);
-      attemptOutcomes.push(
-        apiResult.success
+      attempts.push({
+        startedAtMs: attemptStart,
+        startedAfterEndMs: attemptStart - referralEndTimestamp,
+        durationMs: Date.now() - attemptStart,
+        outcome: apiResult.success
           ? "success"
           : isRetriableFailure(apiResult.error)
             ? `retriable (${apiResult.error})`
             : (apiResult.error ?? "unknown error"),
-      );
+      });
 
       if (apiResult.success || !isRetriableFailure(apiResult.error)) {
         break;
@@ -724,10 +671,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
       }
     }
-
-    const [actionButtonHandle] = await Promise.all(
-      [actionButtonPromise, reviewBadgeGonePromise].filter(Boolean),
-    );
 
     const actionTimeMs = Date.now() - actionTimeStart;
 
@@ -752,14 +695,9 @@ const handleSubmitReferral = (options) => async (patient) => {
           diffMs,
           sleepMs: sleepMS,
           sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
-          preFireRaceWinner,
-          preFireRaceDurationMs,
           realFireDelayFromBoundaryMs,
-          buttonEnabledAfterMs,
-          reviewBadgeGoneAfterMs,
           actionTimeMs,
-          attemptDurationsMs,
-          attemptOutcomes,
+          attempts,
           attemptsMade,
           sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
           admissionDetails,
@@ -789,6 +727,35 @@ const handleSubmitReferral = (options) => async (patient) => {
       await closePageSafely(page);
       return;
     }
+
+    // Only needed now, for the UI fallback below - no reason to wait on
+    // this while the direct-API attempt was still running, since it was
+    // never a reliable gate for firing (see this file's own history).
+    // The review-badge check is paused for now - its result was never
+    // consumed by anything besides its own now-removed diagnostic.
+    const actionButtonHandle = await page
+      .waitForFunction(
+        (texts) => {
+          const normalize = (text) => (text || "").replace(/\s+/g, " ").trim();
+
+          const buttons = [...document.querySelectorAll("button")];
+
+          const matchedButton = buttons.find((button) =>
+            texts.includes(normalize(button.textContent)),
+          );
+
+          if (matchedButton) {
+            matchedButton.scrollIntoView({ block: "end" });
+          }
+
+          return matchedButton && !matchedButton.disabled
+            ? matchedButton
+            : null;
+        },
+        { timeout: ACTION_BUTTON_TIMEOUT_MS },
+        targetButtonTexts,
+      )
+      .catch(() => null);
 
     if (!actionButtonHandle) {
       await reportFailure(
