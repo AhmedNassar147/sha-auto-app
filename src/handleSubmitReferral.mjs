@@ -569,8 +569,8 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 1100) {
-      await sleep(currentLeftTime - 1100);
+    if (currentLeftTime > 1050) {
+      await sleep(currentLeftTime - 1050);
     }
 
     // Inpatient accept never attaches a file (confirmed live - see
