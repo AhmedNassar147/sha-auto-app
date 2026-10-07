@@ -1101,13 +1101,19 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     const caseBlocks = cases.map((patient, index) => {
       const statusLabel =
         WASLA_STATUS_TYPES[Number(patient.status)] || patient.status || "-";
-      const claimedLabel = patient.claimed || "Pending";
+      const claimedBadge =
+        patient.claimed === "Yes"
+          ? "✅ Yes"
+          : patient.claimed === "No"
+            ? "❌ No"
+            : "⏳ Pending";
 
       return (
-        `${index + 1}- Referral (${patient.navigationId || "-"}) · ID: \`${patient.referralId}\`\n` +
+        `${index + 1}- \`(${patient.navigationId || "-"})\` · ID: \`${patient.referralId}\`\n` +
         `${patient.patientName || "-"}\n` +
-        `${patient.referralDate || "-"} ~ ${patient.referralEndDate || "-"}\n` +
-        `${statusLabel} — Claimed: ${claimedLabel}`
+        `ReferralDate: ${patient.referralDate || "-"}\n` +
+        `ReferralEndDate: ${patient.referralEndDate || "-"}\n` +
+        `${statusLabel} — Claimed: ${claimedBadge}`
       );
     });
 
