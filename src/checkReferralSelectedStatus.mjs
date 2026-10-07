@@ -32,6 +32,7 @@ import {
  *   patientName?: string,
  *   statusID?: string,
  *   shouldUpdateAndNotify: boolean,
+ *   patientNationalId?: string,
  *   tabName?: string,
  * }>}
  */
@@ -66,7 +67,11 @@ const fetchCase = async (waslaFrame, referralId) => {
     : null;
 
   if (foundPatient) {
-    const { status: statusString, patientName } = foundPatient;
+    const {
+      status: statusString,
+      patientName,
+      patientNationalId,
+    } = foundPatient;
     // Confirmed live: the myOrders/tab-2 API returns status as a STRING
     // (e.g. "status": "3"), while WAITING_ACCEPTANCE_STATUS_CODES/
     // CLAIMED_STATUS_CODES are numbers - the strict === / .includes()
@@ -92,6 +97,7 @@ const fetchCase = async (waslaFrame, referralId) => {
       shouldUpdateAndNotify: isStillInAcceptance ? false : true,
       tabName: "orders",
       patientName,
+      patientNationalId,
     };
   }
 
@@ -123,18 +129,26 @@ const fetchCase = async (waslaFrame, referralId) => {
  * @param {"Yes" | "No"} params.claimed
  * @param {string} [params.tabName]
  * @param {string} [params.patientName]
+ * @param {string} [params.patientNationalId]
  * @returns {Promise<void>}
  */
 const updateAndNotifyUser = async ({
   sendTelegramMessage,
   referralId,
   patientName,
+  patientNationalId,
   status,
   hints,
   statusID,
   claimed,
   tabName,
 }) => {
+  // Same shared/admin watcher pattern as loginWithNafathCredentials.mjs's
+  // Nafath-code report: that chat tracks multiple orgs' bot deployments at
+  // once, so its copy needs the org label the operator's own default chat
+  // doesn't (they already know which deployment they're looking at).
+  const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
+
   const isClaimed = claimed === "Yes";
   const statusEmoji = isClaimed ? "✅" : "❌";
   const statusText = isClaimed
@@ -143,31 +157,18 @@ const updateAndNotifyUser = async ({
 
   const hintsLine = hints?.length ? `\n⚠️ *Hints:* ${hints.join("\n\n")}` : "";
 
-  const telegramMessage =
-    `${statusEmoji} *Referral Status Update*\n` +
+  const message =
+    `${statusEmoji} *Referral Status Update for* \`${getOrgLabel()}\`\n` +
     `────────────────────────\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
     (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
+    (patientNationalId ? `🪪 *National ID:* \`${patientNationalId}\`\n` : "") +
     `📋 *Status:* ${statusText}` +
     hintsLine;
 
   const updates = { referralId, status, claimed, tabName };
 
   updatePatients(updates);
-
-  // Same shared/admin watcher pattern as loginWithNafathCredentials.mjs's
-  // Nafath-code report: that chat tracks multiple orgs' bot deployments at
-  // once, so its copy needs the org label the operator's own default chat
-  // doesn't (they already know which deployment they're looking at).
-  const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
-
-  const watcherMessage =
-    `${statusEmoji} *Referral Status Update for* \`${getOrgLabel()}\`\n` +
-    `────────────────────────\n` +
-    `🔢 *Referral ID:* \`${referralId}\`\n` +
-    (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
-    `📋 *Status:* ${statusText}` +
-    hintsLine;
 
   // Lets the watcher chat confirm patient arrival, withdraw our
   // acceptance, or resend the case's cached report/merged attachment
@@ -202,10 +203,10 @@ const updateAndNotifyUser = async ({
     : null;
 
   await Promise.all([
-    sendTelegramMessage(telegramMessage),
+    sendTelegramMessage(message),
     VERIFICATION_CODE_WATCHER_CHAT_ID
       ? sendTelegramMessage(
-          watcherMessage,
+          message,
           [],
           undefined,
           VERIFICATION_CODE_WATCHER_CHAT_ID,

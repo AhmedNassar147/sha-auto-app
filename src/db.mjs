@@ -680,6 +680,25 @@ const getCasesForReport = ({
     .all();
 };
 
+const searchPatientsStatement = db.prepare(`
+  SELECT * FROM patients
+  WHERE referralId LIKE @query
+     OR navigationId LIKE @query
+     OR patientNationalId LIKE @query
+  ORDER BY id DESC
+  LIMIT 10
+`);
+
+// Backs the Telegram /search command - a single free-text query matched
+// (partial, case-insensitive per SQLite's default LIKE behavior for ASCII)
+// against any of the three identifiers an operator might actually have on
+// hand for a case: referralId, navigationId, or patientNationalId. Capped
+// at 10 rows since this is meant for "find the one case I'm looking for",
+// not a bulk export - getPatientsFiltered already covers that for the /db
+// admin page.
+const searchPatients = (query) =>
+  searchPatientsStatement.all({ query: `%${query}%` });
+
 // casesFilesDb is keyed on the `referralId` column alone, but a case can
 // have two cached letters (accept and reject) - encoding the action into
 // that same column as "<action>-<referralId>" gives each its own row
@@ -764,6 +783,7 @@ export {
   clearAllClaimedStatuses,
   getPatientsFiltered,
   getCasesForReport,
+  searchPatients,
   getOldestPatient,
   upsertCaseFile,
   getCaseFile,

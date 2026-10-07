@@ -15,6 +15,7 @@ import {
   getPatient,
   updatePatients,
   getCasesForReport,
+  searchPatients,
 } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
@@ -60,6 +61,12 @@ const COMMANDS = {
     description:
       "List today/yesterday's cases. Examples: /cases (both days) OR /cases t (today only) OR /cases y (yesterday only) OR /cases a (approved only) OR /cases t a",
     command: "cases",
+  },
+  search: {
+    value: /\/search (.+)/,
+    description:
+      "Search a case by referralId, navigationId, or national ID. Example: /search 5AW0BELHL51HPFI",
+    command: "search",
   },
   confirmArrival: {
     value: /\/arrived (.+)/,
@@ -126,6 +133,29 @@ const COMMANDS = {
     description: "clear bot commands",
     command: "clear_commands",
   },
+};
+
+// Shared by /cases and /search - both list patients rows and want the same
+// pretty, numbered block per row, so the format only needs to change in
+// one place.
+const formatCaseBlock = (patient, index) => {
+  const statusLabel =
+    WASLA_STATUS_TYPES[Number(patient.status)] || patient.status || "-";
+  const claimedBadge =
+    patient.claimed === "Yes"
+      ? "✅ Yes"
+      : patient.claimed === "No"
+        ? "❌ No"
+        : "⏳ Pending";
+
+  return (
+    `(${index + 1})- \`${patient.navigationId || "-"}\` · ID: \`${patient.referralId}\`\n` +
+    `${patient.patientName || "-"}\n` +
+    `NationalId: \`${patient.patientNationalId || "-"}\`\n` +
+    `ReferralDate: ${patient.referralDate || "-"}\n` +
+    `EndDate: ${patient.referralEndDate || "-"}\n` +
+    `${statusLabel} — Claimed: ${claimedBadge}`
+  );
 };
 
 const buildButtons = (referralId) => ({
@@ -315,6 +345,34 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       parse_mode: parse_mode,
       ...(options || null),
     });
+  };
+
+  // Shared by /cases and /search - packs pre-built per-case blocks under a
+  // common header into as few messages as fit Telegram's 4096-char cap,
+  // rather than always sending one (likely-truncated-by-Telegram) message.
+  const sendChunkedCaseList = async (chatId, header, blocks) => {
+    const MAX_MESSAGE_LENGTH = 3500;
+    const chunks = [];
+    let currentChunk = header;
+
+    for (const block of blocks) {
+      if (
+        currentChunk !== header &&
+        currentChunk.length + block.length + 2 > MAX_MESSAGE_LENGTH
+      ) {
+        chunks.push(currentChunk);
+        currentChunk = "";
+      }
+      currentChunk += `${block}\n\n`;
+    }
+
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
+
+    for (const chunk of chunks) {
+      await sendBotMessage(chatId, chunk);
+    }
   };
 
   const processNextOnlineCheck = async (referralId) => {
@@ -1098,53 +1156,42 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       );
     }
 
-    const caseBlocks = cases.map((patient, index) => {
-      const statusLabel =
-        WASLA_STATUS_TYPES[Number(patient.status)] || patient.status || "-";
-      const claimedBadge =
-        patient.claimed === "Yes"
-          ? "✅ Yes"
-          : patient.claimed === "No"
-            ? "❌ No"
-            : "⏳ Pending";
-
-      return (
-        `(${index + 1})- \`${patient.navigationId || "-"}\` · ID: \`${patient.referralId}\`\n` +
-        `${patient.patientName || "-"}\n` +
-        `ReferralDate: ${patient.referralDate || "-"}\n` +
-        `EndDate: ${patient.referralEndDate || "-"}\n` +
-        `${statusLabel} — Claimed: ${claimedBadge}`
-      );
-    });
-
+    const caseBlocks = cases.map(formatCaseBlock);
     const header = `📋 *${dayLabel} Cases${approvedLabel}* (${cases.length})\n────────────────────────\n\n`;
 
-    // Telegram caps a single message at 4096 chars - this list can easily
-    // exceed that on a busy day, so blocks are packed into as few messages
-    // as fit rather than always sending one (likely-truncated-by-Telegram)
-    // message.
-    const MAX_MESSAGE_LENGTH = 3500;
-    const chunks = [];
-    let currentChunk = header;
+    await sendChunkedCaseList(chatId, header, caseBlocks);
+  });
 
-    for (const block of caseBlocks) {
-      if (
-        currentChunk !== header &&
-        currentChunk.length + block.length + 2 > MAX_MESSAGE_LENGTH
-      ) {
-        chunks.push(currentChunk);
-        currentChunk = "";
-      }
-      currentChunk += `${block}\n\n`;
+  safeOnText(COMMANDS.search.value, async (msg, match) => {
+    const { chatId, unAuthorizedMessage } = getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
     }
 
-    if (currentChunk) {
-      chunks.push(currentChunk);
+    const query = match?.[1]?.trim();
+
+    if (!query) {
+      return await sendBotMessage(
+        chatId,
+        `⛔ Usage:\n/search <referralId OR navigationId OR national ID>`,
+      );
     }
 
-    for (const chunk of chunks) {
-      await sendBotMessage(chatId, chunk);
+    const results = searchPatients(query);
+
+    if (!results.length) {
+      return await sendBotMessage(
+        chatId,
+        `📭 No case found matching \`${query}\`.`,
+      );
     }
+
+    const caseBlocks = results.map(formatCaseBlock);
+    const header = `🔎 *Search results for* \`${query}\` (${results.length})\n────────────────────────\n\n`;
+
+    await sendChunkedCaseList(chatId, header, caseBlocks);
   });
 
   safeOnText(COMMANDS.f_accept.value, async (msg, match) => {

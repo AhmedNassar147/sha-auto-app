@@ -425,6 +425,7 @@ const fillInpatientAdmissionDetailsModal = async ({
  * @param {string} params.referralId
  * @param {string} params.navigationId
  * @param {string} [params.patientName]
+ * @param {string} [params.patientNationalId]
  * @returns {Promise<void>}
  */
 const notifyWatcherOfAcceptance = async ({
@@ -432,6 +433,7 @@ const notifyWatcherOfAcceptance = async ({
   navigationId,
   referralId,
   patientName,
+  patientNationalId,
 }) => {
   const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
 
@@ -442,7 +444,8 @@ const notifyWatcherOfAcceptance = async ({
     `────────────────────────\n` +
     `🔢 *ID:* \`${navigationId}\`\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
-    (patientName ? `👤 *Patient:* ${patientName}\n` : "");
+    (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
+    (patientNationalId ? `🪪 *National ID:* \`${patientNationalId}\`\n` : "");
 
   const withdrawButtonMarkup = {
     inline_keyboard: [
@@ -733,6 +736,7 @@ const handleSubmitReferral = (options) => async (patient) => {
           sendTelegramMessage,
           referralId,
           patientName,
+          patientNationalId,
           navigationId,
         });
       }
@@ -976,6 +980,7 @@ const handleSubmitReferral = (options) => async (patient) => {
         sendTelegramMessage,
         referralId,
         patientName,
+        patientNationalId,
         navigationId,
       });
 
