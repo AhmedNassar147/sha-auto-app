@@ -204,6 +204,8 @@ const reportFailure = async (
  *   diffMs: number,
  *   sleepMs: number,
  *   sleepBeforeAcceptOrRejectMs: number,
+ *   firstAttemptBufferMs: number,
+ *   leftoverBufferForFirstRetryMs: number,
  *   realFireDelayFromBoundaryMs: number,
  *   actionTimeMs: number,
  *   attempts: {
@@ -228,6 +230,8 @@ const buildDirectApiTelegramMessage = ({
   diffMs,
   sleepMs,
   sleepBeforeAcceptOrRejectMs,
+  firstAttemptBufferMs,
+  leftoverBufferForFirstRetryMs,
   realFireDelayFromBoundaryMs,
   actionTimeMs,
   attempts,
@@ -282,6 +286,7 @@ const buildDirectApiTelegramMessage = ({
     `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
     `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
+    `First-attempt buffer: ${firstAttemptBufferMs}ms (leftover for first retry: ${leftoverBufferForFirstRetryMs}ms)\n` +
     `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
     `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
@@ -297,7 +302,9 @@ const buildDirectApiTelegramMessage = ({
       attempts
         .map(
           (a, i) =>
-            `  #${i + 1} started ${a.startedAfterEndMs}ms after window (${formatTimeWithMs(a.startedAtMs)}), took ${a.durationMs}ms: ${a.outcome}`,
+            `  #${i + 1} started ${a.startedAfterEndMs}ms after window (${formatTimeWithMs(a.startedAtMs)}), took ${a.durationMs}ms` +
+            (a.clockDiffMs != null ? `, clockDiff=${a.clockDiffMs}ms` : "") +
+            `: ${a.outcome}`,
         )
         .join("\n") +
       "\n"
@@ -603,7 +610,17 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const diffMs = referralEndTimestamp - Date.now();
 
-    const sleepMS = diffMs + (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS || 0);
+    // The first attempt only waits this much past the boundary (not the
+    // full configured buffer) - whatever's left of the configured buffer
+    // is instead applied to the gap before the first retry (see
+    // leftoverBufferForFirstRetryMs below), so a slow-to-arrive first
+    // attempt doesn't also have to wait out the rest of the buffer before
+    // retrying.
+    const firstAttemptBufferMs = 120;
+    const leftoverBufferForFirstRetryMs =
+      SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs;
+
+    const sleepMS = diffMs + (firstAttemptBufferMs || 0);
 
     if (sleepMS > 0) {
       await sleep(sleepMS);
@@ -630,6 +647,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     // multiple overlapping accept-json requests for the same case) that
     // sequential firing avoids entirely, since only one is ever in flight.
     let attemptCount = 0;
+    let hasConsumedLeftoverBuffer = false;
 
     while (attemptCount < MAX_ACTION_RETRIES) {
       attemptCount++;
@@ -656,6 +674,12 @@ const handleSubmitReferral = (options) => async (patient) => {
         startedAtMs: attemptStart,
         startedAfterEndMs: attemptStart - referralEndTimestamp,
         durationMs: Date.now() - attemptStart,
+        // Same local-vs-server clock diff submitWaslaAction.mjs now
+        // captures on every accept-json response's own Date header - kept
+        // per-attempt (not just on the final one) so it can be compared
+        // across every attempt in a run, not only whichever happens to be
+        // last.
+        clockDiffMs: apiResult.responseHeaders?.diffMs ?? null,
         outcome: apiResult.success
           ? "success"
           : isRetriableFailure(apiResult.error)
@@ -668,7 +692,15 @@ const handleSubmitReferral = (options) => async (patient) => {
       }
 
       if (attemptCount < MAX_ACTION_RETRIES) {
-        await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
+        const amountOfSleep = hasConsumedLeftoverBuffer
+          ? SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS
+          : leftoverBufferForFirstRetryMs;
+
+        hasConsumedLeftoverBuffer = true;
+
+        if (amountOfSleep > 0) {
+          await sleep(amountOfSleep);
+        }
       }
     }
 
@@ -695,6 +727,8 @@ const handleSubmitReferral = (options) => async (patient) => {
           diffMs,
           sleepMs: sleepMS,
           sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
+          firstAttemptBufferMs,
+          leftoverBufferForFirstRetryMs,
           realFireDelayFromBoundaryMs,
           actionTimeMs,
           attempts,

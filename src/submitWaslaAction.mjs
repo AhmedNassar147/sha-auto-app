@@ -259,6 +259,21 @@ const submitWaslaAction = async ({
         // network issue on our end.
         const responseHeaders = Object.fromEntries(res.headers.entries());
 
+        // Same local-vs-server clock diff as
+        // getWaslaPatientReferralDataFromAPI.mjs's responseHeaders.diffMs -
+        // captured here too (no extra request needed, this response
+        // already has its own Date header) so it's available per accept-
+        // json attempt as well, not just the initial case-details fetch.
+        const localNow = Date.now();
+        const serverDateHeader = res.headers.get("Date");
+        const serverNow = serverDateHeader
+          ? new Date(serverDateHeader).getTime()
+          : null;
+
+        if (serverNow != null) {
+          responseHeaders.diffMs = localNow - serverNow;
+        }
+
         if (!res.ok) {
           const bodyText = await res.text().catch(() => "");
           return {
