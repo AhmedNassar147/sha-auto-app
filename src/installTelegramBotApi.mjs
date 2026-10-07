@@ -107,7 +107,7 @@ const COMMANDS = {
   },
   updateCode: {
     value: /\/update_code$/,
-    description: "pull latest code from master and restart the server",
+    description: "pull latest code from main and restart the server",
     command: "update_code",
   },
   getInvoiceFile: {
@@ -1492,7 +1492,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
       // 5. Get commits that WILL change (before pulling)
       const { stdout: logPreviewRaw } = await execAsync(
-        "git log HEAD..origin/master --oneline",
+        "git log HEAD..origin/main --oneline",
         gitOptions,
       );
       const logPreview = logPreviewRaw.trim();
@@ -1509,7 +1509,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       );
 
       await sleep(1000); // wait after second message before pulling
-      await execAsync("git pull --rebase origin master", gitOptions);
+      await execAsync("git pull --rebase origin main", gitOptions);
     } catch (err) {
       createConsoleMessage("error", err, "❌ updatecode failed:");
       await sendBotMessage(
