@@ -1112,7 +1112,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         `(${index + 1})- \`${patient.navigationId || "-"}\` · ID: \`${patient.referralId}\`\n` +
         `${patient.patientName || "-"}\n` +
         `ReferralDate: ${patient.referralDate || "-"}\n` +
-        `ReferralEndDate: ${patient.referralEndDate || "-"}\n` +
+        `EndDate: ${patient.referralEndDate || "-"}\n` +
         `${statusLabel} — Claimed: ${claimedBadge}`
       );
     });
