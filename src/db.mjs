@@ -640,6 +640,46 @@ const getPatientsFiltered = ({
   return stmt.all(params);
 };
 
+// Backs the Telegram /cases report. Filters on this table's own createdAt
+// bookkeeping column (DEFAULT datetime('now'), always populated at insert
+// time) rather than the referralDate column - referralDate is meant to
+// hold the real referral-creation date from the API's own createdAt field,
+// but toDbRow() above only ever copies it from a *previous* row
+// (oldRow?.createdAt), so it's left NULL on a brand new row until some
+// later update happens to populate it - not reliable for a "which day was
+// this case first seen" filter. createdAt is stored in UTC
+// (datetime('now')'s default), so every comparison shifts by Saudi
+// Arabia's fixed +03:00 offset first (no DST there, so a static shift is
+// safe) to match the operator's actual calendar day.
+const getCasesForReport = ({
+  dayFilter = "all",
+  onlyApproved = false,
+} = {}) => {
+  const clauses = [];
+
+  if (dayFilter === "today") {
+    clauses.push(`date(createdAt, '+3 hours') = date('now', '+3 hours')`);
+  } else if (dayFilter === "yesterday") {
+    clauses.push(
+      `date(createdAt, '+3 hours') = date('now', '+3 hours', '-1 day')`,
+    );
+  } else {
+    clauses.push(
+      `date(createdAt, '+3 hours') >= date('now', '+3 hours', '-1 day')`,
+    );
+  }
+
+  if (onlyApproved) {
+    clauses.push(`claimed = 'Yes'`);
+  }
+
+  const whereSQL = `WHERE ${clauses.join(" AND ")}`;
+
+  return db
+    .prepare(`SELECT * FROM patients ${whereSQL} ORDER BY id DESC`)
+    .all();
+};
+
 // casesFilesDb is keyed on the `referralId` column alone, but a case can
 // have two cached letters (accept and reject) - encoding the action into
 // that same column as "<action>-<referralId>" gives each its own row
@@ -723,6 +763,7 @@ export {
   clearClaimedStatus,
   clearAllClaimedStatuses,
   getPatientsFiltered,
+  getCasesForReport,
   getOldestPatient,
   upsertCaseFile,
   getCaseFile,

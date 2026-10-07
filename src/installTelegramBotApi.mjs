@@ -14,6 +14,7 @@ import {
   buildCaseFileKey,
   getPatient,
   updatePatients,
+  getCasesForReport,
 } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
@@ -25,7 +26,7 @@ import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import notifyUserWithNewCase from "./notifyUserWithNewCase.mjs";
 // import createAndSendInvoiceReport from "./createAndSendInvoiceReport.mjs";
 import formatPatientToTelegramOrWA from "./formatPatientToTelegramOrWA.mjs";
-import { USER_ACTION_TYPES } from "./constants.mjs";
+import { USER_ACTION_TYPES, WASLA_STATUS_TYPES } from "./constants.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
@@ -50,14 +51,39 @@ const COMMANDS = {
   },
   wait: {
     value: /\/wait(?:\s+(\d+))?$/,
-    description: "Get or set wait time. Examples: /wait OR /wait 2050",
+    description:
+      "Get or set the pre-fire buffer (SLEEP_BEFORE_ACCEPT_OR_REJECT_MS). Examples: /wait OR /wait 400",
     command: "wait",
   },
-  auto_wait: {
-    value: /\/auto_wait(?:\s+(\S+))?$/,
+  cases: {
+    value: /\/cases(?:\s+(.+))?$/,
     description:
-      "Get or set auto wait. Examples: /auto_wait OR /auto_wait 1 OR /auto_wait 0",
-    command: "auto_wait",
+      "List today/yesterday's cases. Examples: /cases (both days) OR /cases t (today only) OR /cases y (yesterday only) OR /cases a (approved only) OR /cases t a",
+    command: "cases",
+  },
+  confirmArrival: {
+    value: /\/arrived (.+)/,
+    description:
+      "Confirm arrival. Example: /arrived 13509 OR /arrived 13509 1210 OR /arrived 5AW0BELHL51HPFI 1210 note",
+    command: "arrived",
+  },
+  withdrawReferral: {
+    value: /\/withdraw (.+)/,
+    description:
+      "Withdraw acceptance. Example: /withdraw 13509 OR /withdraw 5AW0BELHL51HPFI reason",
+    command: "withdraw",
+  },
+  getReferralAttachment: {
+    value: /\/report (.+)/,
+    description:
+      "Get the referral Report. Example: /report 13509 OR /report 5AW0BELHL51HPFI",
+    command: "report",
+  },
+  getReferralLetter: {
+    value: /\/letter (.+)/,
+    description:
+      "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI reason",
+    command: "letter",
   },
   f_accept: {
     value: /\/f_accept$/,
@@ -83,30 +109,6 @@ const COMMANDS = {
     value: /\/update_code$/,
     description: "pull latest code from master and restart the server",
     command: "update_code",
-  },
-  getReferralLetter: {
-    value: /\/letter (.+)/,
-    description:
-      "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI reason",
-    command: "letter",
-  },
-  confirmArrival: {
-    value: /\/arrived (.+)/,
-    description:
-      "Confirm arrival. Example: /arrived 13509 OR /arrived 13509 1210 OR /arrived 5AW0BELHL51HPFI 1210 note",
-    command: "arrived",
-  },
-  withdrawReferral: {
-    value: /\/withdraw (.+)/,
-    description:
-      "Withdraw acceptance. Example: /withdraw 13509 OR /withdraw 5AW0BELHL51HPFI reason",
-    command: "withdraw",
-  },
-  getReferralAttachment: {
-    value: /\/report (.+)/,
-    description:
-      "Get the referral Report. Example: /attach 13509 OR /attach 5AW0BELHL51HPFI",
-    command: "report",
   },
   getInvoiceFile: {
     value: /\/invoice(?:\s+(.*))?$/,
@@ -1000,40 +1002,40 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
     const raw = match?.[1];
 
-    const currentWait = process.env.WAIT_FOR_ACCEPT_MS;
+    const currentWait = process.env.SLEEP_BEFORE_ACCEPT_OR_REJECT_MS;
 
     // GET CURRENT
     if (!raw) {
       return await sendBotMessage(
         chatId,
-        `✅ Current wait time is \`${currentWait}\`ms.`,
+        `✅ Current pre-fire buffer is \`${currentWait}\`ms.`,
       );
     }
 
     // SET NEW
     const value = parseInt(raw, 10);
 
-    const minValue = 1800;
+    const minValue = 0;
 
     if (!Number.isFinite(value) || value < minValue) {
       return await sendBotMessage(
         chatId,
-        `⛔ Invalid value \`${raw}\`.\nIt should be a number greater than or equal to ${minValue}.\nUsage:\n/wait\n/wait 2050`,
+        `⛔ Invalid value \`${raw}\`.\nIt should be a number greater than or equal to ${minValue}.\nUsage:\n/wait\n/wait 400`,
       );
     }
 
     if (currentWait === String(value)) {
       return await sendBotMessage(
         chatId,
-        `⛔ waitTime is already \`${value}\`ms.`,
+        `⛔ Pre-fire buffer is already \`${value}\`ms.`,
       );
     }
 
-    updateEnvFile({ WAIT_FOR_ACCEPT_MS: value });
+    updateEnvFile({ SLEEP_BEFORE_ACCEPT_OR_REJECT_MS: value });
 
     await sendBotMessage(
       chatId,
-      `✅ waitTime updated from \`${currentWait}\`ms to \`${value}\`ms.`,
+      `✅ Pre-fire buffer updated from \`${currentWait}\`ms to \`${value}\`ms.`,
     );
 
     const activeChatId = getActiveChatID();
@@ -1041,62 +1043,101 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     if (activeChatId !== chatId) {
       await sendBotMessage(
         activeChatId,
-        `🔔 \`${fromName}\` changed waitTime from \`${currentWait}\`ms to \`${value}\`ms.`,
+        `🔔 \`${fromName}\` changed the pre-fire buffer from \`${currentWait}\`ms to \`${value}\`ms.`,
       );
     }
   });
 
-  safeOnText(COMMANDS.auto_wait.value, async (msg, match) => {
-    const { unAuthorizedMessage, chatId, fromName } =
-      getIfNotAuthorizedMessage(msg);
+  safeOnText(COMMANDS.cases.value, async (msg, match) => {
+    const { chatId, unAuthorizedMessage } = getIfNotAuthorizedMessage(msg);
 
     if (unAuthorizedMessage) {
       await sendBotMessage(chatId, unAuthorizedMessage);
       return;
     }
 
-    const value = match?.[1];
+    const tokens = (match?.[1] || "")
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
 
-    if (value && !["1", "0"].includes(value)) {
+    const validTokens = ["t", "y", "a"];
+    const invalidTokens = tokens.filter(
+      (token) => !validTokens.includes(token),
+    );
+
+    if (invalidTokens.length) {
       return await sendBotMessage(
         chatId,
-        `⛔ Invalid value \`${value}\`.\nUsage:\n/auto_wait\n/auto_wait 1\n/auto_wait 0`,
+        `⛔ Unknown flag(s): \`${invalidTokens.join(", ")}\`.\nUsage:\n/cases\n/cases t\n/cases y\n/cases a\n/cases t a`,
       );
     }
 
-    const currentAutoWaitState = process.env.ENABLE_AUTO_WAITING;
+    const dayFilter = tokens.includes("y")
+      ? "yesterday"
+      : tokens.includes("t")
+        ? "today"
+        : "all";
+    const onlyApproved = tokens.includes("a");
 
-    const isAutoWaitingActive = currentAutoWaitState === "1";
+    const cases = getCasesForReport({ dayFilter, onlyApproved });
 
-    if (!value) {
+    const dayLabel =
+      dayFilter === "today"
+        ? "Today's"
+        : dayFilter === "yesterday"
+          ? "Yesterday's"
+          : "Today + Yesterday's";
+    const approvedLabel = onlyApproved ? " (approved only)" : "";
+
+    if (!cases.length) {
       return await sendBotMessage(
         chatId,
-        `✅ Auto waiting is \`${isAutoWaitingActive ? "enabled" : "disabled"}\`.`,
+        `📭 No cases found for ${dayLabel}${approvedLabel}.`,
       );
     }
 
-    const isActive = value === "1";
-    const isSame = currentAutoWaitState === value;
-    const status = isActive ? "enabled" : "disabled";
+    const caseBlocks = cases.map((patient, index) => {
+      const statusLabel =
+        WASLA_STATUS_TYPES[Number(patient.status)] || patient.status || "-";
+      const claimedLabel = patient.claimed || "Pending";
 
-    if (isSame) {
-      return await sendBotMessage(
-        chatId,
-        `⛔ Auto waiting is already \`${status}\`.`,
+      return (
+        `${index + 1}- Referral (${patient.navigationId || "-"}) · ID: \`${patient.referralId}\`\n` +
+        `${patient.patientName || "-"}\n` +
+        `${patient.referralDate || "-"} ~ ${patient.referralEndDate || "-"}\n` +
+        `${statusLabel} — Claimed: ${claimedLabel}`
       );
+    });
+
+    const header = `📋 *${dayLabel} Cases${approvedLabel}* (${cases.length})\n────────────────────────\n\n`;
+
+    // Telegram caps a single message at 4096 chars - this list can easily
+    // exceed that on a busy day, so blocks are packed into as few messages
+    // as fit rather than always sending one (likely-truncated-by-Telegram)
+    // message.
+    const MAX_MESSAGE_LENGTH = 3500;
+    const chunks = [];
+    let currentChunk = header;
+
+    for (const block of caseBlocks) {
+      if (
+        currentChunk !== header &&
+        currentChunk.length + block.length + 2 > MAX_MESSAGE_LENGTH
+      ) {
+        chunks.push(currentChunk);
+        currentChunk = "";
+      }
+      currentChunk += `${block}\n\n`;
     }
 
-    updateEnvFile({ ENABLE_AUTO_WAITING: value });
+    if (currentChunk) {
+      chunks.push(currentChunk);
+    }
 
-    await sendBotMessage(chatId, `✅ Auto waiting updated to \`${status}\`.`);
-
-    const activeChatId = getActiveChatID();
-
-    if (activeChatId !== chatId) {
-      await sendBotMessage(
-        activeChatId,
-        `🔔 \`${fromName}\` changed \`autoWait\` to \`${status}\`.`,
-      );
+    for (const chunk of chunks) {
+      await sendBotMessage(chatId, chunk);
     }
   });
 
