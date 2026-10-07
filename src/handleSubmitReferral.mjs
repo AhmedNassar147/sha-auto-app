@@ -100,13 +100,6 @@ const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 // المطلوب". Always this one reason, per instruction.
 const REJECTION_REASON_ID = 18;
 
-// A count cap on sequential attempts (one at a time, see the retry loop
-// below) - paired with SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS (the gap
-// between attempts), (count-1)*gap is roughly the total margin the retry
-// loop can cover before giving up and falling back to the UI. Confirmed
-// live: required margin has ranged from near-0 up to ~900ms.
-const MAX_ACTION_RETRIES = 12;
-
 // Both confirmed live as transient, timing-related failures that a later
 // retry for the exact same case went on to succeed past, not permanent
 // rejections - "review window has elapsed" (the window itself not open
@@ -204,8 +197,6 @@ const reportFailure = async (
  *   diffMs: number,
  *   sleepMs: number,
  *   sleepBeforeAcceptOrRejectMs: number,
- *   firstAttemptBufferMs: number,
- *   leftoverBufferForFirstRetryMs: number,
  *   realFireDelayFromBoundaryMs: number,
  *   actionTimeMs: number,
  *   attempts: {
@@ -230,8 +221,6 @@ const buildDirectApiTelegramMessage = ({
   diffMs,
   sleepMs,
   sleepBeforeAcceptOrRejectMs,
-  firstAttemptBufferMs,
-  leftoverBufferForFirstRetryMs,
   realFireDelayFromBoundaryMs,
   actionTimeMs,
   attempts,
@@ -286,7 +275,6 @@ const buildDirectApiTelegramMessage = ({
     `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
     `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
-    `First-attempt buffer: ${firstAttemptBufferMs}ms (leftover for first retry: ${leftoverBufferForFirstRetryMs}ms)\n` +
     `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
     `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
@@ -533,6 +521,8 @@ const handleSubmitReferral = (options) => async (patient) => {
     40,
   );
 
+  const MAX_ACTION_RETRIES = getEnvVariableAsNumber("MAX_ACTION_RETRIES", 20);
+
   const isAcceptanceAction = actionType === ACCEPT;
 
   const url = `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`;
@@ -610,17 +600,17 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const diffMs = referralEndTimestamp - Date.now();
 
-    // The first attempt only waits this much past the boundary (not the
-    // full configured buffer) - whatever's left of the configured buffer
-    // is instead applied to the gap before the first retry (see
-    // leftoverBufferForFirstRetryMs below), so a slow-to-arrive first
-    // attempt doesn't also have to wait out the rest of the buffer before
-    // retrying.
-    const firstAttemptBufferMs = 120;
-    const leftoverBufferForFirstRetryMs =
-      SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs;
-
-    const sleepMS = diffMs + (firstAttemptBufferMs || 0);
+    // Splitting this buffer into a small first-attempt wait plus a bigger
+    // "leftover" applied only to the first retry was tried and reverted:
+    // live cases showed the leftover-protected retry still landing too
+    // early just as often as not (e.g. referralId WC3CU6OZQOIOMKI - the
+    // leftover retry failed too early, and the very next attempt, fired
+    // after only the plain SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS gap,
+    // succeeded instead). Since each attempt already costs ~250-300ms of
+    // its own (the real cost of "testing" the boundary) and a failed one
+    // is cheap, there's no benefit to inserting extra dead time anywhere -
+    // every attempt, first or retry, uses the same small gap.
+    const sleepMS = diffMs + SLEEP_BEFORE_ACCEPT_OR_REJECT_MS;
 
     if (sleepMS > 0) {
       await sleep(sleepMS);
@@ -647,7 +637,6 @@ const handleSubmitReferral = (options) => async (patient) => {
     // multiple overlapping accept-json requests for the same case) that
     // sequential firing avoids entirely, since only one is ever in flight.
     let attemptCount = 0;
-    let hasConsumedLeftoverBuffer = false;
 
     while (attemptCount < MAX_ACTION_RETRIES) {
       attemptCount++;
@@ -691,16 +680,11 @@ const handleSubmitReferral = (options) => async (patient) => {
         break;
       }
 
-      if (attemptCount < MAX_ACTION_RETRIES) {
-        const amountOfSleep = hasConsumedLeftoverBuffer
-          ? SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS
-          : leftoverBufferForFirstRetryMs;
-
-        hasConsumedLeftoverBuffer = true;
-
-        if (amountOfSleep > 0) {
-          await sleep(amountOfSleep);
-        }
+      if (
+        attemptCount < MAX_ACTION_RETRIES &&
+        SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS > 0
+      ) {
+        await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
       }
     }
 
@@ -727,8 +711,6 @@ const handleSubmitReferral = (options) => async (patient) => {
           diffMs,
           sleepMs: sleepMS,
           sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
-          firstAttemptBufferMs,
-          leftoverBufferForFirstRetryMs,
           realFireDelayFromBoundaryMs,
           actionTimeMs,
           attempts,
