@@ -25,14 +25,21 @@ import speakText from "./speakText.mjs";
 const REDIRECT_SCREEN_TIMEOUT_MS = 20_000;
 const SSO_REDIRECT_TIMEOUT_MS = 40_000;
 
-// html/page-after-login-with-nafath-button.html: the interstitial has its
-// own countdown ("... خلال 1 ثواني") that auto-redirects via JS, plus this
-// manual link as a fallback for when that doesn't fire. It has no href
-// (a React onClick, not a real anchor) - clicking it immediately rather
-// than waiting out the timer saves time in an app where every second of
-// the acceptance window matters, and gives us an active step instead of
-// depending on a timer we don't control.
-const manualRedirectLinkSelector = ".iam-redirct a.btn.btn-primary";
+// The interstitial has its own countdown ("... خلال 1 ثواني") that
+// auto-redirects via JS, plus this manual link/button as a fallback for
+// when that doesn't fire. Clicking it immediately rather than waiting out
+// the timer saves time in an app where every second of the acceptance
+// window matters, and gives us an active step instead of depending on a
+// timer we don't control. Two confirmed-live page shapes, grouped into one
+// selector (querySelector matches whichever is actually on the page):
+//   - legacy (html/page-after-login-with-nafath-button.html): div.iam-redirct
+//     wrapping an <a class="btn btn-primary"> with no href (a React
+//     onClick, not a real anchor).
+//   - redesigned (html/naphas-login-link-auto-click.html): div.iam-redirect
+//     (correctly spelled, unlike the legacy class) wrapping a plain
+//     <button class="iam-redirect__btn">.
+const manualRedirectLinkSelector =
+  ".iam-redirct a.btn.btn-primary, .iam-redirect__btn";
 
 /**
  * Logs a failure, captures a screenshot + page HTML for later
@@ -46,12 +53,19 @@ const manualRedirectLinkSelector = ".iam-redirct a.btn.btn-primary";
  * @param {string} consoleMessage
  * @returns {Promise<void>}
  */
-const reportFailure = async (page, sendTelegramMessage, label, consoleMessage) => {
+const reportFailure = async (
+  page,
+  sendTelegramMessage,
+  label,
+  consoleMessage,
+) => {
   createConsoleMessage("error", consoleMessage, "openNafathLoginPortal");
 
   await Promise.allSettled([
     captureFailureArtifacts(page, label),
-    sendTelegramMessage?.(`⚠️ *openNafathLoginPortal failed:* ${consoleMessage}`),
+    sendTelegramMessage?.(
+      `⚠️ *openNafathLoginPortal failed:* ${consoleMessage}`,
+    ),
     speakText({
       text: "Nafath login portal failed, please check the app",
       useMaleVoice: true,
