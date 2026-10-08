@@ -26,6 +26,7 @@
  *
  */
 import { writeFile } from "fs/promises";
+import { describeClockSample, writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import {
   baseReferraAPiUrl,
@@ -136,6 +137,8 @@ const getWaslaPatientReferralDataFromAPI = async (
       }
 
       try {
+        const requestStartedAtMs = Date.now();
+        const requestStartedMonotonicMs = performance.now();
         const res = await fetch(url, {
           method: "GET",
           credentials: "include",
@@ -143,9 +146,17 @@ const getWaslaPatientReferralDataFromAPI = async (
         });
 
         const finishedDateMS = Date.now();
+        const headersElapsedMs = performance.now() - requestStartedMonotonicMs;
         const serverResponseTimeMS = (finishedDateMS - apiFiresAtMS) / 2;
         const serverDate = res.headers.get("Date");
         const serverNow = serverDate ? new Date(serverDate).getTime() : null;
+        const detailsClockSample = {
+          requestStartedAtMs,
+          headersReceivedAtMs: finishedDateMS,
+          headersElapsedMs,
+          serverDate,
+          httpStatus: res.status,
+        };
         // Captured so the saved raw-response dump below carries every
         // header the response actually had (not just Date) - for later
         // inspection (e.g. anything timing-related) without needing to
@@ -163,6 +174,7 @@ const getWaslaPatientReferralDataFromAPI = async (
         if (!res.ok) {
           return {
             patientDetailsError: `Status ${res.status}`,
+            detailsClockSample,
             detailsAPiFiresAtMS: apiFiresAtMS,
             detailsAPiServerResponseTimeMS: Math.trunc(serverResponseTimeMS),
             serverDate,
@@ -338,7 +350,8 @@ const getWaslaPatientReferralDataFromAPI = async (
           detailsAPiServerResponseTimeMS: Math.trunc(serverResponseTimeMS),
           serverDate,
           serverNow,
-          rawResponse: { ...data, responseHeaders },
+          detailsClockSample,
+          rawResponse: { ...data, responseHeaders, detailsClockSample },
         };
       } catch (err) {
         return {
@@ -355,6 +368,15 @@ const getWaslaPatientReferralDataFromAPI = async (
       skippAttachments,
     },
   );
+
+  result.detailsClockSample = describeClockSample(result.detailsClockSample);
+  await writeReferralTimingEvent({
+    type: "case-read",
+    referralId,
+    navigationId,
+    clockSample: result.detailsClockSample,
+    detailsAvailable: !result.patientDetailsError,
+  });
 
   if (rawResponse) {
     const rawResponseFile = `${rawReferralResponsesFolderDirectory}/${referralId}-${navigationId}.json`;

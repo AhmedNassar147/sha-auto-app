@@ -14,6 +14,7 @@
  *
  */
 import { writeFile } from "fs/promises";
+import { classifySubmissionResult, describeClockSample, writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
@@ -197,6 +198,8 @@ const reportFailure = async (
  *   diffMs: number,
  *   sleepMs: number,
  *   sleepBeforeAcceptOrRejectMs: number,
+ *   firstAttemptBufferMs: number,
+ *   leftoverBufferForFirstRetryMs: number,
  *   realFireDelayFromBoundaryMs: number,
  *   actionTimeMs: number,
  *   attempts: {
@@ -221,6 +224,8 @@ const buildDirectApiTelegramMessage = ({
   diffMs,
   sleepMs,
   sleepBeforeAcceptOrRejectMs,
+  firstAttemptBufferMs,
+  leftoverBufferForFirstRetryMs,
   realFireDelayFromBoundaryMs,
   actionTimeMs,
   attempts,
@@ -252,7 +257,7 @@ const buildDirectApiTelegramMessage = ({
   const retryCount = attemptsMade - 1;
   const retryLine =
     (retryCount > 0
-      ? `Retries needed: ${retryCount} (window hadn't quite opened yet)\n`
+      ? `Retries needed: ${retryCount} (see per-attempt results for reasons)\n`
       : `Retries needed: 0\n`) +
     `Gap between retry attempts configured: ${sleepWhenAcceptOrRejectRetryMs}ms\n`;
 
@@ -275,6 +280,7 @@ const buildDirectApiTelegramMessage = ({
     `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
     `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
+    `First-attempt buffer: ${firstAttemptBufferMs}ms (leftover for first retry: ${leftoverBufferForFirstRetryMs}ms)\n` +
     `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
     `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
@@ -493,6 +499,9 @@ const handleSubmitReferral = (options) => async (patient) => {
   const {
     navigationId,
     referralId,
+    broadcastedAt,
+    facilityReviewWindowMinutes,
+    detailsClockSample,
     referralEndTimestamp,
     randomFileName,
     patientName,
@@ -601,19 +610,47 @@ const handleSubmitReferral = (options) => async (patient) => {
         });
     const uploadDurationMs = Date.now() - uploadStartTime;
 
-    const diffMs = referralEndTimestamp - Date.now();
+    // Dropping this split (firing everything off one flat
+    // SLEEP_BEFORE_ACCEPT_OR_REJECT_MS buffer, no first-attempt/leftover
+    // distinction) was tried and reverted back - live testing afterward
+    // showed cases getting a 200 back but NOT actually being claimed,
+    // confirming the earlier "always on last/catch-up attempt" pattern
+    // this split exists for is real: the first attempt firing fast (before
+    // the full buffer has elapsed) still matters for actually winning the
+    // race, even though a flat buffer alone keeps producing a successful
+    // API response. So the first attempt only waits this much past the
+    // boundary (not the full configured buffer) - whatever's left of the
+    // configured buffer is instead applied to the gap before the first
+    // retry (see leftoverBufferForFirstRetryMs below), so a slow-to-arrive
+    // first attempt doesn't also have to wait out the rest of the buffer
+    // before retrying.
+    const firstAttemptBufferMs = 120;
+    const leftoverBufferForFirstRetryMs =
+      SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs;
 
-    // Splitting this buffer into a small first-attempt wait plus a bigger
-    // "leftover" applied only to the first retry was tried and reverted:
-    // live cases showed the leftover-protected retry still landing too
-    // early just as often as not (e.g. referralId WC3CU6OZQOIOMKI - the
-    // leftover retry failed too early, and the very next attempt, fired
-    // after only the plain SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS gap,
-    // succeeded instead). Since each attempt already costs ~250-300ms of
-    // its own (the real cost of "testing" the boundary) and a failed one
-    // is cheap, there's no benefit to inserting extra dead time anywhere -
-    // every attempt, first or retry, uses the same small gap.
-    const sleepMS = diffMs + SLEEP_BEFORE_ACCEPT_OR_REJECT_MS;
+    const submissionContext = {
+      referralId,
+      navigationId,
+      actionType,
+      broadcastedAtRaw: broadcastedAt ?? null,
+      broadcastedAtParsedMs: broadcastedAt ? new Date(broadcastedAt).getTime() : null,
+      parserTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      facilityReviewWindowMinutes: facilityReviewWindowMinutes ?? null,
+      referralEndTimestamp,
+      deadlineSource: "broadcastedAt parsed in runtime timezone + review minutes",
+      detailsClockSample: detailsClockSample ?? null,
+      preUpload: {
+        success: uploadResult.success,
+        uploadIgnored: Boolean(uploadResult.uploadIgnored),
+        durationMs: uploadDurationMs,
+      },
+      firstAttemptBufferMs,
+      leftoverBufferForFirstRetryMs,
+      configuredRetryGapMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
+    };
+
+    const diffMs = referralEndTimestamp - Date.now();
+    const sleepMS = diffMs + (firstAttemptBufferMs || 0);
 
     if (sleepMS > 0) {
       await sleep(sleepMS);
@@ -640,6 +677,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     // multiple overlapping accept-json requests for the same case) that
     // sequential firing avoids entirely, since only one is ever in flight.
     let attemptCount = 0;
+    let hasConsumedLeftoverBuffer = false;
 
     while (attemptCount < MAX_ACTION_RETRIES) {
       attemptCount++;
@@ -662,10 +700,14 @@ const handleSubmitReferral = (options) => async (patient) => {
             }),
       });
 
+      const attemptFinishedAtMs = Date.now();
       attempts.push({
         startedAtMs: attemptStart,
         startedAfterEndMs: attemptStart - referralEndTimestamp,
-        durationMs: Date.now() - attemptStart,
+        finishedAtMs: attemptFinishedAtMs,
+        durationMs: attemptFinishedAtMs - attemptStart,
+        resultCategory: classifySubmissionResult(apiResult),
+        requestClockSample: describeClockSample(apiResult.requestClockSample),
         // Same local-vs-server clock diff submitWaslaAction.mjs now
         // captures on every accept-json response's own Date header - kept
         // per-attempt (not just on the final one) so it can be compared
@@ -683,17 +725,35 @@ const handleSubmitReferral = (options) => async (patient) => {
         break;
       }
 
-      if (
-        attemptCount < MAX_ACTION_RETRIES &&
-        SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS > 0
-      ) {
-        await sleep(SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS);
+      if (attemptCount < MAX_ACTION_RETRIES) {
+        const amountOfSleep = hasConsumedLeftoverBuffer
+          ? SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS
+          : leftoverBufferForFirstRetryMs;
+
+        // Advances regardless of whether this particular amount turned out
+        // to be positive - otherwise a leftover of exactly 0 would never
+        // flip this, and every later gap would keep reusing the leftover
+        // instead of ever switching to the normal retry gap.
+        hasConsumedLeftoverBuffer = true;
+
+        if (amountOfSleep > 0) {
+          await sleep(amountOfSleep);
+        }
       }
     }
 
     const actionTimeMs = Date.now() - actionTimeStart;
 
     const attemptsMade = attemptCount;
+
+    // Disk writes happen after all attempts, never between timed retries.
+    await writeReferralTimingEvent({
+      type: "submission",
+      ...submissionContext,
+      attempts: attempts.map(({ outcome, ...diagnostic }) => diagnostic),
+      apiSuccess: Boolean(apiResult?.success),
+      claimed: null,
+    });
 
     if (apiResult) {
       showPageSnackbar(page, {
@@ -718,6 +778,8 @@ const handleSubmitReferral = (options) => async (patient) => {
           actionTimeMs,
           attempts,
           attemptsMade,
+          firstAttemptBufferMs,
+          leftoverBufferForFirstRetryMs,
           sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
           admissionDetails,
         }),

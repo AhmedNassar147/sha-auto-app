@@ -241,6 +241,8 @@ const submitWaslaAction = async ({
           : payload;
 
       try {
+        const requestStartedAtMs = Date.now();
+        const requestStartedMonotonicMs = performance.now();
         const res = await fetch(url, {
           method: "POST",
           credentials: "include",
@@ -257,7 +259,16 @@ const submitWaslaAction = async ({
         // (12-21s, confirmed live) duration is something Cloudflare is
         // deliberately imposing on this request rather than a connection/
         // network issue on our end.
+        const headersReceivedAtMs = Date.now();
+        const headersElapsedMs = performance.now() - requestStartedMonotonicMs;
         const responseHeaders = Object.fromEntries(res.headers.entries());
+        const requestClockSample = {
+          requestStartedAtMs,
+          headersReceivedAtMs,
+          headersElapsedMs,
+          serverDate: res.headers.get("Date"),
+          httpStatus: res.status,
+        };
 
         // Same local-vs-server clock diff as
         // getWaslaPatientReferralDataFromAPI.mjs's responseHeaders.diffMs -
@@ -285,6 +296,7 @@ const submitWaslaAction = async ({
             uploadTiming,
             timing: getResourceTiming(url),
             responseHeaders,
+            requestClockSample,
             error: `Status ${res.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
         }
@@ -304,6 +316,7 @@ const submitWaslaAction = async ({
           uploadTiming,
           timing: getResourceTiming(url),
           responseHeaders,
+          requestClockSample,
           data,
         };
       } catch (err) {

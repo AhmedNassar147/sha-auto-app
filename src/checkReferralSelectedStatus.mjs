@@ -8,6 +8,7 @@ import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import sleep from "./sleep.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
 import { updatePatients } from "./db.mjs";
+import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import {
   CLAIMED_STATUS_CODES,
   WASLA_STATUS_TYPES,
@@ -169,6 +170,14 @@ const updateAndNotifyUser = async ({
   const updates = { referralId, status, claimed, tabName };
 
   updatePatients(updates);
+  await writeReferralTimingEvent({
+    type: "claim-outcome",
+    referralId,
+    status: status ?? null,
+    statusName: statusID ?? null,
+    claimed,
+    source: "my-orders-tab-2",
+  });
 
   // Lets the watcher chat confirm patient arrival, withdraw our
   // acceptance, or resend the case's cached report/merged attachment
