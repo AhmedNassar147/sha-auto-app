@@ -14,7 +14,11 @@
  *
  */
 import { writeFile } from "fs/promises";
-import { classifySubmissionResult, describeClockSample, writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
+import {
+  classifySubmissionResult,
+  describeClockSample,
+  writeReferralTimingEvent,
+} from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
@@ -592,8 +596,8 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    if (currentLeftTime > 380) {
-      await sleep(currentLeftTime - 380);
+    if (currentLeftTime > 1000) {
+      await sleep(currentLeftTime - 1000);
     }
 
     // Inpatient accept never attaches a file (confirmed live - see
@@ -633,11 +637,14 @@ const handleSubmitReferral = (options) => async (patient) => {
       navigationId,
       actionType,
       broadcastedAtRaw: broadcastedAt ?? null,
-      broadcastedAtParsedMs: broadcastedAt ? new Date(broadcastedAt).getTime() : null,
+      broadcastedAtParsedMs: broadcastedAt
+        ? new Date(broadcastedAt).getTime()
+        : null,
       parserTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       facilityReviewWindowMinutes: facilityReviewWindowMinutes ?? null,
       referralEndTimestamp,
-      deadlineSource: "broadcastedAt parsed in runtime timezone + review minutes",
+      deadlineSource:
+        "broadcastedAt parsed in runtime timezone + review minutes",
       detailsClockSample: detailsClockSample ?? null,
       preUpload: {
         success: uploadResult.success,
