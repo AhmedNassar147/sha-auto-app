@@ -84,9 +84,10 @@ const casesLettersDb = new Database(casesLettersFilePath);
       note TEXT,
       medicalData TEXT,
       requestedBedType TEXT,
-      attachmentFileBase64 TEXT,          -- the sent report/merged attachment file's own bytes, base64 - unlike a presigned url/tgFileId this never expires or depends on Telegram, so /attach and the Report button always work
+      attachmentFileBase64 TEXT,          -- the sent report/merged attachment file's own bytes, base64 - unlike attachmentTgFileId, this doesn't depend on the case having gone out over Telegram, so /attach and the Report button still work for a case first delivered via ntfy/WhatsApp
       attachmentFileName TEXT,
       attachmentFileMimeType TEXT,
+      attachmentTgFileId TEXT,             -- Telegram's own file_id, minted the moment the report/merged file is actually sent over Telegram (see installTelegramBotApi.mjs's saveAttachmentFileToDb) - resending with this is instant (no re-upload), preferred over attachmentFileBase64 when both are present
       createdAt TEXT DEFAULT (datetime('now')),
       updatedAt TEXT
     )
@@ -120,6 +121,7 @@ const casesLettersDb = new Database(casesLettersFilePath);
     attachmentFileBase64: "TEXT",
     attachmentFileName: "TEXT",
     attachmentFileMimeType: "TEXT",
+    attachmentTgFileId: "TEXT",
     arrived: "TEXT",
     specialtyId: "TEXT",
     subReferralTypeId: "TEXT",
@@ -213,6 +215,7 @@ const toDbRow = (oldRow, patient) => {
     attachmentFileBase64: merged.attachmentFileBase64 ?? null,
     attachmentFileName: merged.attachmentFileName ?? null,
     attachmentFileMimeType: merged.attachmentFileMimeType ?? null,
+    attachmentTgFileId: merged.attachmentTgFileId ?? null,
   };
 };
 
@@ -261,6 +264,7 @@ const insertPatientSQL = `
     attachmentFileBase64,
     attachmentFileName,
     attachmentFileMimeType,
+    attachmentTgFileId,
     updatedAt
   ) VALUES (
     @referralId,
@@ -306,6 +310,7 @@ const insertPatientSQL = `
     @attachmentFileBase64,
     @attachmentFileName,
     @attachmentFileMimeType,
+    @attachmentTgFileId,
     datetime('now')
   )
   ON CONFLICT(referralId) DO UPDATE SET
@@ -351,6 +356,7 @@ const insertPatientSQL = `
     attachmentFileBase64  = COALESCE(excluded.attachmentFileBase64, attachmentFileBase64),
     attachmentFileName    = COALESCE(excluded.attachmentFileName, attachmentFileName),
     attachmentFileMimeType = COALESCE(excluded.attachmentFileMimeType, attachmentFileMimeType),
+    attachmentTgFileId    = COALESCE(excluded.attachmentTgFileId, attachmentTgFileId),
     updatedAt             = datetime('now')
 `;
 
@@ -398,6 +404,7 @@ const updatePatientSQL = `
     attachmentFileBase64 = @attachmentFileBase64,
     attachmentFileName = @attachmentFileName,
     attachmentFileMimeType = @attachmentFileMimeType,
+    attachmentTgFileId = @attachmentTgFileId,
     updatedAt = datetime('now')
   WHERE referralId = @referralId
 `;

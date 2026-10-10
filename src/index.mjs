@@ -45,7 +45,6 @@ import {
   deletePatients,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
-  getPatient,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
@@ -420,43 +419,6 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           .type("text/plain")
           .send(error?.message || "Query failed");
       }
-    });
-
-    // Serves the cached case-report file (attachmentFileBase64, see
-    // db.mjs/buildCaseReportFile.mjs) straight from the DB - the /db page's
-    // "Preview" link opens this in a new tab. "inline" (not "attachment")
-    // so the browser renders it directly (PDF viewer/image) rather than
-    // forcing a download.
-    app.get("/db/attachment/:referralId", (req, res) => {
-      const { referralId } = req.params;
-      const patient = getPatient(referralId);
-
-      if (!patient?.attachmentFileBase64) {
-        return res.status(404).type("text/plain").send("No attachment found.");
-      }
-
-      const rawFilename =
-        patient.attachmentFileName || `${referralId}_attachment`;
-
-      // Real attachment filenames (from Wasla) can contain Arabic/other
-      // non-ASCII characters, which raw HTTP header values can't carry -
-      // Node throws ERR_INVALID_CHAR on them. RFC 6266/5987's two-part
-      // form covers both cases: an ASCII-safe `filename` fallback for
-      // anything that doesn't understand `filename*`, and the real name
-      // percent-encoded in `filename*` for browsers that do (which is all
-      // of them, in practice - they'll use this one for the actual
-      // save-as/tab title).
-      const asciiFallbackFilename =
-        rawFilename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_") ||
-        `${referralId}_attachment`;
-
-      res
-        .type(patient.attachmentFileMimeType || "application/pdf")
-        .set(
-          "Content-Disposition",
-          `inline; filename="${asciiFallbackFilename}"; filename*=UTF-8''${encodeURIComponent(rawFilename)}`,
-        )
-        .send(Buffer.from(patient.attachmentFileBase64, "base64"));
     });
 
     // The /db page's per-row "Remove" button - POST (not GET) since this

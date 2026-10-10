@@ -432,33 +432,24 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
   };
 
   /**
-   * Best-effort caches a case's report/merged attachment as base64 on its
-   * patients row - unlike /letter's tgFileId cache, this never expires and
-   * doesn't depend on Telegram at all (works via /attach or the Report
-   * button regardless of which channel first delivered the case, Telegram,
-   * ntfy, or WhatsApp). A write failure (e.g. the row not existing yet)
-   * shouldn't affect the actual send, so this only logs.
+   * Best-effort caches a case's report/merged attachment's Telegram
+   * file_id on its patients row, minted by the send that just happened -
+   * resending it later (performSendReportAttachment.mjs) is then instant,
+   * no re-upload needed. A write failure (e.g. the row not existing yet)
+   * shouldn't affect the actual send, so this only logs. No-ops entirely
+   * when the send didn't resolve a file_id (e.g. a failed/partial
+   * response) - nothing to cache in that case.
    *
    * @param {object} params
    * @param {string} params.referralId
-   * @param {Buffer} params.buffer
-   * @param {string} params.filename
-   * @param {string} params.mimeType
+   * @param {string} [params.tgFileId]
    * @returns {void}
    */
-  const saveAttachmentFileToDb = ({
-    referralId,
-    buffer,
-    filename,
-    mimeType,
-  }) => {
+  const saveAttachmentFileToDb = ({ referralId, tgFileId }) => {
+    if (!tgFileId) return;
+
     try {
-      updatePatients({
-        referralId,
-        attachmentFileBase64: buffer.toString("base64"),
-        attachmentFileName: filename,
-        attachmentFileMimeType: mimeType,
-      });
+      updatePatients({ referralId, attachmentTgFileId: tgFileId });
     } catch (error) {
       createConsoleMessage(
         "warn",
@@ -543,7 +534,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
       if (photos.length === 0 && docs.length === 1) {
         const [{ buffer, filename, mimeType, caption }] = docs;
-        await bot.sendDocument(
+        const docResponse = await bot.sendDocument(
           TG_CHAT_ID,
           buffer,
           { reply_to_message_id: messageId, caption: caption },
@@ -553,9 +544,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         if (targetReferralIdForButtons) {
           saveAttachmentFileToDb({
             referralId: targetReferralIdForButtons,
-            buffer,
-            filename,
-            mimeType,
+            tgFileId: docResponse?.document?.file_id,
           });
         }
 
@@ -564,7 +553,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
       if (photos.length === 1 && docs.length === 0) {
         const [{ buffer, filename, mimeType, caption }] = photos;
-        await bot.sendPhoto(
+        const photoResponse = await bot.sendPhoto(
           TG_CHAT_ID,
           buffer,
           { reply_to_message_id: messageId, caption: caption },
@@ -574,9 +563,10 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         if (targetReferralIdForButtons) {
           saveAttachmentFileToDb({
             referralId: targetReferralIdForButtons,
-            buffer,
-            filename,
-            mimeType,
+            // Telegram returns every resolution it generated - the last
+            // entry is the largest/original-quality one, the right one to
+            // resend later (same size Telegram would use for a reshare).
+            tgFileId: photoResponse?.photo?.at(-1)?.file_id,
           });
         }
 
@@ -600,7 +590,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         unlinkFilesFinally: true,
       });
 
-      await bot.sendDocument(
+      const mergedDocResponse = await bot.sendDocument(
         TG_CHAT_ID,
         compressedMerged,
         {
@@ -616,9 +606,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       if (targetReferralIdForButtons) {
         saveAttachmentFileToDb({
           referralId: targetReferralIdForButtons,
-          buffer: compressedMerged,
-          filename: finalMergedFileName,
-          mimeType: "application/pdf",
+          tgFileId: mergedDocResponse?.document?.file_id,
         });
       }
 

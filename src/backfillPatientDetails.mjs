@@ -4,12 +4,12 @@
 // note, medicalData) for rows saved before those columns existed, by
 // re-calling GET /api/referrals/{navigationId} - the same endpoint
 // getWaslaPatientReferralDataFromAPI.mjs already uses for newly-collected
-// cases, so this script just re-runs that for old rows.
-// Also backfills attachmentFileBase64/attachmentFileName/
-// attachmentFileMimeType (the single case-report file, see
-// buildCaseReportFile.mjs) for any row missing it - independently of the
-// detail-fields backfill above, since a row can already have one without
-// the other.
+// cases, so this script just re-runs that for old rows. Never downloads/
+// caches the case-report attachment itself (attachmentFileBase64/
+// attachmentFileName/attachmentFileMimeType) - installTelegramBotApi.mjs no
+// longer writes those for new cases either (attachmentTgFileId replaced
+// them for anything sent over Telegram), so there's no reason for this
+// script to keep populating them for old rows.
 // Also backfills `arrived`/withdrawal state for any claimed row that still
 // looks like an active acceptance - also independent of the other two, by
 // checking the case's current status on the "myOrders" tab (same tab/lookup
@@ -49,7 +49,6 @@ import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
-import buildCaseReportFile from "./buildCaseReportFile.mjs";
 import sleep from "./sleep.mjs";
 import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 
@@ -138,7 +137,6 @@ const rowsToProcess = requestedIds.length
         (row) =>
           row.navigationId &&
           (row.nationality == null ||
-            row.attachmentFileBase64 == null ||
             row.specialtyId == null ||
             row.subReferralTypeId == null ||
             (row.claimed === "Yes" &&
@@ -208,7 +206,6 @@ try {
       continue;
     }
 
-    const needsAttachment = row.attachmentFileBase64 == null;
     // Covers both drifts this one lookup can reveal: the case having since
     // been confirmed arrived (only relevant if arrived isn't already set),
     // or having since been withdrawn (only relevant while our own record
@@ -271,7 +268,7 @@ try {
       frame,
       navigationId,
       referralId,
-      !needsAttachment, // skippAttachments - only download the files when this row doesn't have a cached report yet,
+      true, // skippAttachments - this script no longer caches the case report locally
     ).catch((error) => ({
       patientDetailsError: error?.message || String(error),
     }));
@@ -307,35 +304,7 @@ try {
       subReferralTypeName,
       note,
       medicalData,
-      files,
     } = patientData;
-
-    // Built as a separate object (rather than destructured `let`s passed
-    // directly into updatePatients) so a row that didn't need/get an
-    // attachment this pass never sends an explicit `undefined` for these
-    // keys - toDbRow's `oldRow` merge treats an explicitly-present
-    // `undefined` key as "overwrite with null", which would wipe out an
-    // already-cached attachment on a row that's only here for the
-    // nationality backfill.
-    const attachmentUpdate = {};
-
-    if (needsAttachment && files?.length) {
-      const reportFile = await buildCaseReportFile(files, referralId).catch(
-        (error) => {
-          console.warn(
-            `referralId=${referralId} report build failed: ${error?.message || error}`,
-          );
-          return null;
-        },
-      );
-
-      if (reportFile) {
-        attachmentUpdate.attachmentFileBase64 =
-          reportFile.buffer.toString("base64");
-        attachmentUpdate.attachmentFileName = reportFile.filename;
-        attachmentUpdate.attachmentFileMimeType = reportFile.mimeType;
-      }
-    }
 
     updatePatients({
       referralId,
@@ -350,12 +319,11 @@ try {
       subReferralTypeName,
       note,
       medicalData,
-      ...attachmentUpdate,
       ...claimedStatusUpdate,
     });
 
     console.log(
-      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status === WITHDRAWN_STATUS_CODE ? " (withdrawal confirmed)" : ""}.`,
+      `referralId=${referralId} updated${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status === WITHDRAWN_STATUS_CODE ? " (withdrawal confirmed)" : ""}.`,
     );
     updatedCount++;
 

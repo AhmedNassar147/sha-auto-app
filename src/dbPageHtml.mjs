@@ -56,7 +56,7 @@ const COLUMN_LABELS = {
   requestedBedType: "Requested Bed Type",
   note: "Note",
   medicalData: "Medical Data",
-  caseReport: "Case Report",
+  attachmentTgFileId: "Attachment File ID",
   removeRow: "",
 };
 
@@ -64,10 +64,6 @@ const COLUMNS = [
   // Not a real `patients` column - renderCell builds this straight from
   // the row's navigationId (see below), ignoring row.openCase (undefined).
   "openCase",
-  // Not a real `patients` column - renderCell builds this from the row's
-  // attachmentFileBase64 (ignoring row.caseReport, undefined), same as
-  // "openCase" above.
-  "caseReport",
   "status",
   "claimed",
   "arrived",
@@ -106,6 +102,7 @@ const COLUMNS = [
   "transferUrl",
   "createdAt",
   "updatedAt",
+  "attachmentTgFileId",
   // Not a real `patients` column - renderCell builds this from the row's
   // referralId (ignoring row.removeRow, undefined), same as "openCase"
   // above. Kept last so it's always the rightmost column.
@@ -146,13 +143,6 @@ const renderCell = (column, value, row) => {
       `${WASLA_REFERRAL_VIEW_URL}/${row.navigationId}`,
     );
     return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">Open</a>`;
-  }
-  if (column === "caseReport") {
-    if (!row?.attachmentFileBase64 || !row?.referralId) {
-      return '<span class="empty-cell">—</span>';
-    }
-    const safeUrl = `/db/attachment/${encodeURIComponent(row.referralId)}`;
-    return `<a class="btn-link secondary" href="${safeUrl}" target="_blank" rel="noopener">👁 Preview</a>`;
   }
   if (column === "removeRow") {
     if (!row?.referralId) return '<span class="empty-cell">—</span>';

@@ -5,11 +5,16 @@
  * Shared core for both installTelegramBotApi.mjs's `/attach` slash command
  * and the inline "📎 Report" button (sent alongside every watcher-chat
  * status update, see checkReferralSelectedStatus.mjs) - looks up the case's
- * cached report/merged attachment (base64, stored on its patients row by
+ * cached report/merged attachment (stored on its patients row by
  * installTelegramBotApi.mjs's saveAttachmentFileToDb) and resends it.
- * Takes `bot` explicitly since this standalone file can't close over the
- * one installTelegramBotApi.mjs creates (same reason performArrivalConfirmation/
- * performWithdrawal take `browser` explicitly).
+ * Prefers attachmentTgFileId (instant - Telegram just re-serves the file it
+ * already has, no re-upload) when present, falling back to re-uploading the
+ * cached attachmentFileBase64 bytes for a case that doesn't have one yet
+ * (an older row, or one first delivered via ntfy/WhatsApp, which never
+ * mints a file_id in the first place since that only happens on Telegram
+ * send). Takes `bot` explicitly since this standalone file can't close over
+ * the one installTelegramBotApi.mjs creates (same reason
+ * performArrivalConfirmation/performWithdrawal take `browser` explicitly).
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
@@ -44,9 +49,10 @@ const performSendReportAttachment = async ({ bot, idArg, chatId, msgId }) => {
     attachmentFileBase64,
     attachmentFileName,
     attachmentFileMimeType,
+    attachmentTgFileId,
   } = storedPatient;
 
-  if (!attachmentFileBase64) {
+  if (!attachmentTgFileId && !attachmentFileBase64) {
     return {
       success: false,
       message: `⛔ No cached attachment file for referralId=\`${referralId}\`.`,
@@ -54,18 +60,28 @@ const performSendReportAttachment = async ({ bot, idArg, chatId, msgId }) => {
   }
 
   try {
-    await bot.sendDocument(
-      chatId,
-      Buffer.from(attachmentFileBase64, "base64"),
-      {
+    // No fileOptions arg for the file_id case - that's only meaningful
+    // when uploading raw bytes (filename/contentType), not when passing an
+    // id for a file Telegram already has.
+    if (attachmentTgFileId) {
+      await bot.sendDocument(chatId, attachmentTgFileId, {
         reply_to_message_id: msgId,
         caption: `📎 ${attachmentFileName || `Report-of_${referralId}`}`,
-      },
-      {
-        filename: attachmentFileName || `${referralId}_attachment`,
-        contentType: attachmentFileMimeType || "application/pdf",
-      },
-    );
+      });
+    } else {
+      await bot.sendDocument(
+        chatId,
+        Buffer.from(attachmentFileBase64, "base64"),
+        {
+          reply_to_message_id: msgId,
+          caption: `📎 ${attachmentFileName || `Report-of_${referralId}`}`,
+        },
+        {
+          filename: attachmentFileName || `${referralId}_attachment`,
+          contentType: attachmentFileMimeType || "application/pdf",
+        },
+      );
+    }
   } catch (error) {
     createConsoleMessage(
       "error",
