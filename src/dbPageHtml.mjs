@@ -249,7 +249,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.referralDate] - "YYYY-MM-DD", labeled
  *   "Referral Date" in the UI.
  * @param {string} [params.filters.paid] - "1" (Yes) or "0" (No).
- * @param {string} [params.filters.arrived] - "Yes" or "No".
+ * @param {string} [params.filters.claimed] - "Yes" or "No".
  * @returns {string}
  */
 const renderDbPage = ({ rows, filters = {} }) => {
@@ -260,7 +260,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     status = "",
     referralDate = "",
     paid = "",
-    arrived = "",
+    claimed = "",
   } = filters;
 
   return `<!doctype html>
@@ -317,9 +317,12 @@ const renderDbPage = ({ rows, filters = {} }) => {
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 13px;
-    min-width: 170px;
     outline: none;
   }
+  .field input { min-width: 170px; }
+  /* Dropdowns have a short, bounded set of options (Yes/No/All, a status
+     name) - they don't need as much room as a free-text input. */
+  .field select { min-width: 100px; }
   .field input:focus, .field select:focus { border-color: var(--accent); }
   .actions { display: flex; gap: 8px; margin-left: auto; }
   button, .btn-link {
@@ -347,8 +350,9 @@ const renderDbPage = ({ rows, filters = {} }) => {
   }
   .meta-row {
     padding: 0 24px 10px;
-    color: var(--muted);
-    font-size: 12px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--badge-green-text);
   }
   .table-wrap {
     margin: 0 24px 24px;
@@ -423,7 +427,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     </div>
     <div class="field">
       <label for="f-status">Status</label>
-      <select id="f-status" name="status">${renderStatusOptions(status)}</select>
+      <select id="f-status" name="status" onchange="this.form.submit()">${renderStatusOptions(status)}</select>
     </div>
     <div class="field">
       <label for="f-referralDate">Referral Date</label>
@@ -431,18 +435,18 @@ const renderDbPage = ({ rows, filters = {} }) => {
     </div>
     <div class="field">
       <label for="f-paid">Paid</label>
-      <select id="f-paid" name="paid">
+      <select id="f-paid" name="paid" onchange="this.form.submit()">
         <option value="">All</option>
         <option value="1"${paid === "1" ? " selected" : ""}>Yes</option>
         <option value="0"${paid === "0" ? " selected" : ""}>No</option>
       </select>
     </div>
     <div class="field">
-      <label for="f-arrived">Arrived</label>
-      <select id="f-arrived" name="arrived">
+      <label for="f-claimed">Claimed</label>
+      <select id="f-claimed" name="claimed" onchange="this.form.submit()">
         <option value="">All</option>
-        <option value="Yes"${arrived === "Yes" ? " selected" : ""}>Yes</option>
-        <option value="No"${arrived === "No" ? " selected" : ""}>No</option>
+        <option value="Yes"${claimed === "Yes" ? " selected" : ""}>Yes</option>
+        <option value="No"${claimed === "No" ? " selected" : ""}>No</option>
       </select>
     </div>
     <div class="actions">
@@ -451,7 +455,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     </div>
   </form>
 
-  <div class="meta-row">${rows.length} row${rows.length === 1 ? "" : "s"}</div>
+  <div class="meta-row">Total Results ${rows.length}</div>
 
   <div class="table-wrap">
     <table>

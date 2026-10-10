@@ -580,7 +580,7 @@ const FILTERABLE_LIKE_COLUMNS = [
  *   `referralDate` column (see toDbRow above) - distinct from this table's
  *   own `createdAt` column, which is just row-insertion bookkeeping.
  * @param {string} [filters.paid] - "1" (Yes) or "0" (No). Exact match.
- * @param {string} [filters.arrived] - "Yes" or "No". Exact match.
+ * @param {string} [filters.claimed] - "Yes" or "No". Exact match.
  * @param {number} [filters.limit=500] - Clamped to [1, 2000].
  * @returns {object[]}
  */
@@ -591,7 +591,7 @@ const getPatientsFiltered = ({
   status,
   referralDate,
   paid,
-  arrived,
+  claimed,
   limit = 500,
 } = {}) => {
   const values = { referralId, patientNationalId, navigationId };
@@ -629,13 +629,12 @@ const getPatientsFiltered = ({
     params.paid = Number(paid) ? 1 : 0;
   }
 
-  // Rows are never actually written arrived='No' - "not yet arrived" is
-  // just NULL - so "No" here means that, not an exact-match lookup that
-  // would otherwise always return zero rows.
-  if (arrived === "Yes") {
-    clauses.push(`arrived = 'Yes'`);
-  } else if (arrived === "No") {
-    clauses.push(`(arrived IS NULL OR arrived != 'Yes')`);
+  // Unlike arrived, claimed is actually written "No" explicitly (e.g.
+  // checkReferralSelectedStatus.mjs's updateAndNotifyUser), not just left
+  // NULL for "not yet" - so a plain exact match is correct here.
+  if (claimed === "Yes" || claimed === "No") {
+    clauses.push(`claimed = @claimed`);
+    params.claimed = claimed;
   }
 
   const whereSQL = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";

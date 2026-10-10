@@ -387,7 +387,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           status,
           referralDate,
           paid,
-          arrived,
+          claimed,
         } = req.query;
         const rows = getPatientsFiltered({
           referralId,
@@ -396,7 +396,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           status,
           referralDate,
           paid,
-          arrived,
+          claimed,
         });
 
         res.type("html").send(
@@ -409,7 +409,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
               status,
               referralDate,
               paid,
-              arrived,
+              claimed,
             },
           }),
         );
