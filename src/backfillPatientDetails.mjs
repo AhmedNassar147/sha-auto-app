@@ -169,6 +169,12 @@ try {
     const arrivedUpdate =
       needsArrivedCheck && isArrived ? { arrived: "Yes" } : {};
 
+    console.log({
+      needsArrivedCheck,
+      isArrived,
+      arrivedUpdate,
+    });
+
     // Built as a separate object (rather than destructured `let`s passed
     // directly into updatePatients) so a row that didn't need/get an
     // attachment this pass never sends an explicit `undefined` for these
