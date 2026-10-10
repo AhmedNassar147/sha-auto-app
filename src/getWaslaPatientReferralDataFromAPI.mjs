@@ -187,16 +187,7 @@ const getWaslaPatientReferralDataFromAPI = async (
 
         const data = await res.json();
 
-        const {
-          patientInfo,
-          caseInfo,
-          medicalData,
-          attachments,
-          status: caseStatus,
-        } = data || {};
-
-        console.log("caseStatus", caseStatus, typeof caseStatus);
-        const isArrived = Number(caseStatus) === "6";
+        const { patientInfo, caseInfo, medicalData, attachments } = data || {};
 
         const {
           idNumber,
@@ -334,7 +325,6 @@ const getWaslaPatientReferralDataFromAPI = async (
         }
 
         return {
-          isArrived,
           patientName,
           patientNationalId: idNumber,
           mobileNumber,

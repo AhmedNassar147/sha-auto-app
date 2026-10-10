@@ -11,10 +11,10 @@
 // detail-fields backfill above, since a row can already have one without
 // the other.
 // Also backfills `arrived` for any claimed row that doesn't have it yet -
-// the same GET /api/referrals/{navigationId} call above already reports
-// this (isArrived, derived from the response's own top-level `status`
-// field - confirmed live: 6 means arrived), so no second endpoint/tab
-// lookup is needed. Unlike the live flow (performArrivalConfirmation.mjs,
+// also independent of the other two, by checking the case's current status
+// on the "myOrders" tab (same tab/lookup checkReferralSelectedStatus.mjs
+// uses live) and setting arrived="Yes" if it's already at Wasla's
+// ConfirmedArrival status. Unlike the live flow (performArrivalConfirmation.mjs,
 // which sets arrived="Yes" the moment an operator confirms it through the
 // bot), this is the only place arrived gets inferred after the fact from
 // Wasla's own record rather than our own action - old rows predating that
@@ -41,11 +41,19 @@ import makeUserLoggedInOrOpenHomePage from "./makeUserLoggedInOrOpenHomePage.mjs
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
+import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import buildCaseReportFile from "./buildCaseReportFile.mjs";
 import sleep from "./sleep.mjs";
 import { HOME_PAGE_URL } from "./constants.mjs";
 
 const { CHROME_EXECUTABLE_PATH, USER_PROFILE_PATH } = process.env;
+
+// See constants.mjs's WASLA_STATUS_TYPES - 4 = "ConfirmedArrival", the same
+// code checkReferralSelectedStatus.mjs's CLAIMED_STATUS_CODES treats as a
+// claimed outcome. Kept local rather than importing WASLA_STATUS_TYPES
+// since this is the one specific code this script cares about, not a
+// lookup table.
+const CONFIRMED_ARRIVAL_STATUS_CODE = 4;
 
 const requestedIds = process.argv.slice(2);
 
@@ -60,7 +68,7 @@ const rowsToProcess = requestedIds.length
             row.attachmentFileBase64 == null ||
             row.specialtyId == null ||
             row.subReferralTypeId == null ||
-            (row.claimed === "Yes" && (!row.arrived || row.arrived == null))),
+            (row.claimed === "Yes" && row.arrived == null)),
       );
 
 if (!rowsToProcess.length) {
@@ -129,6 +137,30 @@ try {
     const needsAttachment = row.attachmentFileBase64 == null;
     const needsArrivedCheck = row.claimed === "Yes" && row.arrived == null;
 
+    // A separate API (the "myOrders" tab listing, not the per-case details
+    // endpoint below) - checked and persisted independently so a failure
+    // in the details fetch below doesn't also throw away an arrival
+    // confirmation this already found.
+    const arrivedUpdate = {};
+
+    if (needsArrivedCheck) {
+      const { patients: ordersPatients } = await getWaslaCasesFromAPI(frame, {
+        searchReferralID: referralId,
+        tab: 2,
+      }).catch(() => ({ patients: [] }));
+
+      const foundOrder = ordersPatients?.find(
+        (patient) => `${patient.referralId}` === String(referralId),
+      );
+
+      if (
+        foundOrder &&
+        Number(foundOrder.status) === CONFIRMED_ARRIVAL_STATUS_CODE
+      ) {
+        arrivedUpdate.arrived = "Yes";
+      }
+    }
+
     const patientData = await getWaslaPatientReferralDataFromAPI(
       frame,
       navigationId,
@@ -139,10 +171,19 @@ try {
     const { patientDetailsError } = patientData || {};
 
     if (patientDetailsError || !patientData) {
+      if (arrivedUpdate.arrived) {
+        updatePatients({ referralId, ...arrivedUpdate });
+        console.log(
+          `referralId=${referralId} arrived updated (details fetch below failed, applied independently).`,
+        );
+        updatedCount++;
+      } else {
+        skippedCount++;
+      }
+
       console.warn(
         `referralId=${referralId} fetch failed: ${patientDetailsError}`,
       );
-      skippedCount++;
       continue;
     }
 
@@ -159,21 +200,7 @@ try {
       note,
       medicalData,
       files,
-      isArrived,
     } = patientData;
-
-    // Never downgrades an already-confirmed arrival, and only set at all
-    // for rows that actually needed checking (claimed but not yet marked
-    // arrived) - a row re-fetched here for an unrelated reason (e.g. the
-    // nationality backfill) shouldn't have this touched either way.
-    const arrivedUpdate =
-      needsArrivedCheck && isArrived ? { arrived: "Yes" } : {};
-
-    console.log({
-      needsArrivedCheck,
-      isArrived,
-      arrivedUpdate,
-    });
 
     // Built as a separate object (rather than destructured `let`s passed
     // directly into updatePatients) so a row that didn't need/get an
