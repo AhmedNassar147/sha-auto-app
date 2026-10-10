@@ -95,6 +95,37 @@ if (staleWithdrawnRows.length) {
   );
 }
 
+// Same idea, the other direction: any row with arrived="Yes" whose status
+// wasn't also set to 4 (ConfirmedArrival) - either from before this script
+// set both together, or from a live confirmation before
+// performArrivalConfirmation.mjs did the same. Needed as its own one-time
+// pass since the live-check further down only fires its arrived branch
+// while arrived is still NULL, so it would never revisit these rows again
+// once arrived is already "Yes".
+const staleArrivedRows = allPatientsStatement
+  .all()
+  .filter(
+    (row) =>
+      row.arrived === "Yes" &&
+      Number(row.status) !== CONFIRMED_ARRIVAL_STATUS_CODE,
+  );
+
+for (const row of staleArrivedRows) {
+  updatePatients({
+    referralId: row.referralId,
+    status: CONFIRMED_ARRIVAL_STATUS_CODE,
+  });
+  console.log(
+    `referralId=${row.referralId} status corrected to ConfirmedArrival (arrived was already Yes).`,
+  );
+}
+
+if (staleArrivedRows.length) {
+  console.log(
+    `Fixed ${staleArrivedRows.length} already-arrived row(s) locally (no API call needed).`,
+  );
+}
+
 const requestedIds = process.argv.slice(2);
 
 const rowsToProcess = requestedIds.length
@@ -206,13 +237,23 @@ try {
         row.arrived == null &&
         foundStatus === CONFIRMED_ARRIVAL_STATUS_CODE
       ) {
+        // Both fields - same as performArrivalConfirmation.mjs's own live
+        // update. Leaving status untouched here was a bug: the /db page's
+        // Status filter reads the status column (via WASLA_STATUS_TYPES),
+        // not arrived, so a row backfilled with only arrived="Yes" would
+        // show "Confirmed" there forever and never match a
+        // "ConfirmedArrival" filter - confirmed live: filtering by it
+        // returned nothing despite arrived="Yes" rows existing.
         claimedStatusUpdate.arrived = "Yes";
+        claimedStatusUpdate.status = CONFIRMED_ARRIVAL_STATUS_CODE;
+        claimedStatusUpdate.tabName = "orders";
       } else if (
         row.userActionName === USER_ACTION_TYPES.ACCEPT &&
         foundStatus === WITHDRAWN_STATUS_CODE
       ) {
         claimedStatusUpdate.status = WITHDRAWN_STATUS_CODE;
         claimedStatusUpdate.userActionName = USER_ACTION_TYPES.REJECT;
+        claimedStatusUpdate.tabName = "orders";
       }
     }
 
@@ -312,7 +353,7 @@ try {
     });
 
     console.log(
-      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status ? " (withdrawal confirmed)" : ""}.`,
+      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status === WITHDRAWN_STATUS_CODE ? " (withdrawal confirmed)" : ""}.`,
     );
     updatedCount++;
 
