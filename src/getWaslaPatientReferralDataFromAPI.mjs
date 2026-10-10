@@ -26,7 +26,10 @@
  *
  */
 import { writeFile } from "fs/promises";
-import { describeClockSample, writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
+import {
+  describeClockSample,
+  writeReferralTimingEvent,
+} from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import {
   baseReferraAPiUrl,
@@ -184,7 +187,15 @@ const getWaslaPatientReferralDataFromAPI = async (
 
         const data = await res.json();
 
-        const { patientInfo, caseInfo, medicalData, attachments } = data || {};
+        const {
+          patientInfo,
+          caseInfo,
+          medicalData,
+          attachments,
+          status: caseStatus,
+        } = data || {};
+
+        const isArrived = Number(caseStatus) === 6;
 
         const {
           idNumber,
@@ -322,6 +333,7 @@ const getWaslaPatientReferralDataFromAPI = async (
         }
 
         return {
+          isArrived,
           patientName,
           patientNationalId: idNumber,
           mobileNumber,

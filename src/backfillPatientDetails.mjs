@@ -10,6 +10,16 @@
 // buildCaseReportFile.mjs) for any row missing it - independently of the
 // detail-fields backfill above, since a row can already have one without
 // the other.
+// Also backfills `arrived` for any claimed row that doesn't have it yet -
+// the same GET /api/referrals/{navigationId} call above already reports
+// this (isArrived, derived from the response's own top-level `status`
+// field - confirmed live: 6 means arrived), so no second endpoint/tab
+// lookup is needed. Unlike the live flow (performArrivalConfirmation.mjs,
+// which sets arrived="Yes" the moment an operator confirms it through the
+// bot), this is the only place arrived gets inferred after the fact from
+// Wasla's own record rather than our own action - old rows predating that
+// feature, or ones where the confirmation step was missed/not through the
+// bot, would otherwise stay NULL forever.
 //
 // Needs a live, logged-in Wasla session, so it opens its own Puppeteer
 // browser against the SAME Chrome profile the main bot uses
@@ -49,7 +59,8 @@ const rowsToProcess = requestedIds.length
           (row.nationality == null ||
             row.attachmentFileBase64 == null ||
             row.specialtyId == null ||
-            row.subReferralTypeId == null),
+            row.subReferralTypeId == null ||
+            (row.claimed === "Yes" && row.arrived == null)),
       );
 
 if (!rowsToProcess.length) {
@@ -116,12 +127,13 @@ try {
     }
 
     const needsAttachment = row.attachmentFileBase64 == null;
+    const needsArrivedCheck = row.claimed === "Yes" && row.arrived == null;
 
     const patientData = await getWaslaPatientReferralDataFromAPI(
       frame,
       navigationId,
       referralId,
-      !needsAttachment, // skippAttachments - only download the files when this row doesn't have a cached report yet
+      !needsAttachment, // skippAttachments - only download the files when this row doesn't have a cached report yet,
     );
 
     const { patientDetailsError } = patientData || {};
@@ -147,7 +159,15 @@ try {
       note,
       medicalData,
       files,
+      isArrived,
     } = patientData;
+
+    // Never downgrades an already-confirmed arrival, and only set at all
+    // for rows that actually needed checking (claimed but not yet marked
+    // arrived) - a row re-fetched here for an unrelated reason (e.g. the
+    // nationality backfill) shouldn't have this touched either way.
+    const arrivedUpdate =
+      needsArrivedCheck && isArrived ? { arrived: "Yes" } : {};
 
     // Built as a separate object (rather than destructured `let`s passed
     // directly into updatePatients) so a row that didn't need/get an
@@ -190,10 +210,11 @@ try {
       note,
       medicalData,
       ...attachmentUpdate,
+      ...arrivedUpdate,
     });
 
     console.log(
-      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}.`,
+      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${arrivedUpdate.arrived ? " (arrived confirmed)" : ""}.`,
     );
     updatedCount++;
 
