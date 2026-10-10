@@ -195,7 +195,8 @@ const getWaslaPatientReferralDataFromAPI = async (
           status: caseStatus,
         } = data || {};
 
-        const isArrived = Number(caseStatus) === 6;
+        console.log("caseStatus", caseStatus, typeof caseStatus);
+        const isArrived = Number(caseStatus) === "6";
 
         const {
           idNumber,
