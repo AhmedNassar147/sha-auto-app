@@ -161,12 +161,22 @@ try {
       }
     }
 
+    // Unlike a plain failed fetch (caught inside the evaluated page function
+    // and returned as patientDetailsError), a Puppeteer/CDP-level failure -
+    // e.g. "Execution context was destroyed, most likely because of a
+    // navigation" (confirmed live, crashed the whole backfill run) - throws
+    // from frame.evaluate() itself rather than resolving, since it happens
+    // outside the browser-side try/catch entirely. Caught here the same way
+    // so one bad row's transient navigation doesn't take down the rest of
+    // the batch.
     const patientData = await getWaslaPatientReferralDataFromAPI(
       frame,
       navigationId,
       referralId,
       !needsAttachment, // skippAttachments - only download the files when this row doesn't have a cached report yet,
-    );
+    ).catch((error) => ({
+      patientDetailsError: error?.message || String(error),
+    }));
 
     const { patientDetailsError } = patientData || {};
 
