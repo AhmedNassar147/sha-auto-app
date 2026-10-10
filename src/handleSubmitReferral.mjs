@@ -24,6 +24,7 @@ import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
+import getReferralRetryDelay from "./getReferralRetryDelay.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import submitWaslaAction from "./submitWaslaAction.mjs";
 import buildAdmissionDetails from "./buildAdmissionDetails.mjs";
@@ -284,7 +285,7 @@ const buildDirectApiTelegramMessage = ({
     `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
     `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
     `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
-    `First-attempt buffer: ${firstAttemptBufferMs}ms (leftover for first retry: ${leftoverBufferForFirstRetryMs}ms)\n` +
+    `First-attempt buffer: ${firstAttemptBufferMs}ms (first retry targets boundary + configured buffer; response time counts toward it)\n` +
     `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
     `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
 
@@ -614,23 +615,11 @@ const handleSubmitReferral = (options) => async (patient) => {
         });
     const uploadDurationMs = Date.now() - uploadStartTime;
 
-    // Dropping this split (firing everything off one flat
-    // SLEEP_BEFORE_ACCEPT_OR_REJECT_MS buffer, no first-attempt/leftover
-    // distinction) was tried and reverted back - live testing afterward
-    // showed cases getting a 200 back but NOT actually being claimed,
-    // confirming the earlier "always on last/catch-up attempt" pattern
-    // this split exists for is real: the first attempt firing fast (before
-    // the full buffer has elapsed) still matters for actually winning the
-    // race, even though a flat buffer alone keeps producing a successful
-    // API response. So the first attempt only waits this much past the
-    // boundary (not the full configured buffer) - whatever's left of the
-    // configured buffer is instead applied to the gap before the first
-    // retry (see leftoverBufferForFirstRetryMs below), so a slow-to-arrive
-    // first attempt doesn't also have to wait out the rest of the buffer
-    // before retrying.
+    // First attempt stays at +120ms. The first retry targets the configured
+    // buffer after the boundary; response time counts toward that target.
     const firstAttemptBufferMs = 120;
     const leftoverBufferForFirstRetryMs =
-      SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs;
+      Math.max(0, SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs);
 
     const submissionContext = {
       referralId,
@@ -654,6 +643,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       firstAttemptBufferMs,
       leftoverBufferForFirstRetryMs,
       configuredRetryGapMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
+      retryTimingPolicy: "absolute-first-retry-target",
     };
 
     const diffMs = referralEndTimestamp - Date.now();
@@ -670,21 +660,9 @@ const handleSubmitReferral = (options) => async (patient) => {
     const attempts = [];
     const actionTimeStart = Date.now();
 
-    // Sequential firing - one attempt at a time, waiting for its own
-    // response before deciding whether to retry. Concurrent/hedged firing
-    // (sending the next attempt without waiting, every
-    // SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS) was tried and reverted: live
-    // data showed success landing on literally the LAST fired attempt in
-    // every single burst, across many different gap/count combinations -
-    // strong evidence that sending a newer request invalidates whatever
-    // attempt is already in flight for the same case, rather than the
-    // delay being about waiting long enough. That means concurrent hedges
-    // were actively working against reaching success sooner, not helping,
-    // and also carried an unknown risk (how Wasla's backend handles
-    // multiple overlapping accept-json requests for the same case) that
-    // sequential firing avoids entirely, since only one is ever in flight.
+    // One request at a time. Earlier burst tests did not establish whether
+    // the backend cancels older requests, so keep sequential submission.
     let attemptCount = 0;
-    let hasConsumedLeftoverBuffer = false;
 
     while (attemptCount < MAX_ACTION_RETRIES) {
       attemptCount++;
@@ -733,15 +711,14 @@ const handleSubmitReferral = (options) => async (patient) => {
       }
 
       if (attemptCount < MAX_ACTION_RETRIES) {
-        const amountOfSleep = hasConsumedLeftoverBuffer
-          ? SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS
-          : leftoverBufferForFirstRetryMs;
-
-        // Advances regardless of whether this particular amount turned out
-        // to be positive - otherwise a leftover of exactly 0 would never
-        // flip this, and every later gap would keep reusing the leftover
-        // instead of ever switching to the normal retry gap.
-        hasConsumedLeftoverBuffer = true;
+        const amountOfSleep = getReferralRetryDelay({
+          attemptCount,
+          nowMs: Date.now(),
+          referralEndTimestamp,
+          totalBufferMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
+          retryGapMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
+        });
+        attempts[attempts.length - 1].scheduledRetryDelayMs = amountOfSleep;
 
         if (amountOfSleep > 0) {
           await sleep(amountOfSleep);
