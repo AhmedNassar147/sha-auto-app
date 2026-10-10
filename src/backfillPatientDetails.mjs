@@ -83,6 +83,7 @@ for (const row of staleWithdrawnRows) {
   updatePatients({
     referralId: row.referralId,
     userActionName: USER_ACTION_TYPES.REJECT,
+    tabName: "orders",
   });
   console.log(
     `referralId=${row.referralId} userActionName corrected to reject (status was already Withdrawn).`,
@@ -114,6 +115,7 @@ for (const row of staleArrivedRows) {
   updatePatients({
     referralId: row.referralId,
     status: CONFIRMED_ARRIVAL_STATUS_CODE,
+    tabName: "orders",
   });
   console.log(
     `referralId=${row.referralId} status corrected to ConfirmedArrival (arrived was already Yes).`,
