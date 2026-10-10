@@ -165,8 +165,16 @@ const performArrivalConfirmation = async ({
 
     // Set directly here, at the moment we know arrival actually succeeded -
     // simpler and more immediate than polling Wasla's status tab later to
-    // detect the same thing indirectly.
-    updatePatients({ referralId, arrived: "Yes" });
+    // detect the same thing indirectly. status is set to 4 (WASLA_STATUS_
+    // TYPES[4] = "ConfirmedArrival") alongside it - nothing else in the live
+    // flow ever re-checks/updates status once a case is already claimed
+    // (checkReferralSelectedStatus.mjs stops polling a case the moment it's
+    // resolved to claimed="Yes"), so without this, our own stored status
+    // would stay frozen at "Confirmed" (1) forever even after a real
+    // arrival confirmation - which is exactly why this file's own
+    // statusLabel === "ConfirmedArrival" guard above could never actually
+    // trigger from real data.
+    updatePatients({ referralId, arrived: "Yes", status: 4 });
 
     return {
       success: true,

@@ -19,7 +19,11 @@
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
-import { getPatientByNavigationId, getPatient } from "../db.mjs";
+import {
+  getPatientByNavigationId,
+  getPatient,
+  updatePatients,
+} from "../db.mjs";
 import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "../constants.mjs";
 import submitWithdrawalViaApi from "../submitWithdrawalViaApi.mjs";
 import closePageSafely from "../closePageSafely.mjs";
@@ -131,6 +135,20 @@ const performWithdrawal = async ({ browser, idArg, notes }) => {
         message: `⛔ Withdrawal failed for referralId=\`${referralId}\` (navigationId=\`${navigationId}\`): ${result.error}`,
       };
     }
+
+    // Set directly here, at the moment we know the withdrawal actually
+    // succeeded - same reasoning as performArrivalConfirmation.mjs's own
+    // status update: nothing else in the live flow ever re-checks a case
+    // once it's already claimed (checkReferralSelectedStatus.mjs stops
+    // polling the moment claimed resolves to "Yes"), so without this, our
+    // stored userActionName/status would stay frozen at "accept"/Confirmed
+    // forever even after we've actually withdrawn. status 5 is
+    // WASLA_STATUS_TYPES[5] = "Withdrawn".
+    updatePatients({
+      referralId,
+      userActionName: USER_ACTION_TYPES.REJECT,
+      status: 5,
+    });
 
     return {
       success: true,

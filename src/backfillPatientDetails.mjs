@@ -10,16 +10,23 @@
 // buildCaseReportFile.mjs) for any row missing it - independently of the
 // detail-fields backfill above, since a row can already have one without
 // the other.
-// Also backfills `arrived` for any claimed row that doesn't have it yet -
-// also independent of the other two, by checking the case's current status
-// on the "myOrders" tab (same tab/lookup checkReferralSelectedStatus.mjs
-// uses live) and setting arrived="Yes" if it's already at Wasla's
-// ConfirmedArrival status. Unlike the live flow (performArrivalConfirmation.mjs,
-// which sets arrived="Yes" the moment an operator confirms it through the
-// bot), this is the only place arrived gets inferred after the fact from
-// Wasla's own record rather than our own action - old rows predating that
-// feature, or ones where the confirmation step was missed/not through the
-// bot, would otherwise stay NULL forever.
+// Also backfills `arrived`/withdrawal state for any claimed row that still
+// looks like an active acceptance - also independent of the other two, by
+// checking the case's current status on the "myOrders" tab (same tab/lookup
+// checkReferralSelectedStatus.mjs uses live) and comparing it against
+// Wasla's own ConfirmedArrival/Withdrawn codes. Both performArrivalConfirmation.mjs
+// and performWithdrawal.mjs now set this locally the moment an operator
+// confirms either through the bot, but neither existed (or wasn't called)
+// for older rows, and nothing else in the live flow ever re-checks a case
+// once checkReferralSelectedStatus.mjs resolves it to claimed="Yes" and
+// drops it from its polling queue - so without this, those rows would stay
+// frozen at their original accept-time status/userActionName forever even
+// if the case was later actually confirmed arrived or withdrawn.
+// Also, separately and first (no browser/API needed), corrects
+// userActionName for any row whose status is already Withdrawn locally but
+// whose userActionName was never updated to match - checkReferralSelectedStatus.mjs
+// writes status/claimed but not userActionName, so that mismatch can exist
+// independently of whether a live re-check (above) is even needed.
 //
 // Needs a live, logged-in Wasla session, so it opens its own Puppeteer
 // browser against the SAME Chrome profile the main bot uses
@@ -44,16 +51,49 @@ import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFro
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import buildCaseReportFile from "./buildCaseReportFile.mjs";
 import sleep from "./sleep.mjs";
-import { HOME_PAGE_URL } from "./constants.mjs";
+import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 
 const { CHROME_EXECUTABLE_PATH, USER_PROFILE_PATH } = process.env;
 
-// See constants.mjs's WASLA_STATUS_TYPES - 4 = "ConfirmedArrival", the same
+// See constants.mjs's WASLA_STATUS_TYPES - 4 = "ConfirmedArrival" (the same
 // code checkReferralSelectedStatus.mjs's CLAIMED_STATUS_CODES treats as a
-// claimed outcome. Kept local rather than importing WASLA_STATUS_TYPES
-// since this is the one specific code this script cares about, not a
-// lookup table.
+// claimed outcome) and 5 = "Withdrawn". Kept local rather than importing
+// WASLA_STATUS_TYPES since these are the two specific codes this script
+// cares about, not a lookup table.
 const CONFIRMED_ARRIVAL_STATUS_CODE = 4;
+const WITHDRAWN_STATUS_CODE = 5;
+
+// Local-only fix, no browser/Wasla API needed - a row can already have the
+// correct status (5 = Withdrawn) stored, set correctly by
+// checkReferralSelectedStatus.mjs while it was still polling, with
+// userActionName never corrected to match, since nothing in the live flow
+// ever wrote userActionName except the original accept action itself
+// (confirmed live: referralId 4IMB5GR1V8FL0SU and 9EVGPG6FL7V4MD0 both show
+// status=5/claimed=No/userActionName=accept in the same row). Run
+// unconditionally, before anything else here, since it needs no session.
+const staleWithdrawnRows = allPatientsStatement
+  .all()
+  .filter(
+    (row) =>
+      Number(row.status) === WITHDRAWN_STATUS_CODE &&
+      row.userActionName === USER_ACTION_TYPES.ACCEPT,
+  );
+
+for (const row of staleWithdrawnRows) {
+  updatePatients({
+    referralId: row.referralId,
+    userActionName: USER_ACTION_TYPES.REJECT,
+  });
+  console.log(
+    `referralId=${row.referralId} userActionName corrected to reject (status was already Withdrawn).`,
+  );
+}
+
+if (staleWithdrawnRows.length) {
+  console.log(
+    `Fixed ${staleWithdrawnRows.length} already-withdrawn row(s) locally (no API call needed).`,
+  );
+}
 
 const requestedIds = process.argv.slice(2);
 
@@ -68,7 +108,8 @@ const rowsToProcess = requestedIds.length
             row.attachmentFileBase64 == null ||
             row.specialtyId == null ||
             row.subReferralTypeId == null ||
-            (row.claimed === "Yes" && row.arrived == null)),
+            (row.claimed === "Yes" &&
+              row.userActionName === USER_ACTION_TYPES.ACCEPT)),
       );
 
 if (!rowsToProcess.length) {
@@ -135,15 +176,21 @@ try {
     }
 
     const needsAttachment = row.attachmentFileBase64 == null;
-    const needsArrivedCheck = row.claimed === "Yes" && row.arrived == null;
+    // Covers both drifts this one lookup can reveal: the case having since
+    // been confirmed arrived (only relevant if arrived isn't already set),
+    // or having since been withdrawn (only relevant while our own record
+    // still says "accept", i.e. nothing's corrected it yet).
+    const needsClaimedStatusRecheck =
+      row.claimed === "Yes" &&
+      (row.arrived == null || row.userActionName === USER_ACTION_TYPES.ACCEPT);
 
     // A separate API (the "myOrders" tab listing, not the per-case details
     // endpoint below) - checked and persisted independently so a failure
-    // in the details fetch below doesn't also throw away an arrival
-    // confirmation this already found.
-    const arrivedUpdate = {};
+    // in the details fetch below doesn't also throw away a confirmation
+    // this already found.
+    const claimedStatusUpdate = {};
 
-    if (needsArrivedCheck) {
+    if (needsClaimedStatusRecheck) {
       const { patients: ordersPatients } = await getWaslaCasesFromAPI(frame, {
         searchReferralID: referralId,
         tab: 2,
@@ -153,11 +200,19 @@ try {
         (patient) => `${patient.referralId}` === String(referralId),
       );
 
+      const foundStatus = foundOrder ? Number(foundOrder.status) : null;
+
       if (
-        foundOrder &&
-        Number(foundOrder.status) === CONFIRMED_ARRIVAL_STATUS_CODE
+        row.arrived == null &&
+        foundStatus === CONFIRMED_ARRIVAL_STATUS_CODE
       ) {
-        arrivedUpdate.arrived = "Yes";
+        claimedStatusUpdate.arrived = "Yes";
+      } else if (
+        row.userActionName === USER_ACTION_TYPES.ACCEPT &&
+        foundStatus === WITHDRAWN_STATUS_CODE
+      ) {
+        claimedStatusUpdate.status = WITHDRAWN_STATUS_CODE;
+        claimedStatusUpdate.userActionName = USER_ACTION_TYPES.REJECT;
       }
     }
 
@@ -181,10 +236,10 @@ try {
     const { patientDetailsError } = patientData || {};
 
     if (patientDetailsError || !patientData) {
-      if (arrivedUpdate.arrived) {
-        updatePatients({ referralId, ...arrivedUpdate });
+      if (claimedStatusUpdate.arrived || claimedStatusUpdate.status) {
+        updatePatients({ referralId, ...claimedStatusUpdate });
         console.log(
-          `referralId=${referralId} arrived updated (details fetch below failed, applied independently).`,
+          `referralId=${referralId} ${claimedStatusUpdate.arrived ? "arrived" : "withdrawal"} updated (details fetch below failed, applied independently).`,
         );
         updatedCount++;
       } else {
@@ -253,11 +308,11 @@ try {
       note,
       medicalData,
       ...attachmentUpdate,
-      ...arrivedUpdate,
+      ...claimedStatusUpdate,
     });
 
     console.log(
-      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${arrivedUpdate.arrived ? " (arrived confirmed)" : ""}.`,
+      `referralId=${referralId} updated${attachmentUpdate.attachmentFileBase64 ? " (with attachment)" : ""}${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status ? " (withdrawal confirmed)" : ""}.`,
     );
     updatedCount++;
 
