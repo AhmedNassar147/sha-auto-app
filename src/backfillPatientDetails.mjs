@@ -60,7 +60,7 @@ const rowsToProcess = requestedIds.length
             row.attachmentFileBase64 == null ||
             row.specialtyId == null ||
             row.subReferralTypeId == null ||
-            (row.claimed === "Yes" && row.arrived == null)),
+            (row.claimed === "Yes" && (!row.arrived || row.arrived == null))),
       );
 
 if (!rowsToProcess.length) {
