@@ -32,7 +32,7 @@ const COLUMN_LABELS = {
   ourAcceptedAt: "Our Acceptance Time (Saudi)",
   fastestFirst: "1st Acceptance (Server Time)",
   fastestSecond: "2nd Acceptance (Server Time)",
-  caseAttachmentId: "Case Acceptance Attachment ID",
+  caseAttachmentId: "Case Attachment ID",
   letterType: "Letter Type",
   userActionName: "Action",
   claimed: "Claimed",
@@ -156,9 +156,12 @@ const badgeClassFor = (value) => {
 
 const renderCell = (column, value, row) => {
   if (column === "winnerFacilityName") {
-    if (!value && !row.winnerAcceptedAt) return '<span class="empty-cell">—</span>';
-    return `<div class="ranking-name" title="Facility ID: ${escapeHtml(row.winnerFacilityId ?? "—")}">${escapeHtml(value || "—")}</div>` +
-      `<div class="ranking-time">${escapeHtml(row.winnerAcceptedAt || "—")}</div>`;
+    if (!value && !row.winnerAcceptedAt)
+      return '<span class="empty-cell">—</span>';
+    return (
+      `<div class="ranking-name" title="Facility ID: ${escapeHtml(row.winnerFacilityId ?? "—")}">${escapeHtml(value || "—")}</div>` +
+      `<div class="ranking-time">${escapeHtml(row.winnerAcceptedAt || "—")}</div>`
+    );
   }
   if (column === "facilityRes") {
     if (!row?.navigationId) return '<span class="empty-cell">—</span>';
