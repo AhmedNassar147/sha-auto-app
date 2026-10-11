@@ -45,8 +45,10 @@ import {
   deletePatients,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
+  getPatient,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
+import runDbAcceptanceDecisions from "./runDbAcceptanceDecisions.mjs";
 import buildCasesExcelReport from "./buildCasesExcelReport.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
@@ -502,6 +504,27 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
     // plain navigation/prefetch. Redirects back to wherever the request
     // came from so the admin stays on the same filtered view, falling
     // back to the unfiltered page if there's no Referer header.
+    const pendingDbDecisions = new Set();
+    app.post("/db/decision/:referralId", async (req, res) => {
+      const { referralId } = req.params;
+      const patient = getPatient(referralId);
+      if (!patient?.navigationId) {
+        return res.status(404).json({ error: "Case or navigation ID not found." });
+      }
+      if (pendingDbDecisions.has(referralId)) {
+        return res.status(409).json({ error: "Decisions already running for this case." });
+      }
+      pendingDbDecisions.add(referralId);
+      try {
+        const results = await runDbAcceptanceDecisions({ browser, patient });
+        return res.json({ results });
+      } catch (error) {
+        return res.status(500).json({ error: error.message });
+      } finally {
+        pendingDbDecisions.delete(referralId);
+      }
+    });
+
     app.post("/db/delete/:referralId", (req, res) => {
       const { referralId } = req.params;
 

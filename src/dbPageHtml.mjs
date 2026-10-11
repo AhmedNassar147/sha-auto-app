@@ -58,6 +58,7 @@ const COLUMN_LABELS = {
   medicalData: "Medical Data",
   attachmentTgFileId: "Attachment File ID",
   removeRow: "",
+  decision: "Decision API",
 };
 
 const COLUMNS = [
@@ -107,6 +108,7 @@ const COLUMNS = [
   // referralId (ignoring row.removeRow, undefined), same as "openCase"
   // above. Kept last so it's always the rightmost column.
   "removeRow",
+  "decision",
 ];
 
 // "status" is handled separately in renderCell (needs the WASLA_STATUS_TYPES
@@ -137,6 +139,13 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
+  if (column === "decision") {
+    if (!row?.referralId || !row?.navigationId) {
+      return '<span class="empty-cell">—</span>';
+    }
+    const url = escapeHtml(`/db/decision/${encodeURIComponent(row.referralId)}`);
+    return `<button type="button" class="btn-link secondary" data-decision-url="${url}">Open + run decisions</button><pre class="decision-result" style="white-space:pre-wrap;max-width:400px"></pre>`;
+  }
   if (column === "openCase") {
     if (!row?.navigationId) return '<span class="empty-cell">—</span>';
     const safeUrl = escapeHtml(
@@ -480,6 +489,24 @@ const renderDbPage = ({ rows, filters = {} }) => {
       <tbody>${renderRows(rows, referralId)}</tbody>
     </table>
   </div>
+<script>
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("button[data-decision-url]");
+  if (!button || button.disabled) return;
+  button.disabled = true;
+  const output = button.nextElementSibling;
+  output.textContent = "Opening case and running both requests…";
+  try {
+    const response = await fetch(button.dataset.decisionUrl, { method: "POST" });
+    const result = await response.json();
+    output.textContent = JSON.stringify(result, null, 2);
+  } catch (error) {
+    output.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
 </body>
 </html>`;
 };

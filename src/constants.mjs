@@ -278,6 +278,7 @@ export const API_URLS = {
   //   query: (t) => ({ url: `/admissions/${t.referralId}/withdraw`, method: "POST",
   //     body: { notes: t.notes, file: t.file } })
   WITHDRAW_FROM_REFERRAL: `${BASE_WASLA_API_URL}/admissions/_nav_id_/withdraw`,
+  CONFIRM_ACCEPTANCE: `${BASE_WASLA_API_URL}/admissions/_id_/decision`,
 };
 
 export const baseWaslaHeaders = {
