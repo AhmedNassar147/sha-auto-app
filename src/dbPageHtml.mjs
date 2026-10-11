@@ -498,8 +498,14 @@ document.addEventListener("click", async (event) => {
   output.textContent = "Opening case and running both requests…";
   try {
     const response = await fetch(button.dataset.decisionUrl, { method: "POST" });
-    const result = await response.json();
-    output.textContent = JSON.stringify(result, null, 2);
+    const bodyText = await response.text();
+    try {
+      const result = JSON.parse(bodyText);
+      output.textContent = JSON.stringify(result, null, 2);
+    } catch {
+      output.textContent = "HTTP " + response.status + " " + response.statusText +
+        "\\n" + (bodyText || "Empty response body");
+    }
   } catch (error) {
     output.textContent = error.message;
   } finally {
