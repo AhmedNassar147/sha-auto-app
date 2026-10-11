@@ -9,8 +9,16 @@ import { createHash } from "node:crypto";
 // by this script; visiting the portal runs its normal UI code in Chrome.
 const args = process.argv.slice(2);
 const [caseId] = args;
-if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
-  console.error("Usage: yarn collect-bundles 13813");
+if (args.length === 1 && caseId === "--explore-f") {
+  try {
+    const { default: explore } = await import("./exploreWaslaFacilities.mjs");
+    await explore();
+  } catch (error) {
+    console.error(error.message);
+    process.exitCode = 1;
+  }
+} else if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
+  console.error("Usage: yarn collect-bundles 13813 OR yarn collect-bundles --explore-f");
   process.exitCode = 1;
 } else if (!process.env.USER_PROFILE_PATH) {
   console.error("USER_PROFILE_PATH is required to reuse the app's logged-in browser profile.");

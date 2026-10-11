@@ -1,8 +1,8 @@
 import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 import submitAcceptanceDecisionViaApi from "./submitAcceptanceDecisionViaApi.mjs";
 
-/** Opens the case and runs the two explicitly requested ID-only decisions. */
-export default async function runDbAcceptanceDecisions({ browser, patient }) {
+/** Opens the case and submits one explicit facility-approval payload. */
+export default async function runDbAcceptanceDecisions({ browser, patient, facilityId, attachmentIds }) {
   const page = await browser.newPage();
   await page.goto(
     `${WASLA_REFERRAL_VIEW_URL}/${encodeURIComponent(patient.navigationId)}`,
@@ -21,27 +21,13 @@ export default async function runDbAcceptanceDecisions({ browser, patient }) {
     { timeout: 20_000 },
   );
 
-  const results = [];
-  for (const [idType, id] of [
-    ["referralId", patient.referralId],
-    ["navigationId", patient.navigationId],
-  ]) {
-    try {
-      const result = await submitAcceptanceDecisionViaApi({
-        page,
-        payload: { id },
-      });
-      results.push({
-        idType,
-        id,
-        success: result.success,
-        httpStatus: result.requestClockSample?.httpStatus ?? null,
-        data: result.data ?? null,
-        error: result.error ?? null,
-      });
-    } catch (error) {
-      results.push({ idType, id, success: false, error: error.message });
-    }
-  }
-  return results;
+  const payload = { id: patient.navigationId, accept: 1, facilityId, attachmentIds };
+  const result = await submitAcceptanceDecisionViaApi({ page, payload });
+  return [{
+    payload,
+    success: result.success,
+    httpStatus: result.requestClockSample?.httpStatus ?? null,
+    data: result.data ?? null,
+    error: result.error ?? null,
+  }];
 }

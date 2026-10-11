@@ -144,7 +144,7 @@ const renderCell = (column, value, row) => {
       return '<span class="empty-cell">—</span>';
     }
     const url = escapeHtml(`/db/decision/${encodeURIComponent(row.referralId)}`);
-    return `<button type="button" class="btn-link secondary" data-decision-url="${url}">Open + run decisions</button><pre class="decision-result" style="white-space:pre-wrap;max-width:400px"></pre>`;
+    return `<button type="button" class="btn-link secondary" data-decision-url="${url}">Approve facility</button><pre class="decision-result" style="white-space:pre-wrap;max-width:400px"></pre>`;
   }
   if (column === "openCase") {
     if (!row?.navigationId) return '<span class="empty-cell">—</span>';
@@ -493,11 +493,20 @@ const renderDbPage = ({ rows, filters = {} }) => {
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-decision-url]");
   if (!button || button.disabled) return;
+  const facilityId = prompt("Facility ID to approve (this is an approval action, not submitting your facility acceptance):");
+  if (facilityId === null) return;
+  const attachmentText = prompt("Approval attachment IDs, comma-separated (leave blank for an empty array):", "");
+  if (attachmentText === null) return;
+  const attachmentIds = attachmentText.split(",").map((id) => id.trim()).filter(Boolean);
   button.disabled = true;
   const output = button.nextElementSibling;
-  output.textContent = "Opening case and running both requests…";
+  output.textContent = "Opening case and submitting facility approval…";
   try {
-    const response = await fetch(button.dataset.decisionUrl, { method: "POST" });
+    const response = await fetch(button.dataset.decisionUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ facilityId: facilityId.trim(), attachmentIds }),
+    });
     const bodyText = await response.text();
     try {
       const result = JSON.parse(bodyText);
