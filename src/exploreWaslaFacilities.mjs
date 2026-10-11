@@ -2,28 +2,28 @@ import puppeteer from "puppeteer";
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { resolve, join } from "node:path";
 
-/** Prefer ten wins and ten losses, filling shortages from the other group. */
+/** Select up to twenty unique cases per outcome, without filling shortages. */
 export function selectExplorationCases(wonRows, lostRows) {
   const validId = (p) => /^\d+$/.test(String(p.navigationId));
   const won = wonRows.filter(validId);
   const lost = lostRows.filter((p) => validId(p) &&
     String(p.userActionName ?? "").trim().toLowerCase() === "accept");
   const candidates = [
-    ...won.slice(0, 10).map((patient) => ({ outcome: "won", patient })),
-    ...lost.slice(0, 10).map((patient) => ({ outcome: "lost", patient })),
-    ...lost.slice(10).map((patient) => ({ outcome: "lost", patient })),
-    ...won.slice(10).map((patient) => ({ outcome: "won", patient })),
+    ...won.map((patient) => ({ outcome: "won", patient })),
+    ...lost.map((patient) => ({ outcome: "lost", patient })),
   ];
   const seen = new Set();
-  return candidates.filter(({ patient }) => {
+  const counts = { won: 0, lost: 0 };
+  return candidates.filter(({ patient, outcome }) => {
     const id = String(patient.navigationId);
-    if (seen.has(id)) return false;
+    if (seen.has(id) || counts[outcome] >= 20) return false;
     seen.add(id);
+    counts[outcome]++;
     return true;
-  }).slice(0, 20);
+  });
 }
 
-/** Read-only facilities comparison for up to twenty cases from patients.db. */
+/** Read-only facilities comparison for up to forty cases from patients.db. */
 export default async function exploreWaslaFacilities() {
   if (!process.env.USER_PROFILE_PATH) throw new Error("USER_PROFILE_PATH is required.");
   await access(resolve("patients.db"));
@@ -33,7 +33,7 @@ export default async function exploreWaslaFacilities() {
     getPatientsFiltered({ claimed: "No", status: "7", limit: 2000 }),
   );
   if (!cases.length) throw new Error("No eligible cases found in patients.db.");
-  console.log(`Selected ${cases.length}/20 cases: ${cases.filter((c) => c.outcome === "won").length} won, ${cases.filter((c) => c.outcome === "lost").length} lost after acceptance.`);
+  console.log(`Selected ${cases.length}/40 cases: ${cases.filter((c) => c.outcome === "won").length}/20 won, ${cases.filter((c) => c.outcome === "lost").length}/20 lost after acceptance.`);
   const output = resolve(`results/facilities-exploration/${Date.now()}`);
   await mkdir(output, { recursive: true });
   let browser;
