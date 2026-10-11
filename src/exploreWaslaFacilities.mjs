@@ -1,39 +1,36 @@
 import puppeteer from "puppeteer";
 import { mkdir, writeFile, access } from "node:fs/promises";
 import { resolve, join } from "node:path";
+import Database from "better-sqlite3";
 
-/** Select up to twenty unique cases per outcome, without filling shortages. */
-export function selectExplorationCases(wonRows, lostRows) {
-  const validId = (p) => /^\d+$/.test(String(p.navigationId));
-  const won = wonRows.filter(validId);
-  const lost = lostRows.filter((p) => validId(p) &&
-    String(p.userActionName ?? "").trim().toLowerCase() === "accept");
-  const candidates = [
-    ...won.map((patient) => ({ outcome: "won", patient })),
-    ...lost.map((patient) => ({ outcome: "lost", patient })),
-  ];
+/** Every unique case with a usable navigation ID, regardless of outcome. */
+export function selectExplorationCases(rows) {
   const seen = new Set();
-  const counts = { won: 0, lost: 0 };
-  return candidates.filter(({ patient, outcome }) => {
-    const id = String(patient.navigationId);
-    if (seen.has(id) || counts[outcome] >= 20) return false;
+  return rows.filter((patient) => {
+    const id = String(patient.navigationId ?? "");
+    if (!/^\d+$/.test(id) || seen.has(id)) return false;
     seen.add(id);
-    counts[outcome]++;
     return true;
+  }).map((patient) => {
+    const action = String(patient.userActionName ?? "").trim().toLowerCase();
+    const outcome = patient.claimed === "Yes" ? "won"
+      : patient.claimed === "No" && Number(patient.status) === 7 && action === "accept"
+        ? "lost" : action === "reject" ? "rejected" : "other";
+    return { patient, outcome };
   });
 }
 
-/** Read-only facilities comparison for up to forty cases from patients.db. */
+/** Read-only facilities comparison for all cases in patients.db. */
 export default async function exploreWaslaFacilities() {
   if (!process.env.USER_PROFILE_PATH) throw new Error("USER_PROFILE_PATH is required.");
   await access(resolve("patients.db"));
-  const { getPatientsFiltered } = await import("./db.mjs");
-  const cases = selectExplorationCases(
-    getPatientsFiltered({ claimed: "Yes", limit: 2000 }),
-    getPatientsFiltered({ claimed: "No", status: "7", limit: 2000 }),
-  );
+  const database = new Database(resolve("patients.db"), { readonly: true, fileMustExist: true });
+  let allRows;
+  try { allRows = database.prepare("SELECT * FROM patients ORDER BY id DESC").all(); }
+  finally { database.close(); }
+  const cases = selectExplorationCases(allRows);
   if (!cases.length) throw new Error("No eligible cases found in patients.db.");
-  console.log(`Selected ${cases.length}/40 cases: ${cases.filter((c) => c.outcome === "won").length}/20 won, ${cases.filter((c) => c.outcome === "lost").length}/20 lost after acceptance.`);
+  console.log(`DB total: ${allRows.length} rows. Exploring ${cases.length} unique cases; ${allRows.length - cases.length} rows skipped (missing/invalid/duplicate navigation ID).`);
   const output = resolve(`results/facilities-exploration/${Date.now()}`);
   await mkdir(output, { recursive: true });
   let browser;
@@ -97,6 +94,17 @@ export default async function exploreWaslaFacilities() {
             dailyConfirmedCount: f.dailyConfirmedCount ?? null,
             isApprovalCandidate: f.isApprovalCandidate ?? null,
             status: f.status ?? null,
+            acceptedAt: f.acceptedAt ?? null,
+            facilityAcceptanceAttachmentIds: (f.attachments || [])
+              .map((attachment) => attachment.id),
+            tpaAcceptanceAttachment: f.tpaAcceptanceAttachment
+              ? {
+                  id: f.tpaAcceptanceAttachment.id,
+                  uploadedAt: f.tpaAcceptanceAttachment.uploadedAt ?? null,
+                }
+              : null,
+            // Stored approval attachment, not a capture of the POST body.
+            approvalAttachmentEvidence: "facilities response; decision request not captured",
           })),
         });
         console.log(`${id}: HTTP ${response.httpStatus}; saved ${file}`);
@@ -106,7 +114,33 @@ export default async function exploreWaslaFacilities() {
       }
     }
   } finally {
-    await writeFile(join(output, "summary.json"), JSON.stringify({ collectedAt: new Date().toISOString(), results }, null, 2));
+    const winnerCounts = new Map();
+    let noConfirmedWinner = 0;
+    let multipleConfirmedWinners = 0;
+    for (const result of results.filter((r) => r.success)) {
+      const winners = result.facilities.filter((f) => [1, 4].includes(Number(f.status)));
+      if (!winners.length) { noConfirmedWinner++; continue; }
+      if (winners.length !== 1) { multipleConfirmedWinners++; continue; }
+      const winner = winners[0];
+      const key = String(winner.facilityId);
+      const entry = winnerCounts.get(key) || { facilityId: key, facilityName: winner.facilityName, count: 0 };
+      entry.count++;
+      winnerCounts.set(key, entry);
+    }
+    const statistics = {
+      dbRows: allRows.length,
+      eligibleUniqueCases: cases.length,
+      skippedRows: allRows.length - cases.length,
+      attemptedCases: results.length,
+      successfulReads: results.filter((r) => r.success).length,
+      failedReads: results.filter((r) => !r.success).length,
+      noConfirmedWinner,
+      multipleConfirmedWinners,
+      winners: [...winnerCounts.values()].sort((a, b) => b.count - a.count),
+      scope: "Cases stored in this DB; not all portal cases. Winner inferred from status 1 or 4 at collection time.",
+    };
+    await writeFile(join(output, "summary.json"), JSON.stringify({ collectedAt: new Date().toISOString(), statistics, results }, null, 2));
+    console.log(JSON.stringify(statistics, null, 2));
     await browser?.close();
     console.log(`Exploration results: ${output}`);
   }
