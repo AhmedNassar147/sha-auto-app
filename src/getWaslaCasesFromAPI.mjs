@@ -74,6 +74,7 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
       };
 
       try {
+        const listRequestStartedAtMs = Date.now();
         const res = await fetch(url, {
           method: "POST",
           credentials: "include",
@@ -91,7 +92,11 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
           };
         }
 
+        const listHeadersReceivedAtMs = Date.now();
+        const listServerDate = res.headers.get("Date");
         const json = await res.json();
+        // Capture inside the frame before Node handoff or per-case processing.
+        const listReceivedAtMs = Date.now();
         const message = json?.message || "listing api didn't return a message";
         const isSuccess = message === "Success";
 
@@ -107,7 +112,15 @@ const getWaslaCasesFromAPI = async (frame, options = {}) => {
 
         return {
           success: isSuccess,
-          patients: json?.data || [],
+          patients: (json?.data || []).map((patient) => ({
+            ...patient,
+            listReceiptTiming: {
+              listRequestStartedAtMs,
+              listHeadersReceivedAtMs,
+              listReceivedAtMs,
+              listServerDate,
+            },
+          })),
           totalRowsCount: json?.totalRowsCount ?? 0,
           needsLogin: false,
         };

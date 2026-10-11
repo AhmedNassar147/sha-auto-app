@@ -373,12 +373,32 @@ const getWaslaPatientReferralDataFromAPI = async (
   );
 
   result.detailsClockSample = describeClockSample(result.detailsClockSample);
+  // Keep the pre-action snapshot in the timing report. These fields are
+  // evidence only: acceptance-cycle times may describe a different window
+  // from the facility review window, so never use them to schedule a request.
+  result.referralWindowSnapshot = rawResponse
+    ? {
+        broadcastedAt: rawResponse.broadcastedAt ?? null,
+        currentAcceptanceCycleStartedAt:
+          rawResponse.currentAcceptanceCycleStartedAt ?? null,
+        currentAcceptanceCycleEndsAt:
+          rawResponse.currentAcceptanceCycleEndsAt ?? null,
+        firstAcceptanceCycleEnded:
+          rawResponse.firstAcceptanceCycleEnded ?? null,
+        distributionPhase: rawResponse.distributionPhase ?? null,
+        assignmentTime: rawResponse.assignmentTime ?? null,
+        confirmedAt: rawResponse.confirmedAt ?? null,
+        status: rawResponse.status ?? null,
+        statusName: rawResponse.statusName ?? null,
+      }
+    : null;
   await writeReferralTimingEvent({
     type: "case-read",
     referralId,
     navigationId,
     clockSample: result.detailsClockSample,
     detailsAvailable: !result.patientDetailsError,
+    referralWindowSnapshot: result.referralWindowSnapshot,
   });
 
   if (rawResponse) {

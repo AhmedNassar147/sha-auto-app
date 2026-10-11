@@ -507,6 +507,8 @@ const handleSubmitReferral = (options) => async (patient) => {
     broadcastedAt,
     facilityReviewWindowMinutes,
     detailsClockSample,
+    receiptTiming,
+    referralWindowSnapshot,
     referralEndTimestamp,
     randomFileName,
     patientName,
@@ -635,6 +637,8 @@ const handleSubmitReferral = (options) => async (patient) => {
       deadlineSource:
         "broadcastedAt parsed in runtime timezone + review minutes",
       detailsClockSample: detailsClockSample ?? null,
+      receiptTiming: receiptTiming ?? null,
+      referralWindowSnapshot: referralWindowSnapshot ?? null,
       preUpload: {
         success: uploadResult.success,
         uploadIgnored: Boolean(uploadResult.uploadIgnored),

@@ -11,7 +11,6 @@ import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import speakText from "./speakText.mjs";
 import createReloadAndCheckIfShouldCreateNewPage from "./createReloadAndCheckIfShouldCreateNewPage.mjs";
-import closePageSafely from "./closePageSafely.mjs";
 import handleLockedOutRetry from "./handleLockedOutRetry.mjs";
 import sleep from "./sleep.mjs";
 import checkReferralSelectedStatus from "./checkReferralSelectedStatus.mjs";
@@ -87,30 +86,6 @@ const waitForWaitingCountWithInterval = async ({
     pageSize: isPending ? 20 : 10,
     tab,
   };
-
-  // if (!patientsStore.hasReloadListener()) {
-  //   patientsStore.on("forceReloadHomePage", async () => {
-  //     createConsoleMessage(`📢 Received forceReloadHomePage event`, "info");
-  //     if (page) {
-  //       try {
-  //         await pauseController.waitIfPaused();
-  //         await page.reload({ waitUntil: "domcontentloaded" });
-  //         createConsoleMessage(`🔄 Page reloaded successfully from event.`);
-  //       } catch (err) {
-  //         createConsoleMessage(
-  //           err,
-  //           "error",
-  //           `❌ Error during manual homepage reload:`,
-  //         );
-  //       }
-  //     } else {
-  //       createConsoleMessage(
-  //         `⚠️ forceReloadHomePage event fired but page is null`,
-  //         "warn",
-  //       );
-  //     }
-  //   });
-  // }
 
   while (true) {
     try {

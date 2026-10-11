@@ -5,13 +5,13 @@
  */
 import generateAcceptancePdfLetters from "./generatePdfs.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
-import sleep from "./sleep.mjs";
 import insureFetchedPatientData from "./insureFetchedPatientData.mjs";
 import formateDateToString from "./formateDateToString.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import generateRandomFileName from "./generateRandomFileName.mjs";
+import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
 import { cutoffTimeMs, LETTER_LAYOUT_NAMES } from "./constants.mjs";
 
@@ -126,6 +126,51 @@ const processCollectingPatients = async ({
 
       createConsoleMessage("info", patient, "patient");
 
+      const receivedAtMs = patient.listReceiptTiming?.listReceivedAtMs;
+      const broadcastedAtParsedMs = broadcastedAt
+        ? new Date(broadcastedAt).getTime()
+        : NaN;
+      const receiptTiming = {
+        ...patient.listReceiptTiming,
+        broadcastedAtRaw: broadcastedAt ?? null,
+        broadcastedAtParsedMs: Number.isFinite(broadcastedAtParsedMs)
+          ? broadcastedAtParsedMs
+          : null,
+        parserTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        receivedSaudiTime: Number.isFinite(receivedAtMs)
+          ? new Intl.DateTimeFormat("en-GB", {
+              timeZone: "Asia/Riyadh",
+              hour12: false,
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+              fractionalSecondDigits: 3,
+            }).format(receivedAtMs)
+          : null,
+        receivedMillisecondPart: Number.isFinite(receivedAtMs)
+          ? ((receivedAtMs % 1000) + 1000) % 1000
+          : null,
+        receivedAfterBroadcastMs:
+          Number.isFinite(receivedAtMs) &&
+          Number.isFinite(broadcastedAtParsedMs)
+            ? receivedAtMs - broadcastedAtParsedMs
+            : null,
+        collectionStartedAtMs: Date.now(),
+        measurement:
+          "list body received locally; includes polling/network delay",
+      };
+      await writeReferralTimingEvent({
+        type: "case-received",
+        referralId,
+        navigationId,
+        ...receiptTiming,
+      });
+      createConsoleMessage(
+        "info",
+        `Case ${navigationId}: received=${receiptTiming.receivedSaudiTime ?? "unknown"} Saudi, millisecond=${receiptTiming.receivedMillisecondPart ?? "unknown"}, broadcastedAt=${broadcastedAt ?? "unknown"}, receivedAfterBroadcastMs=${receiptTiming.receivedAfterBroadcastMs ?? "unknown"}`,
+        "referral timing",
+      );
+
       // mark as we found at least one new patient (before processing)
       if (!newPatientAdded) newPatientAdded = true;
 
@@ -185,6 +230,7 @@ const processCollectingPatients = async ({
       const finalData = {
         referralId,
         createdAt,
+        receiptTiming,
         randomFileName,
         ...getWaslaCaseWindow(
           broadcastedAt,
@@ -225,8 +271,6 @@ const processCollectingPatients = async ({
         generateAcceptancePdfLetters(browser, [finalData], true, letterType),
         generateAcceptancePdfLetters(browser, [finalData], false, letterType),
       ]);
-
-      await sleep(2000 + Math.random() * 2000);
     }
   } catch (err) {
     createConsoleMessage(
@@ -235,8 +279,6 @@ const processCollectingPatients = async ({
       `🛑 Fatal error during processing patients:`,
     );
   }
-
-  await sleep(2500 + Math.random() * 3000);
 
   return newPatientAdded;
 };
