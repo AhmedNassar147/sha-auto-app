@@ -298,6 +298,12 @@ export const LETTER_LAYOUT_TYPES = {
 };
 
 export const LETTER_LAYOUT_NAMES = Object.values(LETTER_LAYOUT_TYPES);
+// Temporarily paused for new letters based on the observed outcome sample.
+// Template definitions remain available for historical records.
+export const ENABLED_LETTER_LAYOUT_NAMES = LETTER_LAYOUT_NAMES.filter(
+  (name) =>
+    ![LETTER_LAYOUT_TYPES.FORMAL, LETTER_LAYOUT_TYPES.STANDARD].includes(name),
+);
 
 export const LETTER_LAYOUT_ABBREVIATIONS = {
   [LETTER_LAYOUT_TYPES.STANDARD]: "STD",

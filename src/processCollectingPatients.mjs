@@ -9,11 +9,11 @@ import insureFetchedPatientData from "./insureFetchedPatientData.mjs";
 import formateDateToString from "./formateDateToString.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
-import randomArrayItem from "./randomArrayItem.mjs";
+import chooseEnabledLetterLayout from "./chooseEnabledLetterLayout.mjs";
 import generateRandomFileName from "./generateRandomFileName.mjs";
 import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
-import { cutoffTimeMs, LETTER_LAYOUT_NAMES } from "./constants.mjs";
+import { cutoffTimeMs } from "./constants.mjs";
 
 // Wasla gives an exact broadcastedAt timestamp directly on the facility/tabs
 // list row (confirmed against the real weslah.seha.sa bundle,
@@ -219,7 +219,7 @@ const processCollectingPatients = async ({
         }
       }
 
-      const letterType = LETTER_TYPE || randomArrayItem(LETTER_LAYOUT_NAMES);
+      const letterType = chooseEnabledLetterLayout(LETTER_TYPE);
 
       const randomFileName = generateRandomFileName({
         patientName,

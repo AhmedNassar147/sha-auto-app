@@ -20,7 +20,7 @@ import {
 
 const COLUMN_LABELS = {
   openCase: "",
-  openFacilityResponses: "Facility Responses",
+  facilityRes: "Facility Responses",
   referralDate: "Referral Date",
   navigationId: "Navigation ID",
   referralId: "Referral ID",
@@ -157,7 +157,7 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
-  if (column === "openFacilityResponses") {
+  if (column === "facilityRes") {
     if (!row?.navigationId) return '<span class="empty-cell">—</span>';
     const url = escapeHtml(
       `${WASLA_APP_URL}/referral-cases/view/${encodeURIComponent(row.navigationId)}`,
@@ -169,9 +169,10 @@ const renderCell = (column, value, row) => {
       const facilities = row.fastestTwo ? JSON.parse(row.fastestTwo) : [];
       const facility = facilities[column === "fastestFirst" ? 0 : 1];
       if (!facility) return '<span class="empty-cell">—</span>';
-      return `<div class="ranking-name">${escapeHtml(facility.facilityName)}</div>` +
-        `<div class="ranking-id">ID ${escapeHtml(facility.facilityId)}</div>` +
-        `<div class="ranking-time">${escapeHtml(facility.acceptedAt)}</div>`;
+      return (
+        `<div class="ranking-name" title="Facility ID: ${escapeHtml(facility.facilityId)}">${escapeHtml(facility.facilityName)}</div>` +
+        `<div class="ranking-time">${escapeHtml(facility.acceptedAt)}</div>`
+      );
     } catch {
       return '<span class="empty-cell">Invalid stored timing data</span>';
     }
@@ -268,9 +269,10 @@ const renderRows = (rows, selectedReferralId) => {
 
       return (
         `<tr class="${rowClasses}">` +
-        COLUMNS.map((col) => `<td${["fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`).join(
-          "",
-        ) +
+        COLUMNS.map(
+          (col) =>
+            `<td${["fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`,
+        ).join("") +
         `</tr>`
       );
     })
@@ -301,7 +303,13 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.claimed] - "Yes" or "No".
  * @returns {string}
  */
-const renderDbPage = ({ rows, filters = {}, winnerStatistics = null, letterStatistics = null, specialties = [] }) => {
+const renderDbPage = ({
+  rows,
+  filters = {},
+  winnerStatistics = null,
+  letterStatistics = null,
+  specialties = [],
+}) => {
   const {
     referralId = "",
     patientNationalId = "",
@@ -444,7 +452,6 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null, letterStati
     vertical-align: top;
   }
   .ranking-name { font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
-  .ranking-id { color: var(--muted); font-size: 11px; margin: 3px 0; }
   .ranking-time { white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 1.5; }
   tbody tr:nth-child(even) { background: var(--row-alt); }
   tbody tr:hover { background: var(--row-hover); }
@@ -542,19 +549,23 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null, letterStati
     <p>Total cases: ${winnerStatistics.total} · Checked: ${winnerStatistics.checked} · Not checked: ${winnerStatistics.unchecked} · No unique winner: ${winnerStatistics.noWinner}</p>
     <p>Percentages use ${winnerStatistics.resolved} cases with a known unique winner. These are local DB cases, not all portal cases.</p>
     <table><thead><tr><th>Facility</th><th>Cases won</th><th>Share</th></tr></thead><tbody>
-    ${winnerStatistics.winners.map((item) => `<tr><td>${escapeHtml(item.facilityName)} (${escapeHtml(item.facilityId)})</td><td>${item.count}</td><td>${item.percent}%</td></tr>`).join("") || '<tr><td colspan="3">No stored winners yet. Run yarn fill-db.</td></tr>'}
+    ${winnerStatistics.winners.map((item) => `<tr><td title="Facility ID: ${escapeHtml(item.facilityId)}">${escapeHtml(item.facilityName)}</td><td>${item.count}</td><td>${item.percent}%</td></tr>`).join("") || '<tr><td colspan="3">No stored winners yet. Run yarn fill-db.</td></tr>'}
     </tbody></table></section>`
       : ""
   }
 
-  ${letterStatistics ? `<section style="background:var(--panel);padding:18px;border:1px solid var(--panel-border);border-radius:12px;margin-bottom:20px">
+  ${
+    letterStatistics
+      ? `<section style="background:var(--panel);padding:18px;border:1px solid var(--panel-border);border-radius:12px;margin-bottom:20px">
     <h2>Letter type analysis — acceptance cases only</h2>
     <p>${letterStatistics.total} acceptance cases matching current filters. Rejected/withdrawn rows excluded. Win rate = won / (won + lost); unresolved cases excluded from the percentage.</p>
     <table><thead><tr><th>Letter type</th><th>Acceptance cases</th><th>Won</th><th>Lost</th><th>Unresolved</th><th>Win rate</th></tr></thead><tbody>
     ${letterStatistics.groups.map((item) => `<tr><td>${escapeHtml(item.letterType)}</td><td>${item.total}</td><td>${item.won}</td><td>${item.lost}</td><td>${item.unresolved}</td><td>${item.winRate === null ? "—" : item.winRate + "%"}</td></tr>`).join("") || '<tr><td colspan="6">No acceptance cases match the filters.</td></tr>'}
     </tbody></table>
     <p>This comparison does not prove that the letter type caused a win or loss.</p>
-  </section>` : ""}
+  </section>`
+      : ""
+  }
 
   <div class="meta-row">Total Results ${rows.length}</div>
 

@@ -7,6 +7,7 @@ import { unlink } from "fs/promises";
 import os from "os";
 import pLimit from "p-limit";
 import generateAcceptanceLetterHtml from "./generateAcceptanceLetterHtml.mjs";
+import chooseEnabledLetterLayout from "./chooseEnabledLetterLayout.mjs";
 import compressPdf from "./compressPdf.mjs";
 import {
   USER_ACTION_TYPES,
@@ -43,7 +44,9 @@ const generateAcceptancePdfLetters = async (
         clientInPdf: CLIENT_IN_PDF_NAME || "",
         clientMangerName: CLIENT_MANAGER_NAME || "",
         clientManagerPhone: CLIENT_MANAGER_PHONE || "",
-        letterType: LETTER_TYPE || letterType,
+        letterType: chooseEnabledLetterLayout(
+          LETTER_TYPE || letterType || patient.letterType,
+        ),
       }); // Assume you already have this
       await page.setContent(html, { waitUntil: "domcontentloaded" });
 
