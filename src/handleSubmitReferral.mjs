@@ -598,9 +598,11 @@ const handleSubmitReferral = (options) => async (patient) => {
       : null;
 
     const currentLeftTime = referralEndTimestamp - Date.now();
-
-    if (currentLeftTime > 1000) {
-      await sleep(currentLeftTime - 1000);
+    // Observed uploads reached 1460ms: a 1000ms lead delayed the action.
+    // Prepare earlier while keeping the final request's target unchanged.
+    const preUploadLeadMs = 1700;
+    if (currentLeftTime > preUploadLeadMs) {
+      await sleep(currentLeftTime - preUploadLeadMs);
     }
 
     // Inpatient accept never attaches a file (confirmed live - see
@@ -620,8 +622,10 @@ const handleSubmitReferral = (options) => async (patient) => {
     // First attempt stays at +120ms. The first retry targets the configured
     // buffer after the boundary; response time counts toward that target.
     const firstAttemptBufferMs = 120;
-    const leftoverBufferForFirstRetryMs =
-      Math.max(0, SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs);
+    const leftoverBufferForFirstRetryMs = Math.max(
+      0,
+      SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs,
+    );
 
     const submissionContext = {
       referralId,
@@ -643,6 +647,12 @@ const handleSubmitReferral = (options) => async (patient) => {
         success: uploadResult.success,
         uploadIgnored: Boolean(uploadResult.uploadIgnored),
         durationMs: uploadDurationMs,
+        configuredLeadMs: preUploadLeadMs,
+        startedAtMs: uploadStartTime,
+        finishedAtMs: uploadStartTime + uploadDurationMs,
+        startedAfterEndMs: uploadStartTime - referralEndTimestamp,
+        finishedAfterEndMs:
+          uploadStartTime + uploadDurationMs - referralEndTimestamp,
       },
       firstAttemptBufferMs,
       leftoverBufferForFirstRetryMs,
