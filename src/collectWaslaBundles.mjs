@@ -23,6 +23,8 @@ if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
   const sources = new Map();
   const pending = new Set();
   const failed = new Map();
+  const resourceUrls = new Set();
+  const visitedPages = [];
   let browser;
   let page;
   let responseHandler;
@@ -71,6 +73,23 @@ if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
       task.finally(() => pending.delete(task));
     };
     page.on("response", responseHandler);
+    const collectPageResources = async () => {
+      await page.waitForNetworkIdle({ idleTime: 1000, timeout: 15_000 }).catch(() => {
+        console.log("Background requests are still active; collecting loaded assets and their imports.");
+      });
+      await Promise.allSettled([...pending]);
+      const resources = await page.evaluate(() => [
+        ...performance.getEntriesByType("resource").map((e) => e.name),
+        ...Array.from(document.querySelectorAll("script[src],link[href]"), (e) => e.src || e.href),
+      ]);
+      for (const url of resources.filter(isAsset)) resourceUrls.add(url);
+      visitedPages.push(page.url());
+    };
+    console.log("Collecting Wasla home-page bundles…");
+    await page.goto(`${origin}/`, { waitUntil: "domcontentloaded", timeout: 60_000 });
+    await collectPageResources();
+
+    console.log(`Collecting case ${caseId} bundles…`);
     // Observe before navigation so even a fast/cached details response counts.
     const detailsLoaded = page.waitForResponse((response) => {
       const url = new URL(response.url());
@@ -85,17 +104,9 @@ if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
       throw new Error(`Case details returned HTTP ${details.response.status()}; bundle capture is incomplete.`);
     }
     await details.response.text();
-    await page.waitForNetworkIdle({ idleTime: 1000, timeout: 15_000 }).catch(() => {
-      console.log("Background requests are still active; collecting loaded assets and their imports.");
-    });
-    await Promise.allSettled([...pending]);
-
-    // Include script/style resources already loaded, including cached assets.
-    const resources = await page.evaluate(() => [
-      ...performance.getEntriesByType("resource").map((e) => e.name),
-      ...Array.from(document.querySelectorAll("script[src],link[href]"), (e) => e.src || e.href),
-    ]);
-    const queue = new Set(resources.filter(isAsset));
+    await collectPageResources();
+    // Preserve home-page resources even though navigation resets performance.
+    const queue = new Set(resourceUrls);
     const scanned = new Set();
     let downloaded = 0;
     for (;;) {
@@ -136,6 +147,7 @@ if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
     await Promise.allSettled([...pending]);
     await writeFile(join(output, "manifest.json"), JSON.stringify({
       caseId, collectedAt: new Date().toISOString(),
+      visitedPages,
       files: [...manifest.values()],
       failures: [...failed].map(([url, error]) => ({ url, error })),
     }, null, 2)).catch(() => {});
