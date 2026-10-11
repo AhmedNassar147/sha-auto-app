@@ -12,7 +12,8 @@
     "normalize-status": "node ./src/normalizeStatus.mjs",
     "clear-claimed": "node ./src/clearClaimedStatus.mjs",
     "calibrate-clock": "node ./src/calibrateServerClockDrift.mjs",
-    "collect-bundles": "node ./src/collectWaslaBundles.mjs"
+    "collect-bundles": "node ./src/collectWaslaBundles.mjs",
+    "explore-facility-cases": "yarn collect-bundles --explore-f"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

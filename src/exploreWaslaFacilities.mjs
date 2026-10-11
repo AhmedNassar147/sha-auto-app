@@ -10,8 +10,11 @@ export default async function exploreWaslaFacilities() {
   const won = getPatientsFiltered({ claimed: "Yes", limit: 2000 })
     .find((p) => /^\d+$/.test(String(p.navigationId)));
   const lost = getPatientsFiltered({ claimed: "No", status: "7", limit: 2000 })
-    .find((p) => /^\d+$/.test(String(p.navigationId)));
-  if (!won || !lost) throw new Error("Need one claimed=Yes case and one claimed=No/status=7 case in patients.db.");
+    .find((p) =>
+      /^\d+$/.test(String(p.navigationId)) &&
+      String(p.userActionName ?? "").trim().toLowerCase() === "accept",
+    );
+  if (!won || !lost) throw new Error("Need one claimed=Yes case and one claimed=No/status=7/userActionName=accept case in patients.db.");
   const cases = [{ outcome: "won", patient: won }, { outcome: "lost", patient: lost }];
   const output = resolve(`results/facilities-exploration/${Date.now()}`);
   await mkdir(output, { recursive: true });
