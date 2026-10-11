@@ -4,29 +4,21 @@ import puppeteer from "puppeteer";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { createHash } from "node:crypto";
-import { createInterface } from "node:readline/promises";
 
 // Saves source files only. Downloaded bundles are never imported or executed
 // by this script; visiting the portal runs its normal UI code in Chrome.
 const args = process.argv.slice(2);
-const option = (name) => {
-  const i = args.indexOf(name);
-  return i < 0 ? undefined : args[i + 1];
-};
-const caseId = option("--case");
-if (!caseId || !/^\d+$/.test(caseId)) {
-  console.error("Usage: npm run collect-bundles -- --case 13813 [--profile PATH] [--out PATH] [--browser-url URL]");
+const [caseId] = args;
+if (args.length !== 1 || !caseId || !/^\d+$/.test(caseId)) {
+  console.error("Usage: yarn collect-bundles 13813");
+  process.exitCode = 1;
+} else if (!process.env.USER_PROFILE_PATH) {
+  console.error("USER_PROFILE_PATH is required to reuse the app's logged-in browser profile.");
   process.exitCode = 1;
 } else {
   const origin = "https://weslah.seha.sa";
-  const output = resolve(option("--out") || `results/bundles/${Date.now()}`);
-  const profile = resolve(
-    option("--profile") ||
-      (process.env.USER_PROFILE_PATH
-        ? join(process.env.USER_PROFILE_PATH, "Profile 1")
-        : "results/bundle-browser-profile"),
-  );
-  const endpoint = option("--browser-url");
+  const output = resolve(`results/bundles/${caseId}-${Date.now()}`);
+  const profile = resolve(join(process.env.USER_PROFILE_PATH, "Profile 1"));
   const manifest = new Map();
   const sources = new Map();
   const pending = new Set();
@@ -34,7 +26,6 @@ if (!caseId || !/^\d+$/.test(caseId)) {
   let browser;
   let page;
   let responseHandler;
-  const rl = createInterface({ input: process.stdin, output: process.stdout });
   const isAsset = (url) => {
     try {
       const u = new URL(url);
@@ -56,14 +47,12 @@ if (!caseId || !/^\d+$/.test(caseId)) {
   };
   try {
     await mkdir(output, { recursive: true });
-    console.log(endpoint
-      ? "Connecting to Chrome; the existing browser will remain open."
-      : `Opening browser profile: ${profile}\nStop the bot first if it uses this same profile.`);
-    browser = endpoint
-      ? await puppeteer.connect({ browserURL: endpoint })
-      : await puppeteer.launch({
+    console.log(`Opening the app's saved browser session for case ${caseId}.`);
+    browser = await puppeteer.launch({
           headless: false,
           userDataDir: profile,
+          defaultViewport: null,
+          pipe: true,
           ...(process.env.CHROME_EXECUTABLE_PATH
             ? { executablePath: process.env.CHROME_EXECUTABLE_PATH }
             : {}),
@@ -82,10 +71,23 @@ if (!caseId || !/^\d+$/.test(caseId)) {
       task.finally(() => pending.delete(task));
     };
     page.on("response", responseHandler);
-    await page.goto("https://seha.sa/#/Dashboard", { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await rl.question("Complete login if needed, open Services > Wasla so its session is ready, then press Enter here. ");
+    // Observe before navigation so even a fast/cached details response counts.
+    const detailsLoaded = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.origin === origin && url.pathname === `/api/referrals/${caseId}`;
+    }, { timeout: 30_000 }).then((response) => ({ response }), (error) => ({ error }));
     await page.goto(`${origin}/facility-referrals/view/${caseId}`, { waitUntil: "domcontentloaded", timeout: 60_000 });
-    await rl.question("Wait for the case page to finish rendering, then press Enter to collect the remaining bundle imports. ");
+    const details = await detailsLoaded;
+    if (details.error) {
+      throw new Error("The case details did not load. Check that the saved Wasla session is active and this case is accessible.");
+    }
+    if (!details.response.ok()) {
+      throw new Error(`Case details returned HTTP ${details.response.status()}; bundle capture is incomplete.`);
+    }
+    await details.response.text();
+    await page.waitForNetworkIdle({ idleTime: 1000, timeout: 15_000 }).catch(() => {
+      console.log("Background requests are still active; collecting loaded assets and their imports.");
+    });
     await Promise.allSettled([...pending]);
 
     // Include script/style resources already loaded, including cached assets.
@@ -125,6 +127,9 @@ if (!caseId || !/^\d+$/.test(caseId)) {
     console.log(`Saved ${manifest.size} assets; ${failed.size} failed. Folder: ${output}`);
   } catch (error) {
     console.error(error.message);
+    if (/already running|ProcessSingleton|SingletonLock/i.test(error.message)) {
+      console.error("Stop the bot/Chrome using USER_PROFILE_PATH, then rerun this command. The saved login is retained.");
+    }
     process.exitCode = 1;
   } finally {
     if (page && responseHandler) page.off("response", responseHandler);
@@ -134,12 +139,8 @@ if (!caseId || !/^\d+$/.test(caseId)) {
       files: [...manifest.values()],
       failures: [...failed].map(([url, error]) => ({ url, error })),
     }, null, 2)).catch(() => {});
-    rl.close();
     if (browser) {
-      if (endpoint) {
-        await page?.close().catch(() => {});
-        browser.disconnect();
-      } else await browser.close();
+      await browser.close();
     }
   }
 }
