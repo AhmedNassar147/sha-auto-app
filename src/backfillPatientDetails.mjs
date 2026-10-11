@@ -50,6 +50,7 @@ import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import collectCaseCompetition from "./collectCaseCompetition.mjs";
+import retryWaslaRead from "./retryWaslaRead.mjs";
 import sleep from "./sleep.mjs";
 import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 
@@ -188,7 +189,7 @@ try {
 
   const {
     success: frameReady,
-    frame,
+    frame: initialFrame,
     message: frameMessage,
   } = await getWaslaReferralFrame(newPage);
 
@@ -199,6 +200,21 @@ try {
 
   let updatedCount = 0;
   let skippedCount = 0;
+  let frame = initialFrame;
+  let competitionUpdatedCount = 0;
+  const competitionFailures = [];
+  const detailsFailures = [];
+  const readWithRetry = (referralId, label, read) => retryWaslaRead({
+    read: () => read(frame),
+    refreshContext: async () => {
+      const fresh = await getWaslaReferralFrame(newPage);
+      if (!fresh.success || !fresh.frame) throw new Error(fresh.message || "Wasla frame unavailable");
+      frame = fresh.frame;
+    },
+    onRetry: ({ attempt, error }) => console.warn(
+      `referralId=${referralId} ${label} retry ${attempt + 1}/3 after transient error: ${error}`,
+    ),
+  });
 
   for (const row of rowsToProcess) {
     const { referralId, navigationId } = row;
@@ -222,18 +238,18 @@ try {
     // in the details fetch below doesn't also throw away a confirmation
     // this already found.
     const claimedStatusUpdate = {};
-    const competition = await collectCaseCompetition(frame, row);
+    const competition = await readWithRetry(referralId, "facilities", (context) =>
+      collectCaseCompetition(context, row));
     if (!competition.success) {
+      competitionFailures.push(referralId);
       console.warn(
         `referralId=${referralId} facilities backfill failed: ${competition.error}`,
       );
-    }
+    } else competitionUpdatedCount++;
 
     if (needsClaimedStatusRecheck) {
-      const { patients: ordersPatients } = await getWaslaCasesFromAPI(frame, {
-        searchReferralID: referralId,
-        tab: 2,
-      }).catch(() => ({ patients: [] }));
+      const { patients: ordersPatients } = await readWithRetry(referralId, "status", (context) =>
+        getWaslaCasesFromAPI(context, { searchReferralID: referralId, tab: 2 }));
 
       const foundOrder = ordersPatients?.find(
         (patient) => `${patient.referralId}` === String(referralId),
@@ -273,18 +289,17 @@ try {
     // outside the browser-side try/catch entirely. Caught here the same way
     // so one bad row's transient navigation doesn't take down the rest of
     // the batch.
-    const patientData = await getWaslaPatientReferralDataFromAPI(
-      frame,
+    const patientData = await readWithRetry(referralId, "details", (context) => getWaslaPatientReferralDataFromAPI(
+      context,
       navigationId,
       referralId,
       true, // skippAttachments - this script no longer caches the case report locally
-    ).catch((error) => ({
-      patientDetailsError: error?.message || String(error),
-    }));
+    ));
 
     const { patientDetailsError } = patientData || {};
 
     if (patientDetailsError || !patientData) {
+      detailsFailures.push(referralId);
       if (claimedStatusUpdate.arrived || claimedStatusUpdate.status) {
         updatePatients({ referralId, ...claimedStatusUpdate });
         console.log(
@@ -296,7 +311,7 @@ try {
       }
 
       console.warn(
-        `referralId=${referralId} fetch failed: ${patientDetailsError}`,
+        `referralId=${referralId} details failed: ${patientDetailsError}; facilities=${competition.success ? "updated" : "FAILED"}`,
       );
       continue;
     }
@@ -332,7 +347,7 @@ try {
     });
 
     console.log(
-      `referralId=${referralId} updated${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status === WITHDRAWN_STATUS_CODE ? " (withdrawal confirmed)" : ""}.`,
+      `referralId=${referralId} details updated; facilities=${competition.success ? "updated" : "FAILED"}${claimedStatusUpdate.arrived ? " (arrived confirmed)" : ""}${claimedStatusUpdate.status === WITHDRAWN_STATUS_CODE ? " (withdrawal confirmed)" : ""}.`,
     );
     updatedCount++;
 
@@ -340,8 +355,13 @@ try {
   }
 
   console.log(
-    `Done. updated=${updatedCount} skipped=${skippedCount} total=${rowsToProcess.length}`,
+    `Done. updated=${updatedCount} skipped=${skippedCount} facilitiesUpdated=${competitionUpdatedCount} facilitiesFailed=${competitionFailures.length} detailsFailed=${detailsFailures.length} total=${rowsToProcess.length}`,
   );
+  if (competitionFailures.length || detailsFailures.length) {
+    const failedIds = [...new Set([...competitionFailures, ...detailsFailures])];
+    console.warn(`Retry incomplete cases: yarn fill-db ${failedIds.join(" ")}`);
+    process.exitCode = 1;
+  }
 } finally {
   await browser.close();
 }
