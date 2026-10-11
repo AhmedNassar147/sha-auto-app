@@ -566,6 +566,7 @@ const FILTERABLE_LIKE_COLUMNS = [
   "referralId",
   "patientNationalId",
   "navigationId",
+  "specialty",
 ];
 
 /**
@@ -573,6 +574,7 @@ const FILTERABLE_LIKE_COLUMNS = [
  * @param {string} [filters.referralId] - Partial match.
  * @param {string} [filters.patientNationalId] - Partial match.
  * @param {string} [filters.navigationId] - Partial match.
+ * @param {string} [filters.specialty] - Partial match.
  * @param {string} [filters.status] - Exact match.
  * @param {string} [filters.referralDate] - "YYYY-MM-DD" - matches that
  *   whole calendar day (prefix match). This is the real referral-creation
@@ -588,13 +590,14 @@ const getPatientsFiltered = ({
   referralId,
   patientNationalId,
   navigationId,
+  specialty,
   status,
   referralDate,
   paid,
   claimed,
   limit = 500,
 } = {}) => {
-  const values = { referralId, patientNationalId, navigationId };
+  const values = { referralId, patientNationalId, navigationId, specialty };
   const clauses = [];
   const params = {};
 

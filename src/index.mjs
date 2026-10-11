@@ -47,6 +47,7 @@ import {
   getPatientsFiltered,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
+import buildCasesExcelReport from "./buildCasesExcelReport.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
 import handleUserActionOnCase from "./handleUserActionOnCase.mjs";
 import sendNtfyMessage from "./sendNtfyMessage.mjs";
@@ -344,6 +345,10 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
 
     const app = express();
     app.use(express.json());
+    // The /db page's export-to-Excel button is a plain HTML form POST
+    // (application/x-www-form-urlencoded), not JSON - needed to read its
+    // filter fields back out of req.body.
+    app.use(express.urlencoded({ extended: true }));
     app.disable("x-powered-by");
     app.set("trust proxy", 1);
     app.use(
@@ -384,6 +389,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralId,
           patientNationalId,
           navigationId,
+          specialty,
           status,
           referralDate,
           paid,
@@ -393,6 +399,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralId,
           patientNationalId,
           navigationId,
+          specialty,
           status,
           referralDate,
           paid,
@@ -406,6 +413,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
               referralId,
               patientNationalId,
               navigationId,
+              specialty,
               status,
               referralDate,
               paid,
@@ -418,6 +426,74 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           .status(500)
           .type("text/plain")
           .send(error?.message || "Query failed");
+      }
+    });
+
+    // The /db page's "📊 Send Excel" button - a plain form POST (same
+    // filter fields as the page's own GET filter form, just re-pointed at
+    // this route via formaction/formmethod) so it exports exactly whatever
+    // the page is currently showing. POST, not GET, so a page refresh/back
+    // navigation can't silently re-trigger sending the report again (same
+    // reasoning as /db/delete below).
+    app.post("/db/export-excel", async (req, res) => {
+      try {
+        const {
+          referralId,
+          patientNationalId,
+          navigationId,
+          specialty,
+          status,
+          referralDate,
+          paid,
+          claimed,
+        } = req.body;
+
+        const rows = getPatientsFiltered({
+          referralId,
+          patientNationalId,
+          navigationId,
+          specialty,
+          status,
+          referralDate,
+          paid,
+          claimed,
+          limit: 2000,
+        });
+
+        const buffer = await buildCasesExcelReport(rows);
+        const files = [
+          {
+            fileBase64: buffer.toString("base64"),
+            fileName: `cases-export-${Date.now()}.xlsx`,
+            extension: "xlsx",
+          },
+        ];
+
+        const caption = `📊 Cases export: ${rows.length} case${rows.length === 1 ? "" : "s"} matching the current /db filters.`;
+
+        const activeChatId = process.env.TG_CHAT_ID;
+        const watcherChatId = process.env.VERIFICATION_CODE_WATCHER_CHAT_ID;
+
+        await sendTelegramMessage?.(caption, files);
+
+        // Only a second send when the watcher chat is actually a different
+        // chat - otherwise the active chat would get the same report twice.
+        // if (watcherChatId && watcherChatId !== activeChatId) {
+        //   await sendTelegramMessage?.(
+        //     caption,
+        //     files,
+        //     undefined,
+        //     watcherChatId,
+        //     true,
+        //   );
+        // }
+
+        res.redirect(req.get("Referer") || "/db");
+      } catch (error) {
+        res
+          .status(500)
+          .type("text/plain")
+          .send(error?.message || "Export failed");
       }
     });
 

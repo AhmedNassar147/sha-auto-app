@@ -245,6 +245,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.referralId]
  * @param {string} [params.filters.patientNationalId]
  * @param {string} [params.filters.navigationId]
+ * @param {string} [params.filters.specialty] - Partial match.
  * @param {string} [params.filters.status] - A WASLA_STATUS_TYPES code.
  * @param {string} [params.filters.referralDate] - "YYYY-MM-DD", labeled
  *   "Referral Date" in the UI.
@@ -257,6 +258,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     referralId = "",
     patientNationalId = "",
     navigationId = "",
+    specialty = "",
     status = "",
     referralDate = "",
     paid = "",
@@ -426,6 +428,10 @@ const renderDbPage = ({ rows, filters = {} }) => {
       <input id="f-navigationId" name="navigationId" type="text" value="${escapeHtml(navigationId)}" />
     </div>
     <div class="field">
+      <label for="f-specialty">Specialty</label>
+      <input id="f-specialty" name="specialty" type="text" placeholder="e.g. Cardiology" value="${escapeHtml(specialty)}" />
+    </div>
+    <div class="field">
       <label for="f-status">Status</label>
       <select id="f-status" name="status" onchange="this.form.submit()">${renderStatusOptions(status)}</select>
     </div>
@@ -452,6 +458,15 @@ const renderDbPage = ({ rows, filters = {} }) => {
     <div class="actions">
       <a class="btn-link secondary" href="/db">Clear</a>
       <button type="submit">Filter</button>
+      <button
+        type="submit"
+        formaction="/db/export-excel"
+        formmethod="POST"
+        class="btn-link secondary"
+        title="Send an Excel export of the currently filtered cases to the active/watcher Telegram chat"
+      >
+        📊 Send Excel
+      </button>
     </div>
   </form>
 
