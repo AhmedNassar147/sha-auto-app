@@ -9,6 +9,7 @@ import sleep from "./sleep.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
 import { updatePatients, getPatient } from "./db.mjs";
 import collectCaseCompetition from "./collectCaseCompetition.mjs";
+import formatWatcherCompetition from "./formatWatcherCompetition.mjs";
 import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import {
   CLAIMED_STATUS_CODES,
@@ -171,6 +172,8 @@ const updateAndNotifyUser = async ({
   const updates = { referralId, status, claimed, tabName };
 
   updatePatients(updates);
+  const fullMessage =
+    message + formatWatcherCompetition(getPatient(referralId));
   await writeReferralTimingEvent({
     type: "claim-outcome",
     referralId,
@@ -213,10 +216,10 @@ const updateAndNotifyUser = async ({
     : null;
 
   await Promise.all([
-    sendTelegramMessage(message),
+    sendTelegramMessage(fullMessage),
     VERIFICATION_CODE_WATCHER_CHAT_ID
       ? sendTelegramMessage(
-          message,
+          fullMessage,
           [],
           undefined,
           VERIFICATION_CODE_WATCHER_CHAT_ID,
