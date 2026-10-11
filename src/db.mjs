@@ -603,7 +603,6 @@ const FILTERABLE_LIKE_COLUMNS = [
   "referralId",
   "patientNationalId",
   "navigationId",
-  "specialty",
 ];
 
 /**
@@ -611,7 +610,8 @@ const FILTERABLE_LIKE_COLUMNS = [
  * @param {string} [filters.referralId] - Partial match.
  * @param {string} [filters.patientNationalId] - Partial match.
  * @param {string} [filters.navigationId] - Partial match.
- * @param {string} [filters.specialty] - Partial match.
+ * @param {string} [filters.specialty] - JSON [specialty, subSpecialty] pair;
+ *   old plain specialty names remain supported for existing bookmarks.
  * @param {string} [filters.status] - Exact match.
  * @param {string} [filters.referralDate] - "YYYY-MM-DD" - matches that
  *   whole calendar day (prefix match). This is the real referral-creation
@@ -644,6 +644,19 @@ const getPatientsFiltered = ({
     if (value) {
       clauses.push(`${column} LIKE @${column}`);
       params[column] = `%${value}%`;
+    }
+  }
+
+  if (specialty) {
+    let pair;
+    try { pair = JSON.parse(specialty); } catch {}
+    if (Array.isArray(pair) && pair.length === 2 && pair.every((v) => typeof v === "string")) {
+      clauses.push(`TRIM(COALESCE(specialty, '')) = @specialty AND TRIM(COALESCE(subSpecialty, '')) = @subSpecialty`);
+      params.specialty = pair[0].trim();
+      params.subSpecialty = pair[1].trim();
+    } else {
+      clauses.push(`TRIM(specialty) = @specialty`);
+      params.specialty = String(specialty).trim();
     }
   }
 
@@ -818,6 +831,17 @@ const deleteOldCaseFiles = () => {
   return stmt.run(startOfYesterday);
 };
 
+const getDistinctSpecialties = () => db.prepare(`
+  SELECT DISTINCT TRIM(COALESCE(specialty, '')) AS specialty,
+    TRIM(COALESCE(subSpecialty, '')) AS subSpecialty FROM patients
+  WHERE TRIM(COALESCE(specialty, '')) <> '' OR TRIM(COALESCE(subSpecialty, '')) <> ''
+  ORDER BY subSpecialty COLLATE NOCASE, specialty COLLATE NOCASE
+`).all().map((row) => ({
+  ...row,
+  value: JSON.stringify([row.specialty, row.subSpecialty]),
+  label: `${row.subSpecialty || 'No sub-specialty'} — ${row.specialty || 'No specialty'}`,
+}));
+
 export {
   db,
   allPatientsStatement,
@@ -830,6 +854,7 @@ export {
   clearClaimedStatus,
   clearAllClaimedStatuses,
   getPatientsFiltered,
+  getDistinctSpecialties,
   getCasesForReport,
   searchPatients,
   getOldestPatient,

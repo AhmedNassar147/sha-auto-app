@@ -2,7 +2,12 @@ import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 import submitAcceptanceDecisionViaApi from "./submitAcceptanceDecisionViaApi.mjs";
 
 /** Opens the case and submits one explicit facility-approval payload. */
-export default async function runDbAcceptanceDecisions({ browser, patient, facilityId, attachmentIds }) {
+export default async function runDbAcceptanceDecisions({ browser, patient }) {
+  if (!/^\d+$/.test(String(patient.caseAttachmentId))) {
+    throw new Error(
+      "No valid caseAttachmentId saved for this case. Run backfill or check its upload result.",
+    );
+  }
   const page = await browser.newPage();
   await page.goto(
     `${WASLA_REFERRAL_VIEW_URL}/${encodeURIComponent(patient.navigationId)}`,
@@ -21,13 +26,28 @@ export default async function runDbAcceptanceDecisions({ browser, patient, facil
     { timeout: 20_000 },
   );
 
-  const payload = { id: patient.navigationId, accept: 1, facilityId, attachmentIds };
+  const facilityId = process.env.WASLA_ORG_ID;
+  if (!facilityId)
+    throw new Error("WASLA_ORG_ID is missing. Run the main polling flow to cache it first.");
+  if (patient.ownFacilityId && String(patient.ownFacilityId) !== facilityId) {
+    throw new Error(
+      "The case belongs to a different saved facility than the current Wasla session.",
+    );
+  }
+  const payload = {
+    id: patient.navigationId,
+    accept: 1,
+    facilityId,
+    attachmentIds: [Number(patient.caseAttachmentId)],
+  };
   const result = await submitAcceptanceDecisionViaApi({ page, payload });
-  return [{
-    payload,
-    success: result.success,
-    httpStatus: result.requestClockSample?.httpStatus ?? null,
-    data: result.data ?? null,
-    error: result.error ?? null,
-  }];
+  return [
+    {
+      payload,
+      success: result.success,
+      httpStatus: result.requestClockSample?.httpStatus ?? null,
+      data: result.data ?? null,
+      error: result.error ?? null,
+    },
+  ];
 }

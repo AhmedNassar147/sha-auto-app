@@ -45,10 +45,12 @@ import {
   deletePatients,
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
+  getDistinctSpecialties,
   getPatient,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
 import summarizeDbWinners from "./summarizeDbWinners.mjs";
+import summarizeLetterTypeOutcomes from "./summarizeLetterTypeOutcomes.mjs";
 import runDbAcceptanceDecisions from "./runDbAcceptanceDecisions.mjs";
 import buildCasesExcelReport from "./buildCasesExcelReport.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
@@ -412,6 +414,12 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
         res.type("html").send(
           renderDbPage({
             rows,
+            specialties: getDistinctSpecialties(),
+            letterStatistics: req.query.letterStatistics === "1"
+              ? summarizeLetterTypeOutcomes(getPatientsFiltered({
+                  referralId, patientNationalId, navigationId, specialty,
+                  status, referralDate, paid, claimed, all: true,
+                })) : null,
             winnerStatistics:
               req.query.statistics === "1"
                 ? summarizeDbWinners(
@@ -530,15 +538,11 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           .status(404)
           .json({ error: "Case or navigation ID not found." });
       }
-      const { facilityId, attachmentIds } = req.body || {};
-      if (
-        !/^\d+$/.test(String(facilityId)) ||
-        !Array.isArray(attachmentIds) ||
-        attachmentIds.some((id) => !/^\d+$/.test(String(id)))
-      ) {
-        return res
-          .status(400)
-          .json({ error: "facilityId and attachmentIds array are required." });
+      if (!/^\d+$/.test(String(patient.caseAttachmentId))) {
+        return res.status(400).json({
+          error:
+            "caseAttachmentId is missing. Run backfill or check the case upload.",
+        });
       }
       if (pendingDbDecisions.has(referralId)) {
         return res
@@ -550,8 +554,6 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
         const results = await runDbAcceptanceDecisions({
           browser,
           patient,
-          facilityId,
-          attachmentIds,
         });
         return res.json({ results });
       } catch (error) {

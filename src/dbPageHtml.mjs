@@ -12,10 +12,15 @@
  * separate API endpoint.
  *
  */
-import { WASLA_STATUS_TYPES, WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
+import {
+  WASLA_STATUS_TYPES,
+  WASLA_REFERRAL_VIEW_URL,
+  WASLA_APP_URL,
+} from "./constants.mjs";
 
 const COLUMN_LABELS = {
   openCase: "",
+  openFacilityResponses: "Facility Responses",
   referralDate: "Referral Date",
   navigationId: "Navigation ID",
   referralId: "Referral ID",
@@ -26,7 +31,8 @@ const COLUMN_LABELS = {
   winnerFacilityName: "Winning Facility",
   ourAcceptedAt: "Our Acceptance Time (Saudi)",
   winnerAcceptedAt: "Winner Acceptance Time (Saudi)",
-  fastestTwo: "Fastest Two (Server Timestamps)",
+  fastestFirst: "1st Acceptance (Server Time)",
+  fastestSecond: "2nd Acceptance (Server Time)",
   caseAttachmentId: "Case Acceptance Attachment ID",
   letterType: "Letter Type",
   userActionName: "Action",
@@ -70,11 +76,13 @@ const COLUMNS = [
   // Not a real `patients` column - renderCell builds this straight from
   // the row's navigationId (see below), ignoring row.openCase (undefined).
   "openCase",
+  "facilityRes",
   "status",
   "winnerFacilityName",
   "ourAcceptedAt",
   "winnerAcceptedAt",
-  "fastestTwo",
+  "fastestFirst",
+  "fastestSecond",
   "claimed",
   "arrived",
   "letterType",
@@ -149,16 +157,21 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
-  if (column === "fastestTwo" && value) {
+  if (column === "openFacilityResponses") {
+    if (!row?.navigationId) return '<span class="empty-cell">—</span>';
+    const url = escapeHtml(
+      `${WASLA_APP_URL}/referral-cases/view/${encodeURIComponent(row.navigationId)}`,
+    );
+    return `<a class="btn-link secondary" href="${url}" target="_blank" rel="noopener noreferrer">View facility responses</a>`;
+  }
+  if (column === "fastestFirst" || column === "fastestSecond") {
     try {
-      return (
-        JSON.parse(value)
-          .map(
-            (f, index) =>
-              `${index + 1}. ${escapeHtml(f.facilityName)} (${escapeHtml(f.facilityId)})<br>${escapeHtml(f.acceptedAt)}`,
-          )
-          .join("<br><br>") || '<span class="empty-cell">—</span>'
-      );
+      const facilities = row.fastestTwo ? JSON.parse(row.fastestTwo) : [];
+      const facility = facilities[column === "fastestFirst" ? 0 : 1];
+      if (!facility) return '<span class="empty-cell">—</span>';
+      return `<div class="ranking-name">${escapeHtml(facility.facilityName)}</div>` +
+        `<div class="ranking-id">ID ${escapeHtml(facility.facilityId)}</div>` +
+        `<div class="ranking-time">${escapeHtml(facility.acceptedAt)}</div>`;
     } catch {
       return '<span class="empty-cell">Invalid stored timing data</span>';
     }
@@ -255,7 +268,7 @@ const renderRows = (rows, selectedReferralId) => {
 
       return (
         `<tr class="${rowClasses}">` +
-        COLUMNS.map((col) => `<td>${renderCell(col, row[col], row)}</td>`).join(
+        COLUMNS.map((col) => `<td${["fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`).join(
           "",
         ) +
         `</tr>`
@@ -280,7 +293,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.referralId]
  * @param {string} [params.filters.patientNationalId]
  * @param {string} [params.filters.navigationId]
- * @param {string} [params.filters.specialty] - Partial match.
+ * @param {string} [params.filters.specialty] - Encoded specialty/sub-specialty pair.
  * @param {string} [params.filters.status] - A WASLA_STATUS_TYPES code.
  * @param {string} [params.filters.referralDate] - "YYYY-MM-DD", labeled
  *   "Referral Date" in the UI.
@@ -288,7 +301,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.claimed] - "Yes" or "No".
  * @returns {string}
  */
-const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
+const renderDbPage = ({ rows, filters = {}, winnerStatistics = null, letterStatistics = null, specialties = [] }) => {
   const {
     referralId = "",
     patientNationalId = "",
@@ -421,6 +434,18 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  tbody td.ranking-cell {
+    min-width: 210px;
+    max-width: 260px;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    padding: 10px 12px;
+    vertical-align: top;
+  }
+  .ranking-name { font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+  .ranking-id { color: var(--muted); font-size: 11px; margin: 3px 0; }
+  .ranking-time { white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 1.5; }
   tbody tr:nth-child(even) { background: var(--row-alt); }
   tbody tr:hover { background: var(--row-hover); }
   tbody tr.rejected-row,
@@ -463,8 +488,11 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
       <input id="f-navigationId" name="navigationId" type="text" value="${escapeHtml(navigationId)}" />
     </div>
     <div class="field">
-      <label for="f-specialty">Specialty</label>
-      <input id="f-specialty" name="specialty" type="text" placeholder="e.g. Cardiology" value="${escapeHtml(specialty)}" />
+      <label for="f-specialty">Sub-specialty / Specialty</label>
+      <select id="f-specialty" name="specialty" onchange="this.form.submit()">
+        <option value="">All specialties</option>
+        ${specialties.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === specialty ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
+      </select>
     </div>
     <div class="field">
       <label for="f-status">Status</label>
@@ -494,6 +522,7 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
       <a class="btn-link secondary" href="/db">Clear</a>
       <button type="submit">Filter</button>
       <button type="submit" name="statistics" value="1" class="btn-link secondary">📊 Winner statistics</button>
+      <button type="submit" name="letterStatistics" value="1" class="btn-link secondary">📋 Letter type analysis</button>
       <button
         type="submit"
         formaction="/db/export-excel"
@@ -518,6 +547,15 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
       : ""
   }
 
+  ${letterStatistics ? `<section style="background:var(--panel);padding:18px;border:1px solid var(--panel-border);border-radius:12px;margin-bottom:20px">
+    <h2>Letter type analysis — acceptance cases only</h2>
+    <p>${letterStatistics.total} acceptance cases matching current filters. Rejected/withdrawn rows excluded. Win rate = won / (won + lost); unresolved cases excluded from the percentage.</p>
+    <table><thead><tr><th>Letter type</th><th>Acceptance cases</th><th>Won</th><th>Lost</th><th>Unresolved</th><th>Win rate</th></tr></thead><tbody>
+    ${letterStatistics.groups.map((item) => `<tr><td>${escapeHtml(item.letterType)}</td><td>${item.total}</td><td>${item.won}</td><td>${item.lost}</td><td>${item.unresolved}</td><td>${item.winRate === null ? "—" : item.winRate + "%"}</td></tr>`).join("") || '<tr><td colspan="6">No acceptance cases match the filters.</td></tr>'}
+    </tbody></table>
+    <p>This comparison does not prove that the letter type caused a win or loss.</p>
+  </section>` : ""}
+
   <div class="meta-row">Total Results ${rows.length}</div>
 
   <div class="table-wrap">
@@ -532,19 +570,12 @@ const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-decision-url]");
   if (!button || button.disabled) return;
-  const facilityId = prompt("Facility ID to approve (this is an approval action, not submitting your facility acceptance):");
-  if (facilityId === null) return;
-  const attachmentText = prompt("Approval attachment IDs, comma-separated (leave blank for an empty array):", "");
-  if (attachmentText === null) return;
-  const attachmentIds = attachmentText.split(",").map((id) => id.trim()).filter(Boolean);
   button.disabled = true;
   const output = button.nextElementSibling;
   output.textContent = "Opening case and submitting facility approval…";
   try {
     const response = await fetch(button.dataset.decisionUrl, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ facilityId: facilityId.trim(), attachmentIds }),
     });
     const bodyText = await response.text();
     try {

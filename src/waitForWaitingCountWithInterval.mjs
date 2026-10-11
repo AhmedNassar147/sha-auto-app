@@ -8,6 +8,7 @@ import processCollectingPatients from "./processCollectingPatients.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
+import cacheWaslaOrganizationId from "./cacheWaslaOrganizationId.mjs";
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import speakText from "./speakText.mjs";
 import createReloadAndCheckIfShouldCreateNewPage from "./createReloadAndCheckIfShouldCreateNewPage.mjs";
@@ -203,6 +204,16 @@ const waitForWaitingCountWithInterval = async ({
         );
         await pausableSleep(NOT_LOGGED_SLEEP_TIME);
         continue;
+      }
+
+      if (!process.env.WASLA_ORG_ID) {
+        await cacheWaslaOrganizationId(frame).catch((error) => {
+          createConsoleMessage(
+            "warn",
+            error.message,
+            "cacheWaslaOrganizationId",
+          );
+        });
       }
 
       createConsoleMessage("info", `🌀 Fetching ${targetText} collection ...`);
