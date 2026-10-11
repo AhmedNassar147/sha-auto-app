@@ -30,7 +30,6 @@ const COLUMN_LABELS = {
   status: "Status",
   winnerFacilityName: "Winning Facility",
   ourAcceptedAt: "Our Acceptance Time (Saudi)",
-  winnerAcceptedAt: "Winner Acceptance Time (Saudi)",
   fastestFirst: "1st Acceptance (Server Time)",
   fastestSecond: "2nd Acceptance (Server Time)",
   caseAttachmentId: "Case Acceptance Attachment ID",
@@ -80,7 +79,6 @@ const COLUMNS = [
   "status",
   "winnerFacilityName",
   "ourAcceptedAt",
-  "winnerAcceptedAt",
   "fastestFirst",
   "fastestSecond",
   "claimed",
@@ -157,6 +155,11 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
+  if (column === "winnerFacilityName") {
+    if (!value && !row.winnerAcceptedAt) return '<span class="empty-cell">—</span>';
+    return `<div class="ranking-name" title="Facility ID: ${escapeHtml(row.winnerFacilityId ?? "—")}">${escapeHtml(value || "—")}</div>` +
+      `<div class="ranking-time">${escapeHtml(row.winnerAcceptedAt || "—")}</div>`;
+  }
   if (column === "facilityRes") {
     if (!row?.navigationId) return '<span class="empty-cell">—</span>';
     const url = escapeHtml(
@@ -271,7 +274,7 @@ const renderRows = (rows, selectedReferralId) => {
         `<tr class="${rowClasses}">` +
         COLUMNS.map(
           (col) =>
-            `<td${["fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`,
+            `<td${["winnerFacilityName", "fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`,
         ).join("") +
         `</tr>`
       );
