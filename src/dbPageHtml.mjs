@@ -23,6 +23,12 @@ const COLUMN_LABELS = {
   patientName: "Patient Name",
   patientNationalId: "National ID",
   status: "Status",
+  winnerFacilityName: "Winning Facility",
+  ourAcceptedAt: "Our Acceptance Time (Saudi)",
+  winnerAcceptedAt: "Winner Acceptance Time (Saudi)",
+  fastestTwo: "Fastest Two (Server Timestamps)",
+  caseAttachmentId: "Case Acceptance Attachment ID",
+  letterType: "Letter Type",
   userActionName: "Action",
   claimed: "Claimed",
   arrived: "Arrived",
@@ -34,7 +40,6 @@ const COLUMN_LABELS = {
   referralStartDate: "Start Date",
   referralEndDate: "End Date",
   referralEndTimestamp: "End Timestamp",
-  letterType: "Letter Type",
   isSent: "Sent",
   payerAction: "Payer Action",
   isReceived: "Received",
@@ -66,15 +71,21 @@ const COLUMNS = [
   // the row's navigationId (see below), ignoring row.openCase (undefined).
   "openCase",
   "status",
+  "winnerFacilityName",
+  "ourAcceptedAt",
+  "winnerAcceptedAt",
+  "fastestTwo",
   "claimed",
   "arrived",
-  "tabName",
+  "letterType",
+  "caseAttachmentId",
   "paid",
   "patientName",
   "patientNationalId",
   "navigationId",
   "referralId",
   "referralDate",
+  "tabName",
   "broadcastedAt",
   "referralEndDate",
   "referralReferenceId",
@@ -99,7 +110,6 @@ const COLUMNS = [
   "facilityReviewWindowMinutes",
   "acceptanceWindowMinutes",
   "extendScopeWindowMinutes",
-  "letterType",
   "transferUrl",
   "createdAt",
   "updatedAt",
@@ -139,11 +149,27 @@ const badgeClassFor = (value) => {
 };
 
 const renderCell = (column, value, row) => {
+  if (column === "fastestTwo" && value) {
+    try {
+      return (
+        JSON.parse(value)
+          .map(
+            (f, index) =>
+              `${index + 1}. ${escapeHtml(f.facilityName)} (${escapeHtml(f.facilityId)})<br>${escapeHtml(f.acceptedAt)}`,
+          )
+          .join("<br><br>") || '<span class="empty-cell">—</span>'
+      );
+    } catch {
+      return '<span class="empty-cell">Invalid stored timing data</span>';
+    }
+  }
   if (column === "decision") {
     if (!row?.referralId || !row?.navigationId) {
       return '<span class="empty-cell">—</span>';
     }
-    const url = escapeHtml(`/db/decision/${encodeURIComponent(row.referralId)}`);
+    const url = escapeHtml(
+      `/db/decision/${encodeURIComponent(row.referralId)}`,
+    );
     return `<button type="button" class="btn-link secondary" data-decision-url="${url}">Approve facility</button><pre class="decision-result" style="white-space:pre-wrap;max-width:400px"></pre>`;
   }
   if (column === "openCase") {
@@ -262,7 +288,7 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.claimed] - "Yes" or "No".
  * @returns {string}
  */
-const renderDbPage = ({ rows, filters = {} }) => {
+const renderDbPage = ({ rows, filters = {}, winnerStatistics = null }) => {
   const {
     referralId = "",
     patientNationalId = "",
@@ -467,6 +493,7 @@ const renderDbPage = ({ rows, filters = {} }) => {
     <div class="actions">
       <a class="btn-link secondary" href="/db">Clear</a>
       <button type="submit">Filter</button>
+      <button type="submit" name="statistics" value="1" class="btn-link secondary">📊 Winner statistics</button>
       <button
         type="submit"
         formaction="/db/export-excel"
@@ -478,6 +505,18 @@ const renderDbPage = ({ rows, filters = {} }) => {
       </button>
     </div>
   </form>
+
+  ${
+    winnerStatistics
+      ? `<section style="background:var(--panel);padding:18px;border:1px solid var(--panel-border);border-radius:12px;margin-bottom:20px">
+    <h2>Winning facilities — current filters</h2>
+    <p>Total cases: ${winnerStatistics.total} · Checked: ${winnerStatistics.checked} · Not checked: ${winnerStatistics.unchecked} · No unique winner: ${winnerStatistics.noWinner}</p>
+    <p>Percentages use ${winnerStatistics.resolved} cases with a known unique winner. These are local DB cases, not all portal cases.</p>
+    <table><thead><tr><th>Facility</th><th>Cases won</th><th>Share</th></tr></thead><tbody>
+    ${winnerStatistics.winners.map((item) => `<tr><td>${escapeHtml(item.facilityName)} (${escapeHtml(item.facilityId)})</td><td>${item.count}</td><td>${item.percent}%</td></tr>`).join("") || '<tr><td colspan="3">No stored winners yet. Run yarn fill-db.</td></tr>'}
+    </tbody></table></section>`
+      : ""
+  }
 
   <div class="meta-row">Total Results ${rows.length}</div>
 

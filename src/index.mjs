@@ -48,6 +48,7 @@ import {
   getPatient,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
+import summarizeDbWinners from "./summarizeDbWinners.mjs";
 import runDbAcceptanceDecisions from "./runDbAcceptanceDecisions.mjs";
 import buildCasesExcelReport from "./buildCasesExcelReport.mjs";
 import startCloudflareTunnel from "./startCloudflareTunnel.mjs";
@@ -411,6 +412,22 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
         res.type("html").send(
           renderDbPage({
             rows,
+            winnerStatistics:
+              req.query.statistics === "1"
+                ? summarizeDbWinners(
+                    getPatientsFiltered({
+                      referralId,
+                      patientNationalId,
+                      navigationId,
+                      specialty,
+                      status,
+                      referralDate,
+                      paid,
+                      claimed,
+                      all: true,
+                    }),
+                  )
+                : null,
             filters: {
               referralId,
               patientNationalId,
@@ -509,19 +526,33 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
       const { referralId } = req.params;
       const patient = getPatient(referralId);
       if (!patient?.navigationId) {
-        return res.status(404).json({ error: "Case or navigation ID not found." });
+        return res
+          .status(404)
+          .json({ error: "Case or navigation ID not found." });
       }
       const { facilityId, attachmentIds } = req.body || {};
-      if (!/^\d+$/.test(String(facilityId)) || !Array.isArray(attachmentIds) ||
-          attachmentIds.some((id) => !/^\d+$/.test(String(id)))) {
-        return res.status(400).json({ error: "facilityId and attachmentIds array are required." });
+      if (
+        !/^\d+$/.test(String(facilityId)) ||
+        !Array.isArray(attachmentIds) ||
+        attachmentIds.some((id) => !/^\d+$/.test(String(id)))
+      ) {
+        return res
+          .status(400)
+          .json({ error: "facilityId and attachmentIds array are required." });
       }
       if (pendingDbDecisions.has(referralId)) {
-        return res.status(409).json({ error: "Decisions already running for this case." });
+        return res
+          .status(409)
+          .json({ error: "Decisions already running for this case." });
       }
       pendingDbDecisions.add(referralId);
       try {
-        const results = await runDbAcceptanceDecisions({ browser, patient, facilityId, attachmentIds });
+        const results = await runDbAcceptanceDecisions({
+          browser,
+          patient,
+          facilityId,
+          attachmentIds,
+        });
         return res.json({ results });
       } catch (error) {
         return res.status(500).json({ error: error.message });

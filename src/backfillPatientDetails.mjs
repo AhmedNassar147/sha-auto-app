@@ -49,6 +49,7 @@ import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
 import getWaslaPatientReferralDataFromAPI from "./getWaslaPatientReferralDataFromAPI.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
+import collectCaseCompetition from "./collectCaseCompetition.mjs";
 import sleep from "./sleep.mjs";
 import { HOME_PAGE_URL, USER_ACTION_TYPES } from "./constants.mjs";
 
@@ -137,6 +138,8 @@ const rowsToProcess = requestedIds.length
         (row) =>
           row.navigationId &&
           (row.nationality == null ||
+            row.competitionCheckedAt == null ||
+            row.caseAttachmentId == null ||
             row.specialtyId == null ||
             row.subReferralTypeId == null ||
             (row.claimed === "Yes" &&
@@ -219,6 +222,12 @@ try {
     // in the details fetch below doesn't also throw away a confirmation
     // this already found.
     const claimedStatusUpdate = {};
+    const competition = await collectCaseCompetition(frame, row);
+    if (!competition.success) {
+      console.warn(
+        `referralId=${referralId} facilities backfill failed: ${competition.error}`,
+      );
+    }
 
     if (needsClaimedStatusRecheck) {
       const { patients: ordersPatients } = await getWaslaCasesFromAPI(frame, {

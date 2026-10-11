@@ -106,6 +106,14 @@ const casesLettersDb = new Database(casesLettersFilePath);
     .map((column) => column.name);
 
   const columnsToEnsure = {
+    winnerFacilityId: "TEXT",
+    winnerFacilityName: "TEXT",
+    ourAcceptedAt: "TEXT",
+    winnerAcceptedAt: "TEXT",
+    fastestTwo: "TEXT",
+    ownFacilityId: "TEXT",
+    competitionCheckedAt: "TEXT",
+    caseAttachmentId: "TEXT",
     facilityReviewWindowMinutes: "INTEGER",
     acceptanceWindowMinutes: "INTEGER",
     extendScopeWindowMinutes: "INTEGER",
@@ -216,6 +224,15 @@ const toDbRow = (oldRow, patient) => {
     attachmentFileName: merged.attachmentFileName ?? null,
     attachmentFileMimeType: merged.attachmentFileMimeType ?? null,
     attachmentTgFileId: merged.attachmentTgFileId ?? null,
+    winnerFacilityId: merged.winnerFacilityId ?? null,
+    winnerFacilityName: merged.winnerFacilityName ?? null,
+    ourAcceptedAt: merged.ourAcceptedAt ?? null,
+    winnerAcceptedAt: merged.winnerAcceptedAt ?? null,
+    fastestTwo: merged.fastestTwo ?? null,
+    ownFacilityId: merged.ownFacilityId ?? null,
+    competitionCheckedAt: merged.competitionCheckedAt ?? null,
+    caseAttachmentId:
+      merged.caseAttachmentId != null ? String(merged.caseAttachmentId) : null,
   };
 };
 
@@ -265,6 +282,8 @@ const insertPatientSQL = `
     attachmentFileName,
     attachmentFileMimeType,
     attachmentTgFileId,
+    winnerFacilityId, winnerFacilityName, ourAcceptedAt, winnerAcceptedAt,
+    fastestTwo, ownFacilityId, competitionCheckedAt, caseAttachmentId,
     updatedAt
   ) VALUES (
     @referralId,
@@ -311,6 +330,8 @@ const insertPatientSQL = `
     @attachmentFileName,
     @attachmentFileMimeType,
     @attachmentTgFileId,
+    @winnerFacilityId, @winnerFacilityName, @ourAcceptedAt, @winnerAcceptedAt,
+    @fastestTwo, @ownFacilityId, @competitionCheckedAt, @caseAttachmentId,
     datetime('now')
   )
   ON CONFLICT(referralId) DO UPDATE SET
@@ -357,6 +378,14 @@ const insertPatientSQL = `
     attachmentFileName    = COALESCE(excluded.attachmentFileName, attachmentFileName),
     attachmentFileMimeType = COALESCE(excluded.attachmentFileMimeType, attachmentFileMimeType),
     attachmentTgFileId    = COALESCE(excluded.attachmentTgFileId, attachmentTgFileId),
+    winnerFacilityId = COALESCE(excluded.winnerFacilityId, winnerFacilityId),
+    winnerFacilityName = COALESCE(excluded.winnerFacilityName, winnerFacilityName),
+    ourAcceptedAt = COALESCE(excluded.ourAcceptedAt, ourAcceptedAt),
+    winnerAcceptedAt = COALESCE(excluded.winnerAcceptedAt, winnerAcceptedAt),
+    fastestTwo = COALESCE(excluded.fastestTwo, fastestTwo),
+    ownFacilityId = COALESCE(excluded.ownFacilityId, ownFacilityId),
+    competitionCheckedAt = COALESCE(excluded.competitionCheckedAt, competitionCheckedAt),
+    caseAttachmentId = COALESCE(excluded.caseAttachmentId, caseAttachmentId),
     updatedAt             = datetime('now')
 `;
 
@@ -405,6 +434,14 @@ const updatePatientSQL = `
     attachmentFileName = @attachmentFileName,
     attachmentFileMimeType = @attachmentFileMimeType,
     attachmentTgFileId = @attachmentTgFileId,
+    winnerFacilityId = @winnerFacilityId,
+    winnerFacilityName = @winnerFacilityName,
+    ourAcceptedAt = @ourAcceptedAt,
+    winnerAcceptedAt = @winnerAcceptedAt,
+    fastestTwo = @fastestTwo,
+    ownFacilityId = @ownFacilityId,
+    competitionCheckedAt = @competitionCheckedAt,
+    caseAttachmentId = @caseAttachmentId,
     updatedAt = datetime('now')
   WHERE referralId = @referralId
 `;
@@ -596,6 +633,7 @@ const getPatientsFiltered = ({
   paid,
   claimed,
   limit = 500,
+  all = false,
 } = {}) => {
   const values = { referralId, patientNationalId, navigationId, specialty };
   const clauses = [];
@@ -642,9 +680,10 @@ const getPatientsFiltered = ({
 
   const whereSQL = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
   params.limit = Math.min(Math.max(Number(limit) || 500, 1), 2000);
+  if (all) delete params.limit;
 
   const stmt = db.prepare(
-    `SELECT * FROM patients ${whereSQL} ORDER BY id DESC LIMIT @limit`,
+    `SELECT * FROM patients ${whereSQL} ORDER BY id DESC${all ? "" : " LIMIT @limit"}`,
   );
   return stmt.all(params);
 };

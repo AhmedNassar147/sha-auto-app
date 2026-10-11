@@ -25,6 +25,7 @@ import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
 import getReferralRetryDelay from "./getReferralRetryDelay.mjs";
+import { updatePatients } from "./db.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import submitWaslaAction from "./submitWaslaAction.mjs";
 import buildAdmissionDetails from "./buildAdmissionDetails.mjs";
@@ -33,6 +34,7 @@ import showPageSnackbar from "./showPageSnackbar.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
 import {
   USER_ACTION_TYPES,
+  API_URLS,
   WASLA_REFERRAL_VIEW_URL,
   htmlFilesPath,
 } from "./constants.mjs";
@@ -618,6 +620,12 @@ const handleSubmitReferral = (options) => async (patient) => {
           postStepLabel: "accept-json",
         });
     const uploadDurationMs = Date.now() - uploadStartTime;
+    if (uploadResult.attachmentId != null) {
+      updatePatients({
+        referralId,
+        caseAttachmentId: String(uploadResult.attachmentId),
+      });
+    }
 
     // First attempt stays at +120ms. The first retry targets the configured
     // buffer after the boundary; response time counts toward that target.
@@ -700,6 +708,15 @@ const handleSubmitReferral = (options) => async (patient) => {
       });
 
       const attemptFinishedAtMs = Date.now();
+      if (
+        apiResult.attachmentId != null &&
+        apiResult.attachmentId !== uploadResult.attachmentId
+      ) {
+        updatePatients({
+          referralId,
+          caseAttachmentId: String(apiResult.attachmentId),
+        });
+      }
       attempts.push({
         startedAtMs: attemptStart,
         startedAfterEndMs: attemptStart - referralEndTimestamp,
@@ -973,8 +990,22 @@ const handleSubmitReferral = (options) => async (patient) => {
     }
 
     if (letterFilePath) {
+      const uploadedAttachment = page
+        .waitForResponse(
+          (response) =>
+            response.url().split("?")[0] === API_URLS.UPLOAD_ATTACHMENT &&
+            response.request().method() === "POST" &&
+            response.ok(),
+          { timeout: 20_000 },
+        )
+        .then((response) => response.json())
+        .catch(() => null);
       try {
         await fileInputHandle.uploadFile(letterFilePath);
+        const uploaded = await uploadedAttachment;
+        if (uploaded?.id != null) {
+          updatePatients({ referralId, caseAttachmentId: String(uploaded.id) });
+        }
       } catch (error) {
         await reportFailure(
           page,

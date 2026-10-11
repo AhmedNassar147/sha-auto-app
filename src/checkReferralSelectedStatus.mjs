@@ -7,7 +7,8 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import sleep from "./sleep.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
-import { updatePatients } from "./db.mjs";
+import { updatePatients, getPatient } from "./db.mjs";
+import collectCaseCompetition from "./collectCaseCompetition.mjs";
 import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import {
   CLAIMED_STATUS_CODES,
@@ -268,6 +269,24 @@ const checkReferralSelectedStatus = async (
     const results = settledResults.filter((item) => item.shouldUpdateAndNotify);
 
     for (const item of results) {
+      const patient = getPatient(item.referralId);
+      const action = String(patient?.userActionName ?? "")
+        .trim()
+        .toLowerCase();
+      if (
+        patient &&
+        !["reject", "withdraw", "withdrawn"].includes(action) &&
+        ![2, 5].includes(Number(item.status))
+      ) {
+        const competition = await collectCaseCompetition(waslaFrame, patient);
+        if (!competition.success) {
+          createConsoleMessage(
+            "warn",
+            competition.error,
+            "collectCaseCompetition",
+          );
+        }
+      }
       await updateAndNotifyUser({
         sendTelegramMessage,
         ...item,
