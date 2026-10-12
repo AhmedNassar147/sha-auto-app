@@ -13,9 +13,6 @@ export default function formatWatcherCompetition(patient) {
   } catch {}
   return (
     "\n\n⏱ *Acceptance times — Saudi server timestamps*\n" +
-    (patient.navigationId
-      ? `🔢 Case ID: ${code(patient.navigationId)}\n`
-      : "") +
     `🏥 Our acceptance: ${code(patient.ourAcceptedAt)}\n` +
     `🏆 Winner: ${code(patient.winnerFacilityName)}\n` +
     `🕒 Winner acceptance: ${code(patient.winnerAcceptedAt)}\n` +

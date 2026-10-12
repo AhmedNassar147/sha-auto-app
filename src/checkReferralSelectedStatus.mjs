@@ -74,6 +74,7 @@ const fetchCase = async (waslaFrame, referralId) => {
       status: statusString,
       patientName,
       patientNationalId,
+      id: navigationId,
     } = foundPatient;
     // Confirmed live: the myOrders/tab-2 API returns status as a STRING
     // (e.g. "status": "3"), while WAITING_ACCEPTANCE_STATUS_CODES/
@@ -101,6 +102,7 @@ const fetchCase = async (waslaFrame, referralId) => {
       tabName: "orders",
       patientName,
       patientNationalId,
+      navigationId,
     };
   }
 
@@ -133,6 +135,7 @@ const fetchCase = async (waslaFrame, referralId) => {
  * @param {string} [params.tabName]
  * @param {string} [params.patientName]
  * @param {string} [params.patientNationalId]
+ * @param {string} [params.navigationId]
  * @returns {Promise<void>}
  */
 const updateAndNotifyUser = async ({
@@ -145,6 +148,7 @@ const updateAndNotifyUser = async ({
   statusID,
   claimed,
   tabName,
+  navigationId,
 }) => {
   // Same shared/admin watcher pattern as loginWithNafathCredentials.mjs's
   // Nafath-code report: that chat tracks multiple orgs' bot deployments at
@@ -166,6 +170,7 @@ const updateAndNotifyUser = async ({
     `🔢 *Referral ID:* \`${referralId}\`\n` +
     (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
     (patientNationalId ? `🪪 *National ID:* \`${patientNationalId}\`\n` : "") +
+    (navigationId ? `🔢 Case ID: ${code(navigationId)}\n` : "") +
     `📋 *Status:* ${statusText}` +
     hintsLine;
 
@@ -273,31 +278,32 @@ const checkReferralSelectedStatus = async (
 
     for (const item of results) {
       const patient = getPatient(item.referralId);
-      const userActionName = String(patient?.userActionName ?? "")
-        .trim()
-        .toLowerCase();
-      const storedStatus = Number(patient?.status);
-      const fetchedStatus = Number(item.status);
-      if (
-        patient &&
-        !["reject"].includes(userActionName) &&
-        // Either the stored state or the fresh API state can reveal a
-        // rejection/withdrawal, even when the action field is stale.
-        ![2, 5].includes(storedStatus) &&
-        ![2, 5].includes(fetchedStatus)
-      ) {
-        const competition = await collectCaseCompetition(waslaFrame, patient);
-        if (!competition.success) {
-          createConsoleMessage(
-            "warn",
-            competition.error,
-            "collectCaseCompetition",
-          );
-        }
+      // const userActionName = String(patient?.userActionName ?? "")
+      //   .trim()
+      //   .toLowerCase();
+      // const storedStatus = Number(patient?.status);
+      // const fetchedStatus = Number(item.status);
+      // if (
+      //   patient &&
+      //   !["reject"].includes(userActionName) &&
+      //   // Either the stored state or the fresh API state can reveal a
+      //   // rejection/withdrawal, even when the action field is stale.
+      //   ![2, 5].includes(storedStatus) &&
+      //   ![2, 5].includes(fetchedStatus)
+      // ) {
+      // }
+      const competition = await collectCaseCompetition(waslaFrame, patient);
+      if (!competition.success) {
+        createConsoleMessage(
+          "warn",
+          competition.error,
+          "collectCaseCompetition",
+        );
       }
       await updateAndNotifyUser({
         sendTelegramMessage,
         ...item,
+        navigationId: patient.navigationId || patient.navigationId,
       });
 
       patientsStore.removeNonClaimableCase(item.referralId);
