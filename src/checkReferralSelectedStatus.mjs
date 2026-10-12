@@ -288,20 +288,6 @@ const checkReferralSelectedStatus = async (
           );
           continue;
         }
-        // const userActionName = String(patient?.userActionName ?? "")
-        //   .trim()
-        //   .toLowerCase();
-        // const storedStatus = Number(patient?.status);
-        // const fetchedStatus = Number(item.status);
-        // if (
-        //   patient &&
-        //   !["reject"].includes(userActionName) &&
-        //   // Either the stored state or the fresh API state can reveal a
-        //   // rejection/withdrawal, even when the action field is stale.
-        //   ![2, 5].includes(storedStatus) &&
-        //   ![2, 5].includes(fetchedStatus)
-        // ) {
-        // }
         const competition = await collectCaseCompetition(waslaFrame, patient);
         if (!competition.success) {
           createConsoleMessage(

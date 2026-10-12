@@ -25,7 +25,10 @@ import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
 import sleep from "./sleep.mjs";
 import getReferralRetryDelay from "./getReferralRetryDelay.mjs";
-import { updatePatients } from "./db.mjs";
+import { updatePatients, getPatient } from "./db.mjs";
+import collectCaseCompetition from "./collectCaseCompetition.mjs";
+import formatWatcherCompetition from "./formatWatcherCompetition.mjs";
+import buildDirectApiTelegramMessage from "./buildDirectApiTelegramMessage.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import submitWaslaAction from "./submitWaslaAction.mjs";
 import buildAdmissionDetails from "./buildAdmissionDetails.mjs";
@@ -40,20 +43,6 @@ import {
 } from "./constants.mjs";
 
 const NAVIGATION_TIMEOUT_MS = 20_000;
-
-// Same locale/timezone convention as formateDateToString.mjs (Saudi local
-// time, DD/MM/YYYY), but with milliseconds kept - the whole point of this
-// specific timestamp is sub-second precision for comparing attempts
-// against each other and against the boundary.
-const formatTimeWithMs = (epochMs) =>
-  new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Riyadh",
-    hour12: true,
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    fractionalSecondDigits: 3,
-  }).format(epochMs);
 
 const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 
@@ -187,161 +176,6 @@ const reportFailure = async (
   ]);
 };
 
-/**
- * Builds the Telegram message reporting the direct-API accept/reject
- * attempt's outcome - shared by the success and failure branches so the
- * header/footer structure isn't hand-duplicated between them. Operators
- * read this message too, not just whoever's debugging timing, so every
- * line is a plain-English label - the numbers themselves are all still
- * here, just not under their camelCase variable names.
- *
- * @param {{
- *   isAcceptanceAction: boolean,
- *   referralId: string,
- *   navigationId: string,
- *   apiResult: Awaited<ReturnType<typeof import("./submitWaslaReferralViaApi.mjs").default>>,
- *   preUploadResult: Awaited<ReturnType<typeof import("./submitWaslaAction.mjs").default>>,
- *   uploadDurationMs: number,
- *   diffMs: number,
- *   sleepMs: number,
- *   sleepBeforeAcceptOrRejectMs: number,
- *   firstAttemptBufferMs: number,
- *   leftoverBufferForFirstRetryMs: number,
- *   realFireDelayFromBoundaryMs: number,
- *   actionTimeMs: number,
- *   attempts: {
- *     startedAtMs: number,
- *     startedAfterEndMs: number,
- *     durationMs: number,
- *     outcome: string,
- *   }[],
- *   attemptsMade: number,
- *   sleepWhenAcceptOrRejectRetryMs: number,
- *   admissionDetails: object | null,
- * }} params
- * @returns {string}
- */
-const buildDirectApiTelegramMessage = ({
-  isAcceptanceAction,
-  referralId,
-  navigationId,
-  apiResult,
-  preUploadResult,
-  uploadDurationMs,
-  diffMs,
-  sleepMs,
-  sleepBeforeAcceptOrRejectMs,
-  firstAttemptBufferMs,
-  leftoverBufferForFirstRetryMs,
-  realFireDelayFromBoundaryMs,
-  actionTimeMs,
-  attempts,
-  attemptsMade,
-  sleepWhenAcceptOrRejectRetryMs,
-  admissionDetails,
-}) => {
-  const { success, timing, responseHeaders } = apiResult;
-
-  const title = success
-    ? `*${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API*`
-    : `*Direct API ${isAcceptanceAction ? "accept" : "reject"} attempt failed*`;
-
-  // Plain language either way - no raw step/attachmentId/url fields even
-  // on failure. apiResult.error already carries Wasla's own error text,
-  // which is the part that actually matters here.
-  const detailLine = success
-    ? `Message: ${apiResult.data?.message ?? "(no message)"}`
-    : `Message: ${apiResult.error ?? "(no further detail)"}`;
-
-  const preUploadLine = preUploadResult?.success
-    ? `Letter attached in advance: ✅ Yes (took ${uploadDurationMs}ms)`
-    : `Letter attached in advance: ❌ No, retried during submission (took ${uploadDurationMs}ms)`;
-
-  // The only retriable failure is "too early" (the review window hadn't
-  // elapsed yet per Wasla's own check) - the count is still worth knowing
-  // at a glance, but the raw underlying error text isn't, since that's the
-  // one and only reason a retry ever happens here.
-  const retryCount = attemptsMade - 1;
-  const retryLine =
-    (retryCount > 0
-      ? `Retries needed: ${retryCount} (see per-attempt results for reasons)\n`
-      : `Retries needed: 0\n`) +
-    `Gap between retry attempts configured: ${sleepWhenAcceptOrRejectRetryMs}ms\n`;
-
-  // Shown only for an Inpatient accept - these are fabricated placeholder
-  // values (no UI to collect real ones via the direct-API path), so
-  // surfacing exactly what was submitted here is the only record of it.
-  const admissionDetailsLine = admissionDetails
-    ? `🏥 Admission Details: departmentId=\`${admissionDetails.departmentId}\`, room=\`${admissionDetails.roomNumber}\`, bed=\`${admissionDetails.bedNumber}\`, fileNumber=\`${admissionDetails.patientFileNumber}\`, startDate=\`${admissionDetails.startDate}\`\n\n`
-    : "";
-
-  // Timing from the moment the pre-upload finished to actually firing the
-  // request. diffMs is how much time was left at that moment (negative
-  // means already past the boundary before the wait even started - itself
-  // a useful signal); sleepMs is the computed target duration handed to
-  // sleep() (diffMs floored at 0, plus the configured pre-fire buffer
-  // folded in) - not an independently re-measured value. realFireDelay-
-  // FromBoundaryMs below is the actual measured position after the sleep
-  // completes, so that's the one to trust if the two ever diverge.
-  const timingLines =
-    `Time left before window closed (when ready to fire): ${diffMs}ms\n` +
-    `Sleep duration computed (boundary wait + pre-fire buffer): ${sleepMs}ms\n` +
-    `Pre-fire buffer configured: ${sleepBeforeAcceptOrRejectMs}ms\n` +
-    `First-attempt buffer: ${firstAttemptBufferMs}ms (first retry targets boundary + configured buffer; response time counts toward it)\n` +
-    `Submitted after window opened: ${(realFireDelayFromBoundaryMs / 1000).toFixed(2)}s (${realFireDelayFromBoundaryMs}ms)\n` +
-    `Server response time: ${(actionTimeMs / 1000).toFixed(1)}s\n`;
-
-  // Tells apart "every attempt is equally slow" (a network/connection
-  // issue on our end) from "only the final, actually-successful attempt
-  // is slow" (server-side work specific to a genuine accept - a quick 400
-  // rejection would never reach that path). Shows exactly when each
-  // attempt started (both relative to the boundary and in absolute
-  // wall-clock time, for cross-referencing against other logged data)
-  // and what it actually got back from Wasla.
-  const attemptDurationsLine = attempts?.length
-    ? `Per-attempt results:\n` +
-      attempts
-        .map(
-          (a, i) =>
-            `  #${i + 1} started ${a.startedAfterEndMs}ms after window (${formatTimeWithMs(a.startedAtMs)}), took ${a.durationMs}ms` +
-            (a.clockDiffMs != null ? `, clockDiff=${a.clockDiffMs}ms` : "") +
-            `: ${a.outcome}`,
-        )
-        .join("\n") +
-      "\n"
-    : "";
-
-  // Breaks the server response time down into actual network phases
-  // (confirmed live: this runs 12-20+ seconds even on success, and it's
-  // Wasla's own server-side processing time - ttfb carries almost all of
-  // it, not dns/connect/tls/download, which is how that was confirmed to
-  // not be a connection issue on our end).
-  const requestBreakdownLine = timing
-    ? `Request breakdown: dns=${timing.dnsMs}ms, connect=${timing.connectMs}ms, tls=${timing.tlsMs}ms, time-to-first-byte=${timing.ttfbMs}ms, download=${timing.downloadMs}ms, total=${timing.totalMs}ms (${timing.nextHopProtocol}, ${timing.transferSize} bytes)\n`
-    : "";
-
-  // Dumped in full (not cherry-picked) since it's not yet known which key,
-  // if any, would actually indicate Cloudflare bot-management stepping in
-  // on this specific endpoint.
-  const responseHeadersLine = responseHeaders
-    ? `Response headers: ${JSON.stringify(responseHeaders)}\n`
-    : "";
-
-  return (
-    `ReferralId: \`${referralId}\`\n` +
-    `ID: \`${navigationId}\`\n` +
-    `${title}\n` +
-    `${detailLine}\n\n` +
-    `${preUploadLine}\n\n` +
-    admissionDetailsLine +
-    retryLine +
-    timingLines +
-    attemptDurationsLine +
-    requestBreakdownLine +
-    responseHeadersLine +
-    (success ? "" : "\nFalling back to the UI.")
-  );
-};
 
 /**
  * Best-effort fills Wasla's Admission Details modal (only shown for
@@ -447,18 +281,19 @@ const notifyWatcherOfAcceptance = async ({
   referralId,
   patientName,
   patientNationalId,
+  competitionPatient,
+  sendToUser = false,
 }) => {
   const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
-
-  if (!VERIFICATION_CODE_WATCHER_CHAT_ID) return;
 
   const watcherMessage =
     `✅ *JUST Accepted Case At* \`${getOrgLabel()}\`\n` +
     `────────────────────────\n` +
     `🔢 *ID:* \`${navigationId}\`\n` +
     `🔢 *Referral ID:* \`${referralId}\`\n` +
-    (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
-    (patientNationalId ? `🪪 *National ID:* \`${patientNationalId}\`\n` : "");
+    `👤 *Patient:* \`${patientName}\`\n` +
+    `🪪 *National ID:* \`${patientNationalId}\`\n` +
+    formatWatcherCompetition(competitionPatient);
 
   const withdrawButtonMarkup = {
     inline_keyboard: [
@@ -466,14 +301,34 @@ const notifyWatcherOfAcceptance = async ({
     ],
   };
 
-  await sendTelegramMessage?.(
-    watcherMessage,
-    [],
-    undefined,
-    VERIFICATION_CODE_WATCHER_CHAT_ID,
-    true,
-    withdrawButtonMarkup,
-  ).catch(() => {});
+  if (sendToUser) await sendTelegramMessage?.(watcherMessage);
+  if (VERIFICATION_CODE_WATCHER_CHAT_ID)
+    await sendTelegramMessage?.(
+      watcherMessage,
+      [],
+      undefined,
+      VERIFICATION_CODE_WATCHER_CHAT_ID,
+      true,
+      withdrawButtonMarkup,
+    ).catch(() => {});
+};
+
+/** Runs after timed action attempts; failure never blocks outcome tracking. */
+const loadSubmissionCompetition = async (page, patient) => {
+  try {
+    const current = getPatient(patient.referralId) || patient;
+    const result = await collectCaseCompetition(page, current);
+    if (!result.success) {
+      createConsoleMessage("warn", result.error, "Post-submit competition read");
+    }
+    return (
+      getPatient(patient.referralId) ||
+      (result.success ? { ...current, ...result } : current)
+    );
+  } catch (error) {
+    createConsoleMessage("warn", error.message, "Post-submit competition read");
+    return patient;
+  }
 };
 
 /**
@@ -762,17 +617,43 @@ const handleSubmitReferral = (options) => async (patient) => {
     const actionTimeMs = Date.now() - actionTimeStart;
 
     const attemptsMade = attemptCount;
+    let competitionPatient;
+
+    // Outcome tracking must not depend on optional diagnostics/notifications.
+    if (apiResult?.success) {
+      patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
+    }
 
     // Disk writes happen after all attempts, never between timed retries.
     await writeReferralTimingEvent({
       type: "submission",
       ...submissionContext,
-      attempts: attempts.map(({ outcome, ...diagnostic }) => diagnostic),
+      attempts,
+      boundaryDiffMs: diffMs,
+      sleepMs: sleepMS,
+      actualFirstAttemptAfterEndMs: realFireDelayFromBoundaryMs,
+      actionDurationMs: actionTimeMs,
+      attemptsMade,
+      configuredPreFireBufferMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
+      uploadTiming: uploadResult.uploadTiming ?? null,
+      requestTiming: apiResult?.timing ?? null,
+      finalError: apiResult?.error ?? null,
+      responseMessage: apiResult?.data?.message ?? null,
+      responseHeaders: Object.fromEntries(
+        Object.entries(apiResult?.responseHeaders || {}).filter(([key]) =>
+          /^cf-/i.test(key) || ["date", "server", "x-request-id", "x-router-id",
+            "content-type", "content-length", "content-encoding", "cache-control", "diffms"]
+            .includes(key.toLowerCase())),
+      ),
       apiSuccess: Boolean(apiResult?.success),
       claimed: null,
     });
 
     if (apiResult) {
+      // Never postpone UI fallback for a failed submit just to read rankings.
+      competitionPatient = apiResult.success
+        ? await loadSubmissionCompetition(page, patient)
+        : getPatient(referralId) || patient;
       showPageSnackbar(page, {
         message: apiResult.success
           ? `${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API`
@@ -780,27 +661,31 @@ const handleSubmitReferral = (options) => async (patient) => {
         severity: apiResult.success ? "success" : "error",
       });
 
-      await sendTelegramMessage?.(
-        buildDirectApiTelegramMessage({
-          isAcceptanceAction,
-          referralId,
-          navigationId,
-          apiResult,
-          preUploadResult: uploadResult,
-          uploadDurationMs,
-          diffMs,
-          sleepMs: sleepMS,
-          sleepBeforeAcceptOrRejectMs: SLEEP_BEFORE_ACCEPT_OR_REJECT_MS,
-          realFireDelayFromBoundaryMs,
-          actionTimeMs,
-          attempts,
-          attemptsMade,
-          firstAttemptBufferMs,
-          leftoverBufferForFirstRetryMs,
-          sleepWhenAcceptOrRejectRetryMs: SLEEP_WHEN_ACCEPT_OR_REJECT_RETRY_MS,
-          admissionDetails,
-        }),
-      );
+      const directMessage = buildDirectApiTelegramMessage({
+        isAcceptanceAction,
+        referralId,
+        navigationId,
+        apiResult,
+        attemptsMade,
+        competitionPatient,
+        patientName,
+        patientNationalId,
+      });
+      await sendTelegramMessage?.(directMessage);
+      // Acceptance has its watcher notification below. Rejection sends
+      // this concise report, with the same facility times, to both chats.
+      if (
+        !isAcceptanceAction &&
+        process.env.VERIFICATION_CODE_WATCHER_CHAT_ID
+      ) {
+        await sendTelegramMessage?.(
+          directMessage,
+          [],
+          undefined,
+          process.env.VERIFICATION_CODE_WATCHER_CHAT_ID,
+          true,
+        );
+      }
     }
 
     if (apiResult?.success) {
@@ -817,12 +702,12 @@ const handleSubmitReferral = (options) => async (patient) => {
           patientName,
           patientNationalId,
           navigationId,
+          competitionPatient,
         });
       }
 
       // this is now supports rejection and accteptance
       await sleep(3_000);
-      patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
       await closePageSafely(page);
       return;
     }
@@ -1069,22 +954,20 @@ const handleSubmitReferral = (options) => async (patient) => {
         "handleSubmitReferral",
       );
 
+      // Clicking Confirm isn't proof of acceptance. Preserve the existing
+      // confirmation wait, then queue its status before optional reporting.
+      await sleep(SLEEP_AFTER_CONFIRMATION_MS);
+      patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
       await notifyWatcherOfAcceptance({
         sendTelegramMessage,
         referralId,
         patientName,
         patientNationalId,
         navigationId,
+        competitionPatient: await loadSubmissionCompetition(page, patient),
+        sendToUser: true,
       });
 
-      // Same bookkeeping handleCaseAcceptanceOrRejection.mjs does right
-      // after a real acceptance API call: mark the case as needing its
-      // claimed status checked later (checkReferralSelectedStatus.mjs
-      // polls patientsStore.getAllNonClaimableCases() and removes it once
-      // confirmed), since clicking Confirm here doesn't itself tell us
-      // whether Wasla actually accepted the submission.
-      await sleep(SLEEP_AFTER_CONFIRMATION_MS);
-      patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
       await closePageSafely(page);
     }
   } catch (error) {

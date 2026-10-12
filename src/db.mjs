@@ -628,6 +628,7 @@ const getPatientsFiltered = ({
   patientNationalId,
   navigationId,
   specialty,
+  hospital,
   status,
   referralDate,
   paid,
@@ -658,6 +659,11 @@ const getPatientsFiltered = ({
       clauses.push(`TRIM(specialty) = @specialty`);
       params.specialty = String(specialty).trim();
     }
+  }
+
+  if (hospital) {
+    clauses.push(`winnerFacilityId = @hospital`);
+    params.hospital = String(hospital);
   }
 
   if (status) {
@@ -831,6 +837,15 @@ const deleteOldCaseFiles = () => {
   return stmt.run(startOfYesterday);
 };
 
+const getDistinctHospitals = () => db.prepare(`
+  SELECT winnerFacilityId AS value,
+    COALESCE(MAX(NULLIF(TRIM(winnerFacilityName), '')), winnerFacilityId) AS label
+  FROM patients
+  WHERE winnerFacilityId IS NOT NULL AND winnerFacilityId <> ''
+  GROUP BY winnerFacilityId
+  ORDER BY label COLLATE NOCASE, value
+`).all();
+
 const getDistinctSpecialties = () => db.prepare(`
   SELECT DISTINCT TRIM(COALESCE(specialty, '')) AS specialty,
     TRIM(COALESCE(subSpecialty, '')) AS subSpecialty FROM patients
@@ -855,6 +870,7 @@ export {
   clearAllClaimedStatuses,
   getPatientsFiltered,
   getDistinctSpecialties,
+  getDistinctHospitals,
   getCasesForReport,
   searchPatients,
   getOldestPatient,

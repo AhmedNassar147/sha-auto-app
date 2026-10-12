@@ -46,6 +46,7 @@ import {
   getCasesWithEmptyClaimStatus,
   getPatientsFiltered,
   getDistinctSpecialties,
+  getDistinctHospitals,
   getPatient,
 } from "./db.mjs";
 import renderDbPage from "./dbPageHtml.mjs";
@@ -395,6 +396,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           patientNationalId,
           navigationId,
           specialty,
+          hospital,
           status,
           referralDate,
           paid,
@@ -405,6 +407,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           patientNationalId,
           navigationId,
           specialty,
+          hospital,
           status,
           referralDate,
           paid,
@@ -415,9 +418,10 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           renderDbPage({
             rows,
             specialties: getDistinctSpecialties(),
+            hospitals: getDistinctHospitals(),
             letterStatistics: req.query.letterStatistics === "1"
               ? summarizeLetterTypeOutcomes(getPatientsFiltered({
-                  referralId, patientNationalId, navigationId, specialty,
+                  referralId, patientNationalId, navigationId, specialty, hospital,
                   status, referralDate, paid, claimed, all: true,
                 })) : null,
             winnerStatistics:
@@ -428,6 +432,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
                       patientNationalId,
                       navigationId,
                       specialty,
+                      hospital,
                       status,
                       referralDate,
                       paid,
@@ -441,6 +446,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
               patientNationalId,
               navigationId,
               specialty,
+              hospital,
               status,
               referralDate,
               paid,
@@ -469,6 +475,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           patientNationalId,
           navigationId,
           specialty,
+          hospital,
           status,
           referralDate,
           paid,
@@ -480,6 +487,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           patientNationalId,
           navigationId,
           specialty,
+          hospital,
           status,
           referralDate,
           paid,

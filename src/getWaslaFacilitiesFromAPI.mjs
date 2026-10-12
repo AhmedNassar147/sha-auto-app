@@ -4,6 +4,8 @@ import { baseReferraAPiUrl } from "./constants.mjs";
 export default async function getWaslaFacilitiesFromAPI(context, navigationId) {
   return context.evaluate(
     async (url) => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15_000);
       try {
         const auth = JSON.parse(localStorage.getItem("persist:auth"));
         const token = auth?.token ? JSON.parse(auth.token) : null;
@@ -21,6 +23,7 @@ export default async function getWaslaFacilitiesFromAPI(context, navigationId) {
           organizationId = claims.organization_id ?? claims.org ?? null;
         } catch {}
         const response = await fetch(url, {
+          signal: controller.signal,
           method: "GET",
           credentials: "include",
           headers: {
@@ -44,6 +47,8 @@ export default async function getWaslaFacilitiesFromAPI(context, navigationId) {
         return { success: true, facilities, organizationId };
       } catch (error) {
         return { success: false, error: error.message };
+      } finally {
+        clearTimeout(timeout);
       }
     },
     `${baseReferraAPiUrl}/${encodeURIComponent(navigationId)}/facilities`,

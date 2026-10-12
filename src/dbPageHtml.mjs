@@ -315,12 +315,14 @@ const renderDbPage = ({
   winnerStatistics = null,
   letterStatistics = null,
   specialties = [],
+  hospitals = [],
 }) => {
   const {
     referralId = "",
     patientNationalId = "",
     navigationId = "",
     specialty = "",
+    hospital = "",
     status = "",
     referralDate = "",
     paid = "",
@@ -505,6 +507,13 @@ const renderDbPage = ({
       <select id="f-specialty" name="specialty" onchange="this.form.submit()">
         <option value="">All specialties</option>
         ${specialties.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === specialty ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-hospital">Winning hospital</label>
+      <select id="f-hospital" name="hospital" onchange="this.form.submit()">
+        <option value="">All hospitals</option>
+        ${hospitals.map((item) => `<option value="${escapeHtml(item.value)}"${String(item.value) === String(hospital) ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
       </select>
     </div>
     <div class="field">
