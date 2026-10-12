@@ -17,6 +17,9 @@ import {
   WAITING_ACCEPTANCE_STATUS_CODES,
 } from "./constants.mjs";
 
+const code = (value) =>
+  "`" + String(value ?? "").replace(/[`\r\n]/g, " ") + "`";
+
 /**
  * Looks up a single referral on the Wasla "myOrders" tab (tab 2) to see
  * whether its acceptance has been finalized, and if so, with what outcome.
@@ -45,13 +48,10 @@ const fetchCase = async (waslaFrame, referralId) => {
   // Claimed/finalized outcomes only ever show up on tab 2 ("myOrders") -
   // tab 1 ("referralCases") is the pending-broadcast list this case already
   // left once we accepted it.
-  const { patients, message, totalRowsCount } = await getWaslaCasesFromAPI(
-    waslaFrame,
-    {
-      searchReferralID: patientIdString,
-      tab: 2,
-    },
-  );
+  const { patients, message } = await getWaslaCasesFromAPI(waslaFrame, {
+    searchReferralID: patientIdString,
+    tab: 2,
+  });
 
   if (!patients?.length) {
     return {
@@ -65,9 +65,9 @@ const fetchCase = async (waslaFrame, referralId) => {
     };
   }
 
-  const foundPatient = totalRowsCount
-    ? patients?.find((patient) => `${patient.referralId}` === patientIdString)
-    : null;
+  const foundPatient = patients.find(
+    (patient) => `${patient.referralId}` === patientIdString,
+  );
 
   if (foundPatient) {
     const {
@@ -275,42 +275,65 @@ const checkReferralSelectedStatus = async (
     }
 
     const results = settledResults.filter((item) => item.shouldUpdateAndNotify);
+    let resolvedCount = 0;
 
     for (const item of results) {
-      const patient = getPatient(item.referralId);
-      // const userActionName = String(patient?.userActionName ?? "")
-      //   .trim()
-      //   .toLowerCase();
-      // const storedStatus = Number(patient?.status);
-      // const fetchedStatus = Number(item.status);
-      // if (
-      //   patient &&
-      //   !["reject"].includes(userActionName) &&
-      //   // Either the stored state or the fresh API state can reveal a
-      //   // rejection/withdrawal, even when the action field is stale.
-      //   ![2, 5].includes(storedStatus) &&
-      //   ![2, 5].includes(fetchedStatus)
-      // ) {
-      // }
-      const competition = await collectCaseCompetition(waslaFrame, patient);
-      if (!competition.success) {
+      try {
+        const patient = getPatient(item.referralId);
+        if (!patient) {
+          createConsoleMessage(
+            "warn",
+            `No DB row for referralId=${item.referralId}; leaving it queued.`,
+            "checkReferralSelectedStatus",
+          );
+          continue;
+        }
+        // const userActionName = String(patient?.userActionName ?? "")
+        //   .trim()
+        //   .toLowerCase();
+        // const storedStatus = Number(patient?.status);
+        // const fetchedStatus = Number(item.status);
+        // if (
+        //   patient &&
+        //   !["reject"].includes(userActionName) &&
+        //   // Either the stored state or the fresh API state can reveal a
+        //   // rejection/withdrawal, even when the action field is stale.
+        //   ![2, 5].includes(storedStatus) &&
+        //   ![2, 5].includes(fetchedStatus)
+        // ) {
+        // }
+        const competition = await collectCaseCompetition(waslaFrame, patient);
+        if (!competition.success) {
+          createConsoleMessage(
+            "warn",
+            competition.error,
+            "collectCaseCompetition",
+          );
+        }
+        await updateAndNotifyUser({
+          sendTelegramMessage,
+          ...item,
+          navigationId: item.navigationId || patient.navigationId,
+        });
+
+        patientsStore.removeNonClaimableCase(item.referralId);
+        resolvedCount++;
+      } catch (error) {
         createConsoleMessage(
-          "warn",
-          competition.error,
-          "collectCaseCompetition",
+          "error",
+          `referralId=${item.referralId}: ${error.stack || error.message}`,
+          "checkReferralSelectedStatus",
         );
       }
-      await updateAndNotifyUser({
-        sendTelegramMessage,
-        ...item,
-        navigationId: patient.navigationId || patient.navigationId,
-      });
-
-      patientsStore.removeNonClaimableCase(item.referralId);
     }
 
-    return results.length > 0;
+    return resolvedCount > 0;
   } catch (error) {
+    createConsoleMessage(
+      "error",
+      error.stack || error.message,
+      "checkReferralSelectedStatus",
+    );
     return false;
   }
 };
