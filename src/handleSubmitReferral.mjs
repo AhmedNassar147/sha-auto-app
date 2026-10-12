@@ -544,6 +544,11 @@ const handleSubmitReferral = (options) => async (patient) => {
 
   const MAX_ACTION_RETRIES = getEnvVariableAsNumber("MAX_ACTION_RETRIES", 20);
 
+  const firstAttemptBufferMs = getEnvVariableAsNumber(
+    "FIRST_ATTEMPT_BUFFER_MS",
+    60,
+  );
+
   const isAcceptanceAction = actionType === ACCEPT;
 
   const url = `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`;
@@ -627,9 +632,6 @@ const handleSubmitReferral = (options) => async (patient) => {
       });
     }
 
-    // First attempt stays at +120ms. The first retry targets the configured
-    // buffer after the boundary; response time counts toward that target.
-    const firstAttemptBufferMs = 120;
     const leftoverBufferForFirstRetryMs = Math.max(
       0,
       SLEEP_BEFORE_ACCEPT_OR_REJECT_MS - firstAttemptBufferMs,
