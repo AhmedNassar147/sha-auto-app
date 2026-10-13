@@ -9,7 +9,6 @@ import pLimit from "p-limit";
 import generateAcceptanceLetterHtml from "./generateAcceptanceLetterHtml.mjs";
 import chooseEnabledLetterLayout from "./chooseEnabledLetterLayout.mjs";
 import compressPdf from "./compressPdf.mjs";
-import renderSinglePagePdf from "./renderSinglePagePdf.mjs";
 import {
   USER_ACTION_TYPES,
   generatedPdfsPathForAcceptance,
@@ -59,7 +58,7 @@ const generateAcceptancePdfLetters = async (
 
       const { referralId } = patient;
 
-      const fileName = `${isAcceptance ? ACCEPT : REJECT}-${referralId}`;
+      const fileName = `${isAcceptance ? ACCEPT : REJECT}-${referralId}_xxx`;
 
       const folderPath = isAcceptance
         ? generatedPdfsPathForAcceptance
@@ -71,7 +70,7 @@ const generateAcceptancePdfLetters = async (
       let pdfBytes;
       try {
         await page.evaluate(() => document.fonts.ready);
-        pdfBytes = await renderSinglePagePdf(page, {
+        const pdfOptions = {
           format: "A4",
           // Avoid printBackground: true unless absolutely necessary — it increases size significantly
           printBackground: false,
@@ -81,7 +80,8 @@ const generateAcceptancePdfLetters = async (
             left: "10mm",
             right: "10mm",
           },
-        });
+        };
+        pdfBytes = await page.pdf({ ...pdfOptions, scale: 1 });
       } finally {
         await page.close();
       }

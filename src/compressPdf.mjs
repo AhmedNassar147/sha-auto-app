@@ -16,10 +16,11 @@ const compressPdf = (input, output) => {
     // pdfwrite keeps text/vector content sharp rather than flattening
     // the entire page into a low-resolution image.
     const args = [
-      "-sDEVICE=pdfwrite",
-      "-r120",
+      "-sDEVICE=pdfimage8",
+      "-r125",
       "-dCompatibilityLevel=1.4",
       "-dPDFSETTINGS=/ebook",
+      // "-dPDFSETTINGS=/screen",
       "-dEmbedAllFonts=true",
       "-dSubsetFonts=true",
       "-dCompressFonts=true",
@@ -54,13 +55,7 @@ const compressPdf = (input, output) => {
           const pdf = await PDFDocument.load(bytes, { updateMetadata: false });
           const packed = await pdf.save({ useObjectStreams: true });
           if (packed.length < bytes.length) await writeFile(output, packed);
-        } catch (error) {
-          createConsoleMessage(
-            "warn",
-            `PDF object packing failed; keeping the Ghostscript output: ${error.message}`,
-            "compressPdf",
-          );
-        }
+        } catch (error) {}
         resolve({ success: true, output });
       }
     });

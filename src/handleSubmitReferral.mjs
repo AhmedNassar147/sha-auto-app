@@ -552,6 +552,11 @@ const handleSubmitReferral = (options) => async (patient) => {
       preUpload: {
         success: uploadResult.success,
         uploadIgnored: Boolean(uploadResult.uploadIgnored),
+        httpStatus: uploadResult.httpStatus ?? null,
+        errorType: uploadResult.errorType ?? null,
+        error: uploadResult.error ?? null,
+        responseHeaders: uploadResult.responseHeaders ?? null,
+        request: uploadResult.uploadRequest ?? null,
         durationMs: uploadDurationMs,
         configuredLeadMs: preUploadLeadMs,
         startedAtMs: uploadStartTime,
@@ -573,7 +578,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(sleepMS);
     }
 
-    let apiResult = null;
+    let apiResult = uploadResult.errorType === "cloudflare-block" ? uploadResult : null;
 
     const realFireDelayFromBoundaryMs = Date.now() - referralEndTimestamp;
 
@@ -584,7 +589,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     // the backend cancels older requests, so keep sequential submission.
     let attemptCount = 0;
 
-    while (attemptCount < MAX_ACTION_RETRIES) {
+    while (attemptCount < MAX_ACTION_RETRIES && uploadResult.errorType !== "cloudflare-block") {
       attemptCount++;
       const attemptStart = Date.now();
 
@@ -705,7 +710,9 @@ const handleSubmitReferral = (options) => async (patient) => {
       showPageSnackbar(page, {
         message: apiResult.success
           ? `${isAcceptanceAction ? "Accepted" : "Rejected"} via direct API`
-          : `Direct API ${isAcceptanceAction ? "accept" : "reject"} failed - falling back to UI`,
+          : apiResult.errorType === "cloudflare-block"
+            ? "Cloudflare blocked the request — automatic submission stopped; manual review required"
+            : `Direct API ${isAcceptanceAction ? "accept" : "reject"} failed - falling back to UI`,
         severity: apiResult.success ? "success" : "error",
       });
 
@@ -723,7 +730,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       // Acceptance has its watcher notification below. Rejection sends
       // this concise report, with the same facility times, to both chats.
       if (
-        !isAcceptanceAction &&
+        (!isAcceptanceAction || apiResult.errorType === "cloudflare-block") &&
         process.env.VERIFICATION_CODE_WATCHER_CHAT_ID
       ) {
         await sendTelegramMessage?.(
@@ -734,6 +741,11 @@ const handleSubmitReferral = (options) => async (patient) => {
           true,
         );
       }
+    }
+
+    if (apiResult?.errorType === "cloudflare-block") {
+      await captureFailureArtifacts(page, "submit-referral-cloudflare-blocked");
+      return;
     }
 
     if (apiResult?.success) {

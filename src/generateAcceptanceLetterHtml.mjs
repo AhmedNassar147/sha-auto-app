@@ -52,7 +52,7 @@ const htmlLayouts = {
     <style>
       body {
         margin: 0;
-        padding: 15px;
+        padding: 12px;
         background: #fff;
         font-family: "Arial", sans-serif;
         font-size: 15px;
@@ -63,7 +63,7 @@ const htmlLayouts = {
         max-width: 900px;
         margin: auto;
         border: 1px solid #ccc;
-        padding: 15px;
+        padding: 12px;
       }
 
       .header-logos {
@@ -94,7 +94,7 @@ const htmlLayouts = {
 
       td {
         border: 1px solid #999;
-        padding: 8px 10px;
+        padding: 6px 8px;
         font-size: 15px;
       }
 
@@ -110,24 +110,24 @@ const htmlLayouts = {
 
       .footer {
         text-align: center;
-        margin-top: 20px;
+        margin-top: 14px;
       }
 
       .notes-section {
-        margin-top: 10px;
+        margin-top: 7px;
         padding-top: 10px;
       }
 
       .notes-header {
         text-align: center;
-        padding: 10px;
+        padding: 8px;
         font-weight: bold;
         border: 1px solid #ccc;
       }
 
       .notes-body {
         background: #e7f3f8;
-        padding: 15px 20px;
+        padding: 12px 16px;
         border: 1px solid #ccc;
         border-top: none;
       }
@@ -142,12 +142,12 @@ const htmlLayouts = {
         justify-content: space-between;
         border: 1px solid #ccc;
         background: #f3f0d7;
-        margin-top: 10px;
+        margin-top: 7px;
       }
 
       .notes-footer div {
         flex: 1;
-        padding: 10px;
+        padding: 8px;
         font-weight: bold;
         border-left: 1px solid #ccc;
         font-size: 14px;
@@ -323,7 +323,7 @@ const htmlLayouts = {
   <style>
     body {
       margin: 0;
-      padding: 20px;
+      padding: 16px;
       background: #fff;
       font-family: "Arial", sans-serif;
       direction: rtl;
@@ -340,7 +340,7 @@ const htmlLayouts = {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 25px;
+      margin-bottom: 18px;
     }
 
     .header-logo {
@@ -360,22 +360,22 @@ const htmlLayouts = {
     .card {
       background: #f7f7f7;
       border-radius: 8px;
-      padding: 12px 10px;
-      margin-bottom: 8px;
+      padding: 10px 8px;
+      margin-bottom: 6px;
       border: 1px solid #e0e0e0;
     }
 
     .card-title {
       font-weight: bold;
       font-size: 15px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       color: #000;
     }
 
     .grid-2 {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      gap: 10px;
     }
 
     .item-label {
@@ -384,9 +384,9 @@ const htmlLayouts = {
     }
 
     .letter-body {
-      margin-top: 12px;
+      margin-top: 8px;
       display: flex;
-      gap: 10px;
+      gap: 8px;
       justify-content: space-between;
     }
 
@@ -406,12 +406,12 @@ const htmlLayouts = {
     }
 
     .notes {
-      margin-top: 15px;
+      margin-top: 11px;
     }
 
     .notes-header {
       background: #eef6f9;
-      padding: 10px;
+      padding: 8px;
       font-weight: bold;
       border: 1px solid #d5e7ef;
       border-radius: 8px 8px 0 0;
@@ -419,7 +419,7 @@ const htmlLayouts = {
     }
 
     .notes-body {
-      padding: 15px 20px;
+      padding: 12px 16px;
       border: 1px solid #d5e7ef;
       border-top: none;
       border-radius: 0 0 8px 8px;
@@ -434,7 +434,7 @@ const htmlLayouts = {
 
     .footer {
       text-align: center;
-      margin-top: 20px;
+      margin-top: 14px;
       font-size: 15px;
       font-weight: bold;
     }
@@ -442,13 +442,13 @@ const htmlLayouts = {
     .final-footer {
       display: flex;
       justify-content: space-between;
-      margin-top: 15px;
+      margin-top: 11px;
       background: #fff9d9;
-      padding: 12px;
+      padding: 10px;
       border: 1px solid #e6deba;
       border-radius: 6px;
       font-size: 14px;
-      line-height: 1.7;
+      line-height: 1.6;
     }
 
     @media print {
@@ -625,14 +625,14 @@ const htmlLayouts = {
               width: 100%;
               min-height: 100%;
               border: 2px solid #1e5f74;
-              padding: 18px;
+              padding: 14px;
             }
 
             .header {
               display: grid;
               grid-template-columns: 150px 1fr 150px;
               align-items: center;
-              gap: 15px;
+              gap: 12px;
               padding-bottom: 15px;
               border-bottom: 2px solid #1e5f74;
             }
@@ -655,7 +655,7 @@ const htmlLayouts = {
             }
 
             .letter-title {
-              margin-top: 6px;
+              margin-top: 4px;
               font-size: 20px;
               font-weight: bold;
               color: #000;
@@ -664,20 +664,20 @@ const htmlLayouts = {
             .reference-bar {
               display: flex;
               justify-content: space-between;
-              margin-top: 15px;
-              padding: 10px 12px;
+              margin-top: 11px;
+              padding: 8px 10px;
               background: #f1f7f9;
               border: 1px solid #bdd1d8;
               font-weight: bold;
             }
 
             .section {
-              margin-top: 15px;
+              margin-top: 11px;
               border: 1px solid #9ca3af;
             }
 
             .section-title {
-              padding: 9px 12px;
+              padding: 7px 10px;
               background: #1e5f74;
               color: #000;
               font-size: 15px;
@@ -692,7 +692,7 @@ const htmlLayouts = {
             }
 
             .details-table td {
-              padding: 10px;
+              padding: 8px;
               color: #000;
               border: 1px solid #c8cdd2;
               vertical-align: top;
@@ -712,7 +712,7 @@ const htmlLayouts = {
             }
 
             .reason {
-              padding: 15px;
+              padding: 12px;
               background: #fff7f7;
               color: #000;
               font-size: 16px;
@@ -724,14 +724,14 @@ const htmlLayouts = {
               display: flex;
               justify-content: space-between;
               align-items: flex-start;
-              gap: 20px;
-              margin-top: 20px;
+              gap: 16px;
+              margin-top: 14px;
             }
 
             .letter-text {
               flex: 1;
               font-size: 15px;
-              line-height: 1.9;
+              line-height: 1.6;
             }
 
             .provider-logo {
@@ -741,9 +741,9 @@ const htmlLayouts = {
             }
 
             .signature {
-              margin-top: 18px;
+              margin-top: 13px;
               text-align: center;
-              line-height: 1.8;
+              line-height: 1.6;
             }
 
             .client-name {
@@ -753,20 +753,20 @@ const htmlLayouts = {
             }
 
             .notes {
-              margin-top: 18px;
+              margin-top: 13px;
               border: 1px solid #b8c8cf;
             }
 
             .notes-title {
-              padding: 9px;
+              padding: 7px;
               background: #e8f2f5;
               font-weight: bold;
               text-align: center;
             }
 
             .notes-content {
-              padding: 12px 18px;
-              line-height: 1.7;
+              padding: 10px 14px;
+              line-height: 1.6;
             }
 
             .notes-content ul {
@@ -777,13 +777,13 @@ const htmlLayouts = {
             .final-footer {
               display: grid;
               grid-template-columns: repeat(3, 1fr);
-              margin-top: 18px;
+              margin-top: 13px;
               border: 1px solid #9ca3af;
             }
 
             .footer-item {
-              min-height: 55px;
-              padding: 9px;
+              min-height: 44px;
+              padding: 7px;
               text-align: center;
               line-height: 1.6;
               border-left: 1px solid #9ca3af;
@@ -1174,7 +1174,7 @@ const htmlLayouts = {
 
             .top-border {
               height: 8px;
-              margin-bottom: 15px;
+              margin-bottom: 6px;
               background: #356859;
             }
 
@@ -1203,7 +1203,7 @@ const htmlLayouts = {
             }
 
             .document-title {
-              margin-top: 8px;
+              margin-top: 3px;
               color: #000;
               font-size: 21px;
               font-weight: bold;
@@ -1212,14 +1212,14 @@ const htmlLayouts = {
             .document-meta {
               display: grid;
               grid-template-columns: 1fr 1fr;
-              gap: 10px;
-              margin-top: 18px;
+              gap: 5px;
+              margin-top: 7px;
             }
 
             .meta-box {
-              padding: 9px 12px;
+              padding: 4px 6px;
               background: #f5f8f7;
-              border-right: 4px solid #356859;
+              border-right: 1px solid #356859;
             }
 
             .meta-label {
@@ -1227,14 +1227,14 @@ const htmlLayouts = {
             }
 
             .section {
-              margin-top: 16px;
+              margin-top: 6px;
             }
 
             .section-heading {
               display: flex;
               align-items: center;
-              gap: 10px;
-              margin-bottom: 8px;
+              gap: 5px;
+              margin-bottom: 3px;
             }
 
             .heading-number {
@@ -1264,8 +1264,8 @@ const htmlLayouts = {
             }
 
             .info-item {
-              min-height: 60px;
-              padding: 10px 12px;
+              min-height: 36px;
+              padding: 5px 6px;
               border-bottom: 1px solid #dce4e1;
             }
 
@@ -1280,7 +1280,7 @@ const htmlLayouts = {
 
             .info-label {
               display: block;
-              margin-bottom: 6px;
+              margin-bottom: 3px;
               color: #000;
               font-size: 12px;
               font-weight: bold;
@@ -1293,7 +1293,7 @@ const htmlLayouts = {
             }
 
             .rejection-box {
-              padding: 17px;
+              padding: 8px;
               background: #fff4f4;
               border: 1px solid #ecc8c8;
               border-radius: 7px;
@@ -1305,12 +1305,12 @@ const htmlLayouts = {
 
             .message-card {
               position: relative;
-              margin-top: 20px;
-              padding: 16px 18px;
+              margin-top: 7px;
+              padding: 8px 8px;
               background: #f8faf9;
               border: 1px solid #d4dfdb;
               border-radius: 8px;
-              line-height: 1.9;
+              line-height: 1.4;
               font-size: 15px;
             }
 
@@ -1329,31 +1329,31 @@ const htmlLayouts = {
             }
 
             .signature {
-              margin-top: 20px;
+              margin-top: 7px;
               text-align: center;
-              line-height: 1.7;
+              line-height: 1.4;
             }
 
             .signature-client {
               display: inline-block;
-              margin-top: 5px;
-              padding: 5px 20px;
-              border-bottom: 2px solid #356859;
+              margin-top: 3px;
+              padding: 3px 10px;
+              border-bottom: 1px solid #356859;
               color: #000;
               font-size: 16px;
               font-weight: bold;
             }
 
             .notes {
-              margin-top: 18px;
-              padding: 12px 15px;
+              margin-top: 7px;
+              padding: 6px 7px;
               background: #f2f7f5;
-              border-right: 5px solid #356859;
-              line-height: 1.7;
+              border-right: 1px solid #356859;
+              line-height: 1.4;
             }
 
             .notes-title {
-              margin-bottom: 8px;
+              margin-bottom: 3px;
               color: #000;
               font-weight: bold;
             }
@@ -1366,17 +1366,17 @@ const htmlLayouts = {
             .coordination-footer {
               display: grid;
               grid-template-columns: repeat(3, 1fr);
-              gap: 8px;
-              margin-top: 18px;
+              gap: 4px;
+              margin-top: 7px;
             }
 
             .coordination-item {
-              padding: 10px;
+              padding: 5px;
               background: #f7f7f2;
               border: 1px solid #deded3;
               border-radius: 5px;
               text-align: center;
-              line-height: 1.6;
+              line-height: 1.4;
             }
 
             .coordination-label {
@@ -1389,7 +1389,7 @@ const htmlLayouts = {
 
             .bottom-border {
               height: 6px;
-              margin-top: 18px;
+              margin-top: 7px;
               background: #356859;
             }
 
@@ -1755,8 +1755,8 @@ const htmlLayouts = {
             display: grid;
             grid-template-columns: 150px 1fr 150px;
             align-items: center;
-            gap: 18px;
-            padding: 17px 20px;
+            gap: 8px;
+            padding: 8px 10px;
             background: #f7f9fb;
             border-bottom: 1px solid #d9e2e8;
           }
@@ -1780,7 +1780,7 @@ const htmlLayouts = {
           }
 
           .document-title {
-            margin-top: 7px;
+            margin-top: 3px;
             color: #000;
             font-size: 22px;
             font-weight: bold;
@@ -1789,21 +1789,21 @@ const htmlLayouts = {
           .summary {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
-            gap: 10px;
-            margin-top: 16px;
+            gap: 5px;
+            margin-top: 6px;
           }
 
           .summary-item {
-            min-height: 65px;
-            padding: 10px 13px;
+            min-height: 36px;
+            padding: 5px 6px;
             background: #ffffff;
             border: 1px solid #d8e1e7;
-            border-right: 5px solid #1976d2;
+            border-right: 1px solid #1976d2;
           }
 
           .summary-label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 12px;
             font-weight: bold;
@@ -1818,7 +1818,7 @@ const htmlLayouts = {
           .status-badge {
             display: inline-block;
             min-width: 85px;
-            padding: 5px 13px;
+            padding: 3px 6px;
             border-radius: 20px;
             font-size: 13px;
             font-weight: bold;
@@ -1838,14 +1838,14 @@ const htmlLayouts = {
           }
 
           .section {
-            margin-top: 17px;
+            margin-top: 6px;
           }
 
           .section-header {
             display: flex;
             align-items: center;
-            min-height: 38px;
-            padding: 8px 13px;
+            min-height: 30px;
+            padding: 4px 6px;
             background: #005a9c;
             color: #000;
           }
@@ -1869,8 +1869,8 @@ const htmlLayouts = {
           }
 
           .data-item {
-            min-height: 67px;
-            padding: 10px 12px;
+            min-height: 36px;
+            padding: 5px 6px;
             background: #ffffff;
             border-left: 1px solid #d8e1e7;
             border-top: 1px solid #d8e1e7;
@@ -1886,7 +1886,7 @@ const htmlLayouts = {
 
           .data-label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 12px;
             font-weight: bold;
@@ -1901,10 +1901,10 @@ const htmlLayouts = {
           }
 
           .rejection-box {
-            padding: 18px;
+            padding: 8px;
             background: #fff6f7;
             border: 1px solid #efc9cd;
-            border-right: 6px solid #c62828;
+            border-right: 1px solid #c62828;
             color: #000;
             font-size: 16px;
             font-weight: bold;
@@ -1914,30 +1914,30 @@ const htmlLayouts = {
           .letter-panel {
             display: grid;
             grid-template-columns: 1fr 145px;
-            gap: 20px;
+            gap: 10px;
             align-items: center;
-            margin-top: 18px;
-            padding: 17px 18px;
+            margin-top: 7px;
+            padding: 8px 8px;
             background: #f7f9fb;
             border: 1px solid #d8e1e7;
-            border-right: 6px solid #005a9c;
+            border-right: 1px solid #005a9c;
           }
 
           .letter-text {
             font-size: 15px;
-            line-height: 1.9;
+            line-height: 1.4;
           }
 
           .letter-text p {
-            margin: 0 0 11px;
+            margin: 0 0 5px;
           }
 
           .provider-logo-wrapper {
             display: flex;
-            min-height: 145px;
+            min-height: 36px;
             align-items: center;
             justify-content: center;
-            padding: 8px;
+            padding: 4px;
             background: #ffffff;
             border: 1px solid #d8e1e7;
           }
@@ -1949,29 +1949,29 @@ const htmlLayouts = {
           }
 
           .signature {
-            margin-top: 18px;
+            margin-top: 7px;
             text-align: center;
-            line-height: 1.8;
+            line-height: 1.4;
           }
 
           .signature-name {
             display: inline-block;
             min-width: 220px;
-            margin-top: 5px;
-            padding: 5px 20px;
+            margin-top: 3px;
+            padding: 3px 10px;
             color: #000;
-            border-bottom: 2px solid #005a9c;
+            border-bottom: 1px solid #005a9c;
             font-size: 16px;
             font-weight: bold;
           }
 
           .notes {
-            margin-top: 18px;
+            margin-top: 7px;
             border: 1px solid #d4dfe5;
           }
 
           .notes-header {
-            padding: 9px 13px;
+            padding: 4px 6px;
             background: #eaf4fd;
             color: #000;
             border-bottom: 1px solid #d4dfe5;
@@ -1980,9 +1980,9 @@ const htmlLayouts = {
           }
 
           .notes-content {
-            padding: 12px 17px;
+            padding: 6px 8px;
             background: #ffffff;
-            line-height: 1.7;
+            line-height: 1.4;
           }
 
           .notes-content ul {
@@ -1993,19 +1993,19 @@ const htmlLayouts = {
           .coordination-footer {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            margin-top: 18px;
-            border-top: 4px solid #005a9c;
+            margin-top: 7px;
+            border-top: 1px solid #005a9c;
             border-right: 1px solid #d8e1e7;
             border-bottom: 1px solid #d8e1e7;
           }
 
           .coordination-item {
-            min-height: 62px;
-            padding: 9px;
+            min-height: 36px;
+            padding: 4px;
             background: #f7f9fb;
             border-left: 1px solid #d8e1e7;
             text-align: center;
-            line-height: 1.6;
+            line-height: 1.4;
           }
 
           .coordination-label {
@@ -2018,7 +2018,7 @@ const htmlLayouts = {
 
           .bottom-line {
             height: 6px;
-            margin-top: 17px;
+            margin-top: 6px;
             background: #005a9c;
           }
 
@@ -2437,9 +2437,9 @@ const htmlLayouts = {
             display: grid;
             grid-template-columns: 150px 1fr 150px;
             align-items: center;
-            gap: 20px;
-            min-height: 120px;
-            padding: 18px 22px;
+            gap: 10px;
+            min-height: 36px;
+            padding: 8px 11px;
             overflow: hidden;
             background: #153e5c;
             color: #000;
@@ -2464,7 +2464,7 @@ const htmlLayouts = {
             height: 88px;
             align-items: center;
             justify-content: center;
-            padding: 7px;
+            padding: 4px;
             background: #ffffff;
             border-radius: 8px;
           }
@@ -2491,13 +2491,13 @@ const htmlLayouts = {
           }
 
           .document-title {
-            margin-top: 8px;
+            margin-top: 3px;
             font-size: 23px;
             font-weight: bold;
           }
 
           .document-subtitle {
-            margin-top: 4px;
+            margin-top: 3px;
             color: #000;
             font-size: 12px;
             letter-spacing: 1px;
@@ -2506,21 +2506,21 @@ const htmlLayouts = {
           .overview {
             display: grid;
             grid-template-columns: repeat(4, 1fr);
-            gap: 10px;
-            margin-top: 16px;
+            gap: 5px;
+            margin-top: 6px;
           }
 
           .overview-card {
-            min-height: 72px;
-            padding: 11px 13px;
+            min-height: 36px;
+            padding: 5px 6px;
             background: #f4f8fb;
             border: 1px solid #cfdae2;
-            border-top: 4px solid #2f6690;
+            border-top: 1px solid #2f6690;
           }
 
           .overview-label {
             display: block;
-            margin-bottom: 7px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 11px;
             font-weight: bold;
@@ -2536,7 +2536,7 @@ const htmlLayouts = {
           .status-chip {
             display: inline-block;
             min-width: 80px;
-            padding: 5px 13px;
+            padding: 3px 6px;
             border-radius: 4px;
             font-size: 13px;
             font-weight: bold;
@@ -2556,16 +2556,16 @@ const htmlLayouts = {
           }
 
           .section {
-            margin-top: 17px;
+            margin-top: 6px;
           }
 
           .section-heading {
             display: flex;
             align-items: center;
-            min-height: 39px;
-            padding: 8px 13px;
+            min-height: 31px;
+            padding: 4px 6px;
             background: #eef4f8;
-            border-right: 6px solid #153e5c;
+            border-right: 1px solid #153e5c;
             border-bottom: 1px solid #cedbe3;
           }
 
@@ -2590,8 +2590,8 @@ const htmlLayouts = {
           }
 
           .information-item {
-            min-height: 68px;
-            padding: 10px 12px;
+            min-height: 36px;
+            padding: 5px 6px;
             background: #ffffff;
             border-top: 1px solid #d5dfe5;
             border-left: 1px solid #d5dfe5;
@@ -2607,7 +2607,7 @@ const htmlLayouts = {
 
           .information-label {
             display: block;
-            margin-bottom: 6px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 11px;
             font-weight: bold;
@@ -2623,12 +2623,12 @@ const htmlLayouts = {
 
           .decision-panel {
             position: relative;
-            margin-top: 17px;
-            padding: 18px 20px;
+            margin-top: 6px;
+            padding: 8px 10px;
             overflow: hidden;
             background: #f7f9fb;
             border: 1px solid #d1dce3;
-            border-right: 7px solid #153e5c;
+            border-right: 1px solid #153e5c;
           }
 
           .decision-panel::after {
@@ -2647,21 +2647,21 @@ const htmlLayouts = {
             z-index: 1;
             display: grid;
             grid-template-columns: 1fr 145px;
-            gap: 22px;
+            gap: 11px;
             align-items: center;
           }
 
           .decision-text {
             font-size: 15px;
-            line-height: 1.95;
+            line-height: 1.4;
           }
 
           .decision-text p {
-            margin: 0 0 11px;
+            margin: 0 0 5px;
           }
 
           .decision-title {
-            margin-bottom: 12px;
+            margin-bottom: 4px;
             color: #000;
             font-size: 16px;
             font-weight: bold;
@@ -2669,10 +2669,10 @@ const htmlLayouts = {
 
           .provider-box {
             display: flex;
-            min-height: 145px;
+            min-height: 36px;
             align-items: center;
             justify-content: center;
-            padding: 8px;
+            padding: 4px;
             background: #ffffff;
             border: 1px solid #ccd8e0;
             box-shadow: 0 2px 5px rgba(21, 62, 92, 0.08);
@@ -2685,10 +2685,10 @@ const htmlLayouts = {
           }
 
           .rejection-panel {
-            padding: 18px;
+            padding: 8px;
             background: #fff5f6;
             border: 1px solid #ebc7cc;
-            border-right: 7px solid #b32638;
+            border-right: 1px solid #b32638;
             color: #000;
             font-size: 16px;
             font-weight: bold;
@@ -2697,17 +2697,17 @@ const htmlLayouts = {
 
           .signature {
             display: flex;
-            margin-top: 18px;
+            margin-top: 7px;
             justify-content: center;
           }
 
           .signature-box {
             min-width: 290px;
-            padding: 10px 25px;
+            padding: 5px 12px;
             text-align: center;
             border-top: 1px solid #d2dce2;
-            border-bottom: 3px solid #153e5c;
-            line-height: 1.8;
+            border-bottom: 1px solid #153e5c;
+            line-height: 1.4;
           }
 
           .signature-title {
@@ -2722,13 +2722,13 @@ const htmlLayouts = {
           }
 
           .notes-panel {
-            margin-top: 18px;
+            margin-top: 7px;
             background: #f1f6f9;
             border: 1px solid #cfdae2;
           }
 
           .notes-header {
-            padding: 9px 14px;
+            padding: 4px 7px;
             background: #2f6690;
             color: #000;
             font-size: 14px;
@@ -2736,8 +2736,8 @@ const htmlLayouts = {
           }
 
           .notes-body {
-            padding: 12px 18px;
-            line-height: 1.75;
+            padding: 6px 8px;
+            line-height: 1.4;
           }
 
           .notes-body ul {
@@ -2749,23 +2749,23 @@ const htmlLayouts = {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1px;
-            margin-top: 18px;
+            margin-top: 7px;
             overflow: hidden;
             background: #c9d5dd;
             border: 1px solid #c9d5dd;
           }
 
           .coordination-item {
-            min-height: 64px;
-            padding: 10px;
+            min-height: 36px;
+            padding: 5px;
             background: #ffffff;
             text-align: center;
-            line-height: 1.6;
+            line-height: 1.4;
           }
 
           .coordination-label {
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 11px;
             font-weight: bold;
@@ -2781,8 +2781,8 @@ const htmlLayouts = {
             display: flex;
             align-items: center;
             justify-content: space-between;
-            margin-top: 12px;
-            padding: 6px 12px;
+            margin-top: 4px;
+            padding: 3px 6px;
             background: #153e5c;
             color: #000;
             font-size: 11px;
@@ -3244,8 +3244,8 @@ const htmlLayouts = {
             display: grid;
             grid-template-columns: 150px 1fr 150px;
             align-items: center;
-            gap: 15px;
-            padding: 14px 18px 17px;
+            gap: 7px;
+            padding: 7px 8px 8px;
             background: #f3f7f8;
             border-radius: 12px;
           }
@@ -3279,7 +3279,7 @@ const htmlLayouts = {
           }
 
           .document-title {
-            margin-top: 7px;
+            margin-top: 3px;
             color: #000;
             font-size: 22px;
             font-weight: bold;
@@ -3288,12 +3288,12 @@ const htmlLayouts = {
           .document-summary {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-top: 16px;
+            gap: 5px;
+            margin-top: 6px;
           }
 
           .summary-item {
-            padding: 10px 12px;
+            padding: 5px 6px;
             background: #fff;
             border: 1px solid #cad9dd;
             border-radius: 8px;
@@ -3302,7 +3302,7 @@ const htmlLayouts = {
 
           .summary-label {
             display: block;
-            margin-bottom: 4px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 12px;
             font-weight: bold;
@@ -3314,14 +3314,14 @@ const htmlLayouts = {
           }
 
           .section {
-            margin-top: 16px;
+            margin-top: 6px;
           }
 
           .section-header {
             display: flex;
             align-items: center;
-            gap: 9px;
-            margin-bottom: 8px;
+            gap: 4px;
+            margin-bottom: 3px;
           }
 
           .section-marker {
@@ -3349,8 +3349,8 @@ const htmlLayouts = {
           }
 
           .data-item {
-            min-height: 60px;
-            padding: 10px 13px;
+            min-height: 36px;
+            padding: 5px 6px;
             border-bottom: 1px solid #e1e8ea;
           }
 
@@ -3365,7 +3365,7 @@ const htmlLayouts = {
 
           .data-label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 12px;
             font-weight: bold;
@@ -3378,7 +3378,7 @@ const htmlLayouts = {
           }
 
           .rejection-card {
-            padding: 17px;
+            padding: 8px;
             background: #fff5f5;
             border: 1px solid #efcccc;
             border-radius: 10px;
@@ -3391,10 +3391,10 @@ const htmlLayouts = {
           .letter-card {
             display: grid;
             grid-template-columns: 1fr 135px;
-            gap: 20px;
+            gap: 10px;
             align-items: center;
-            margin-top: 18px;
-            padding: 17px;
+            margin-top: 7px;
+            padding: 8px;
             background: #f8fafb;
             border: 1px solid #d7e1e4;
             border-radius: 10px;
@@ -3402,11 +3402,11 @@ const htmlLayouts = {
 
           .letter-text {
             font-size: 15px;
-            line-height: 1.9;
+            line-height: 1.4;
           }
 
           .letter-text p {
-            margin: 0 0 11px;
+            margin: 0 0 5px;
           }
 
           .provider-logo {
@@ -3416,15 +3416,15 @@ const htmlLayouts = {
           }
 
           .signature {
-            margin-top: 17px;
+            margin-top: 6px;
             text-align: center;
-            line-height: 1.8;
+            line-height: 1.4;
           }
 
           .client-name {
             display: inline-block;
-            margin-top: 4px;
-            padding: 4px 18px;
+            margin-top: 3px;
+            padding: 3px 8px;
             color: #000;
             border-bottom: 2px solid #176b78;
             font-size: 16px;
@@ -3432,15 +3432,15 @@ const htmlLayouts = {
           }
 
           .notes-card {
-            margin-top: 17px;
-            padding: 13px 16px;
+            margin-top: 6px;
+            padding: 6px 8px;
             background: #eff7f7;
             border: 1px solid #cde1e2;
             border-radius: 10px;
           }
 
           .notes-title {
-            margin-bottom: 8px;
+            margin-bottom: 3px;
             color: #000;
             font-size: 15px;
             font-weight: bold;
@@ -3449,23 +3449,23 @@ const htmlLayouts = {
           .notes-card ul {
             margin: 0;
             padding-right: 20px;
-            line-height: 1.7;
+            line-height: 1.4;
           }
 
           .coordination-footer {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 9px;
-            margin-top: 17px;
+            gap: 4px;
+            margin-top: 6px;
           }
 
           .coordination-item {
-            padding: 10px;
+            padding: 5px;
             background: #f7f8f8;
             border: 1px solid #d3dcdf;
             border-radius: 8px;
             text-align: center;
-            line-height: 1.6;
+            line-height: 1.4;
           }
 
           .coordination-label {
@@ -3478,7 +3478,7 @@ const htmlLayouts = {
 
           .bottom-line {
             height: 5px;
-            margin-top: 17px;
+            margin-top: 6px;
             background: #176b78;
             border-radius: 5px;
           }
@@ -3884,6 +3884,8 @@ const generateAcceptanceLetterHtml = ({
     __reasonName__,
   });
   return html.replace("</head>", `<style>
+    p { margin-top: 8px; margin-bottom: 8px; }
+    ul { margin-top: 6px; margin-bottom: 6px; }
     body, body *, body *::before, body *::after {
       color: #000 !important;
       -webkit-text-fill-color: #000 !important;

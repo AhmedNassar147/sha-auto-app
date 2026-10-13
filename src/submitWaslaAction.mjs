@@ -158,9 +158,15 @@ const submitWaslaAction = async ({
       };
 
       const headers = getWaslaAuthHeaders();
+      const responseErrorType = (status, body, responseHeaders) =>
+        status === 403 && (
+          /Attention Required!\s*\|\s*Cloudflare|Sorry, you have been blocked|cf-error-details/i.test(body) ||
+          responseHeaders["cf-mitigated"] === "challenge"
+        ) ? "cloudflare-block" : "http-error";
 
       let attachmentId = knownAttachmentId;
       let uploadIgnored = true;
+      let uploadRequest = null;
 
       if (!attachmentId && fileBase64) {
         uploadIgnored = false;
@@ -176,6 +182,14 @@ const submitWaslaAction = async ({
 
         const formData = new FormData();
         formData.append("file", blob, fileName);
+        uploadRequest = {
+          fileName,
+          fileSizeBytes: blob.size,
+          mimeType: blob.type,
+          origin: location.origin,
+          pagePath: location.pathname,
+          culture: headers.culture || null,
+        };
 
         try {
           const uploadRes = await fetch(uploadUrl, {
@@ -187,12 +201,17 @@ const submitWaslaAction = async ({
 
           if (!uploadRes.ok) {
             const bodyText = await uploadRes.text().catch(() => "");
+            const responseHeaders = Object.fromEntries(uploadRes.headers.entries());
             return {
               success: false,
               step: `${postStepLabel}-upload-notOk`,
               url: uploadUrl,
               uploadIgnored,
               uploadTiming: getResourceTiming(uploadUrl),
+              uploadRequest,
+              httpStatus: uploadRes.status,
+              responseHeaders,
+              errorType: responseErrorType(uploadRes.status, bodyText, responseHeaders),
               error: `Status ${uploadRes.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
             };
           }
@@ -206,6 +225,7 @@ const submitWaslaAction = async ({
             return {
               success: false,
               step: `${postStepLabel}-upload-no-id`,
+              uploadRequest,
               url: uploadUrl,
               uploadIgnored,
               uploadTiming: getResourceTiming(uploadUrl),
@@ -216,6 +236,7 @@ const submitWaslaAction = async ({
           return {
             success: false,
             step: `${postStepLabel}-upload-catch`,
+            uploadRequest,
             url: uploadUrl,
             uploadIgnored,
             uploadTiming: getResourceTiming(uploadUrl),
@@ -232,7 +253,7 @@ const submitWaslaAction = async ({
       // No url means no POST was ever intended - whichever caller left it
       // out only wanted the upload (see this file's own docblock).
       if (!url) {
-        return { success: true, attachmentId, uploadIgnored, uploadTiming };
+        return { success: true, attachmentId, uploadIgnored, uploadTiming, uploadRequest };
       }
 
       const finalPayload =
@@ -296,6 +317,8 @@ const submitWaslaAction = async ({
             uploadTiming,
             timing: getResourceTiming(url),
             responseHeaders,
+            httpStatus: res.status,
+            errorType: responseErrorType(res.status, bodyText, responseHeaders),
             requestClockSample,
             error: `Status ${res.status}${bodyText ? `: ${bodyText}` : ""} (hadAuthHeader=${Boolean(headers.Authorization)})`,
           };
