@@ -58,7 +58,7 @@ const generateAcceptancePdfLetters = async (
 
       const { referralId } = patient;
 
-      const fileName = `${isAcceptance ? ACCEPT : REJECT}-${referralId}_xxx`;
+      const fileName = `${isAcceptance ? ACCEPT : REJECT}-${referralId}`;
 
       const folderPath = isAcceptance
         ? generatedPdfsPathForAcceptance
