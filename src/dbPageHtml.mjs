@@ -329,6 +329,7 @@ const renderDbPage = ({
     referralDate = "",
     paid = "",
     claimed = "",
+    ignoreRejected = "",
   } = filters;
 
   return `<!doctype html>
@@ -388,6 +389,9 @@ const renderDbPage = ({
     outline: none;
   }
   .field input { min-width: 170px; }
+  .field.checkbox-field { justify-content: center; }
+  .checkbox-field label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .checkbox-field input[type="checkbox"] { min-width: 0; width: 16px; height: 16px; padding: 0; accent-color: var(--accent); }
   /* Dropdowns have a short, bounded set of options (Yes/No/All, a status
      name) - they don't need as much room as a free-text input. */
   .field select { min-width: 100px; }
@@ -474,12 +478,12 @@ const renderDbPage = ({
   tbody tr.rejected-row:hover { background: rgba(248, 113, 113, 0.22); }
   tbody tr.selected-row,
   tbody tr.selected-row:nth-child(even) {
-    background: #fde047;
-    color: #111827;
-    box-shadow: inset 5px 0 0 #f59e0b;
+    background: #bbf7d0;
+    color: #14532d;
+    box-shadow: inset 5px 0 0 #16a34a;
   }
-  tbody tr.selected-row:hover { background: #facc15; }
-  tbody tr.selected-row .empty-cell { color: #475569; }
+  tbody tr.selected-row:hover { background: #a7f3c0; }
+  tbody tr.selected-row .empty-cell { color: #3f6250; }
   tbody tr.selected-row a:not(.btn-link) { color: #1e40af; }
   td .btn-link, td button { padding: 4px 7px; font-size: 12px; }
   .badge { display: inline-block; padding: 1px 5px; border-radius: 999px; font-size: 11px; font-weight: 600; }
@@ -546,6 +550,12 @@ const renderDbPage = ({
         <option value="Yes"${claimed === "Yes" ? " selected" : ""}>Yes</option>
         <option value="No"${claimed === "No" ? " selected" : ""}>No</option>
       </select>
+    </div>
+    <div class="field checkbox-field">
+      <label for="f-ignoreRejected">
+        <input id="f-ignoreRejected" name="ignoreRejected" type="checkbox" value="1"${ignoreRejected === "1" || ignoreRejected === true ? " checked" : ""} onchange="this.form.submit()" />
+        Ignore Rejected
+      </label>
     </div>
     <div class="actions">
       <a class="btn-link secondary" href="/db">Clear</a>

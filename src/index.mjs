@@ -401,6 +401,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralDate,
           paid,
           claimed,
+
+          ignoreRejected,
         } = req.query;
         const rows = getPatientsFiltered({
           referralId,
@@ -412,6 +414,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralDate,
           paid,
           claimed,
+          ignoreRejected,
         });
 
         res.type("html").send(
@@ -419,11 +422,24 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
             rows,
             specialties: getDistinctSpecialties(),
             hospitals: getDistinctHospitals(),
-            letterStatistics: req.query.letterStatistics === "1"
-              ? summarizeLetterTypeOutcomes(getPatientsFiltered({
-                  referralId, patientNationalId, navigationId, specialty, hospital,
-                  status, referralDate, paid, claimed, all: true,
-                })) : null,
+            letterStatistics:
+              req.query.letterStatistics === "1"
+                ? summarizeLetterTypeOutcomes(
+                    getPatientsFiltered({
+                      referralId,
+                      patientNationalId,
+                      navigationId,
+                      specialty,
+                      hospital,
+                      status,
+                      referralDate,
+                      paid,
+                      claimed,
+                      ignoreRejected,
+                      all: true,
+                    }),
+                  )
+                : null,
             winnerStatistics:
               req.query.statistics === "1"
                 ? summarizeDbWinners(
@@ -437,6 +453,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
                       referralDate,
                       paid,
                       claimed,
+
+                      ignoreRejected,
                       all: true,
                     }),
                   )
@@ -451,6 +469,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
               referralDate,
               paid,
               claimed,
+
+              ignoreRejected,
             },
           }),
         );
@@ -480,6 +500,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralDate,
           paid,
           claimed,
+
+          ignoreRejected,
         } = req.body;
 
         const rows = getPatientsFiltered({
@@ -492,6 +514,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           referralDate,
           paid,
           claimed,
+
+          ignoreRejected,
           limit: 2000,
         });
 

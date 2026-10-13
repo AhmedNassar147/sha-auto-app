@@ -641,6 +641,7 @@ const getPatientsFiltered = ({
   paid,
   claimed,
   limit = 500,
+  ignoreRejected = false,
   all = false,
 } = {}) => {
   const values = { referralId, patientNationalId, navigationId, specialty };
@@ -657,15 +658,27 @@ const getPatientsFiltered = ({
 
   if (specialty) {
     let pair;
-    try { pair = JSON.parse(specialty); } catch {}
-    if (Array.isArray(pair) && pair.length === 2 && pair.every((v) => typeof v === "string")) {
-      clauses.push(`TRIM(COALESCE(specialty, '')) = @specialty AND TRIM(COALESCE(subSpecialty, '')) = @subSpecialty`);
+    try {
+      pair = JSON.parse(specialty);
+    } catch {}
+    if (
+      Array.isArray(pair) &&
+      pair.length === 2 &&
+      pair.every((v) => typeof v === "string")
+    ) {
+      clauses.push(
+        `TRIM(COALESCE(specialty, '')) = @specialty AND TRIM(COALESCE(subSpecialty, '')) = @subSpecialty`,
+      );
       params.specialty = pair[0].trim();
       params.subSpecialty = pair[1].trim();
     } else {
       clauses.push(`TRIM(specialty) = @specialty`);
       params.specialty = String(specialty).trim();
     }
+  }
+
+  if (ignoreRejected === true || ignoreRejected === "1") {
+    clauses.push(`(status IS NULL OR CAST(status AS REAL) <> 2)`);
   }
 
   if (hospital) {
@@ -844,25 +857,36 @@ const deleteOldCaseFiles = () => {
   return stmt.run(startOfYesterday);
 };
 
-const getDistinctHospitals = () => db.prepare(`
+const getDistinctHospitals = () =>
+  db
+    .prepare(
+      `
   SELECT winnerFacilityId AS value,
     COALESCE(MAX(NULLIF(TRIM(winnerFacilityName), '')), winnerFacilityId) AS label
   FROM patients
   WHERE winnerFacilityId IS NOT NULL AND winnerFacilityId <> ''
   GROUP BY winnerFacilityId
   ORDER BY label COLLATE NOCASE, value
-`).all();
+`,
+    )
+    .all();
 
-const getDistinctSpecialties = () => db.prepare(`
+const getDistinctSpecialties = () =>
+  db
+    .prepare(
+      `
   SELECT DISTINCT TRIM(COALESCE(specialty, '')) AS specialty,
     TRIM(COALESCE(subSpecialty, '')) AS subSpecialty FROM patients
   WHERE TRIM(COALESCE(specialty, '')) <> '' OR TRIM(COALESCE(subSpecialty, '')) <> ''
   ORDER BY subSpecialty COLLATE NOCASE, specialty COLLATE NOCASE
-`).all().map((row) => ({
-  ...row,
-  value: JSON.stringify([row.specialty, row.subSpecialty]),
-  label: `${row.subSpecialty || 'No sub-specialty'} — ${row.specialty || 'No specialty'}`,
-}));
+`,
+    )
+    .all()
+    .map((row) => ({
+      ...row,
+      value: JSON.stringify([row.specialty, row.subSpecialty]),
+      label: `${row.subSpecialty || "No sub-specialty"} — ${row.specialty || "No specialty"}`,
+    }));
 
 export {
   db,
