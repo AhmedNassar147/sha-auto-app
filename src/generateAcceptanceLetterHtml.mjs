@@ -2445,16 +2445,6 @@ const htmlLayouts = {
             color: #000;
           }
 
-          .executive-header::after {
-            position: absolute;
-            right: 0;
-            bottom: 0;
-            width: 38%;
-            height: 6px;
-            background: #4f9ac5;
-            content: "";
-          }
-
           .executive-header::before {
             position: absolute;
             bottom: -55px;

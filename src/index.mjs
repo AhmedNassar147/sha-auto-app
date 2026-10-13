@@ -12,6 +12,7 @@ import cron from "node-cron";
 
 import PatientStore from "./PatientStore.mjs";
 import readJsonFile from "./readJsonFile.mjs";
+import testLetterLayouts from "./test-letter-layouts.mjs";
 
 import waitForWaitingCountWithInterval, {
   continueFetchingPatientsIfPaused,
@@ -212,6 +213,9 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
         "--disable-dev-shm-usage", // Stability; safe even if not needed
       ],
     });
+
+    // await testLetterLayouts(browser);
+    // return;
 
     // Restore collected patients, bootstrap store
     const collectedPatients = await readJsonFile(

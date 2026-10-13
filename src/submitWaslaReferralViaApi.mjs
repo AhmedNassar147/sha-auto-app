@@ -27,12 +27,8 @@
  * (not used by the time-critical path anymore, kept for flexibility/
  * testing).
  *
- * Pass `admissionDetails` for an Inpatient-type referral's accept instead
- * of `notes` - confirmed live (html/details-js-code.js's `jr`/`Rr`
- * components): Wasla's own frontend sends a completely different payload
- * shape there, `{accept:true, ...admissionDetails}`, with no `notes` and
- * (per the same trace) no `file` either - don't also pass attachmentId/
- * fileBase64 alongside it, see buildAdmissionDetails.mjs.
+ * Inpatient acceptance includes admissionDetails alongside notes and the
+ * uploaded letter's file ID. The October 13 bundle requires all three.
  *
  */
 import { API_URLS } from "./constants.mjs";
@@ -56,13 +52,13 @@ import submitWaslaAction from "./submitWaslaAction.mjs";
  *   `${actionType}-${referralId}.pdf`. Only used when attachmentId isn't
  *   given.
  * @param {string} [params.notes] - Accept-only notes text; ignored when
- *   isAccept is false or admissionDetails is given.
+ *   isAccept is false. Required for ordinary and Inpatient acceptance.
  * @param {number} [params.rejectionReasonId] - Reject-only lookup id from
  *   the portal's own rejection-reasons list; ignored when isAccept is true.
  * @param {boolean} params.isAccept - true to accept, false to reject.
  * @param {object} [params.admissionDetails] - Inpatient-only (see
- *   buildAdmissionDetails.mjs) - when given, replaces `notes` in the
- *   payload entirely. Ignored when isAccept is false.
+ *   buildAdmissionDetails.mjs) - included alongside notes and file.
+ *   Ignored when isAccept is false.
  * @returns {Promise<{
  *   success: boolean,
  *   attachmentId?: number | string,
@@ -90,11 +86,10 @@ const submitWaslaReferralViaApi = async ({
   // Accept sends free-text "notes"; reject has no "notes" field at all
   // and instead needs "rejectionReasonId" - a lookup id from the portal's
   // own rejection-reasons list (scripts/reject-case.js), supplied by the
-  // caller. Inpatient accept is a third shape again - admissionDetails
-  // fields instead of notes, no file (see this file's own docblock).
+  // caller. Inpatient accept adds admissionDetails to notes and file.
   const payload = isAccept
     ? admissionDetails
-      ? { accept: true, ...admissionDetails }
+      ? { accept: true, ...admissionDetails, notes }
       : { accept: true, notes }
     : { accept: false, rejectionReasonId };
 

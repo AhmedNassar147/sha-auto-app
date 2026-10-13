@@ -32,6 +32,7 @@ import buildDirectApiTelegramMessage from "./buildDirectApiTelegramMessage.mjs";
 import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import submitWaslaAction from "./submitWaslaAction.mjs";
 import buildAdmissionDetails from "./buildAdmissionDetails.mjs";
+import fillWaslaRejectionReason from "./fillWaslaRejectionReason.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
@@ -85,10 +86,10 @@ const MODAL_TIMEOUT_MS = 15_000;
 // Confirmed unique in both html/details/accept-modal.html and
 // rejection-modal.html: the forward action (accept's "Confirm", reject's
 // "Reject Confirmation") is the only MuiButton-containedPrimary in the
-// dialog - a class, not text, so it works for either language. It starts
+// dialog. Both acceptance and rejection use the contained variant. It starts
 // disabled (disabled="" in the real markup) until the required fields
 // validate, so this waits for that rather than a fixed delay.
-const CONFIRM_BUTTON_SELECTOR = "button.MuiButton-containedPrimary";
+const CONFIRM_BUTTON_SELECTOR = "button.MuiButton-contained";
 const CONFIRM_BUTTON_TIMEOUT_MS = 15_000;
 const SLEEP_AFTER_CONFIRMATION_MS = 15_000;
 
@@ -176,7 +177,6 @@ const reportFailure = async (
   ]);
 };
 
-
 /**
  * Best-effort fills Wasla's Admission Details modal (only shown for
  * Inpatient referrals, see buildAdmissionDetails.mjs) with the same
@@ -204,6 +204,9 @@ const fillInpatientAdmissionDetailsModal = async ({
   modalHandle,
   admissionDetails,
   departmentFilterText,
+  notes,
+  letterFilePath,
+  referralId,
 }) => {
   const results = {};
 
@@ -229,6 +232,44 @@ const fillInpatientAdmissionDetailsModal = async ({
     admissionDetails.transportationScheduleDate,
   );
   await fillTextField("startDate", admissionDetails.startDate);
+  try {
+    const notesInput = await modalHandle.waitForSelector(
+      MODAL_TEXTAREA_SELECTOR,
+      {
+        timeout: MODAL_TIMEOUT_MS,
+      },
+    );
+    await notesInput.click({ clickCount: 3 });
+    await notesInput.type(notes);
+    results.notes = true;
+  } catch {
+    results.notes = false;
+  }
+  try {
+    const fileInput = await modalHandle.waitForSelector(
+      MODAL_FILE_INPUT_SELECTOR,
+      {
+        timeout: MODAL_TIMEOUT_MS,
+      },
+    );
+    const uploadResponse = page
+      .waitForResponse(
+        (response) =>
+          response.url().split("?")[0] === API_URLS.UPLOAD_ATTACHMENT &&
+          response.request().method() === "POST" &&
+          response.ok(),
+        { timeout: 20_000 },
+      )
+      .then((response) => response.json())
+      .catch(() => null);
+    await fileInput.uploadFile(letterFilePath);
+    const uploaded = await uploadResponse;
+    results.attachment = uploaded?.id != null;
+    if (results.attachment)
+      updatePatients({ referralId, caseAttachmentId: String(uploaded.id) });
+  } catch {
+    results.attachment = false;
+  }
 
   try {
     const departmentInput = await modalHandle.waitForSelector(
@@ -319,7 +360,11 @@ const loadSubmissionCompetition = async (page, patient) => {
     const current = getPatient(patient.referralId) || patient;
     const result = await collectCaseCompetition(page, current);
     if (!result.success) {
-      createConsoleMessage("warn", result.error, "Post-submit competition read");
+      createConsoleMessage(
+        "warn",
+        result.error,
+        "Post-submit competition read",
+      );
     }
     return (
       getPatient(patient.referralId) ||
@@ -467,18 +512,14 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(currentLeftTime - preUploadLeadMs);
     }
 
-    // Inpatient accept never attaches a file (confirmed live - see
-    // buildAdmissionDetails.mjs/submitWaslaReferralViaApi.mjs), so there's
-    // nothing to pre-upload for it.
+    // The current bundle requires notes and a letter for Inpatient too.
     const uploadStartTime = Date.now();
-    const uploadResult = isInpatientReferral
-      ? { success: true, uploadIgnored: true }
-      : await submitWaslaAction({
-          page,
-          fileBase64: letterFileBase64,
-          fileName: randomFileName,
-          postStepLabel: "accept-json",
-        });
+    const uploadResult = await submitWaslaAction({
+      page,
+      fileBase64: letterFileBase64,
+      fileName: randomFileName,
+      postStepLabel: "accept-json",
+    });
     const uploadDurationMs = Date.now() - uploadStartTime;
     if (uploadResult.attachmentId != null) {
       updatePatients({
@@ -554,14 +595,10 @@ const handleSubmitReferral = (options) => async (patient) => {
         rejectionReasonId: REJECTION_REASON_ID,
         isAccept: isAcceptanceAction,
         admissionDetails,
-        ...(isInpatientReferral
-          ? null
-          : {
-              attachmentId: uploadResult.attachmentId,
-              // we pass these incase the letter file was not pre-uploaded, so we can upload it now
-              fileBase64: letterFileBase64,
-              fileName: randomFileName,
-            }),
+        attachmentId: uploadResult.attachmentId,
+        // we pass these incase the letter file was not pre-uploaded, so we can upload it now
+        fileBase64: letterFileBase64,
+        fileName: randomFileName,
       });
 
       const attemptFinishedAtMs = Date.now();
@@ -640,10 +677,21 @@ const handleSubmitReferral = (options) => async (patient) => {
       finalError: apiResult?.error ?? null,
       responseMessage: apiResult?.data?.message ?? null,
       responseHeaders: Object.fromEntries(
-        Object.entries(apiResult?.responseHeaders || {}).filter(([key]) =>
-          /^cf-/i.test(key) || ["date", "server", "x-request-id", "x-router-id",
-            "content-type", "content-length", "content-encoding", "cache-control", "diffms"]
-            .includes(key.toLowerCase())),
+        Object.entries(apiResult?.responseHeaders || {}).filter(
+          ([key]) =>
+            /^cf-/i.test(key) ||
+            [
+              "date",
+              "server",
+              "x-request-id",
+              "x-router-id",
+              "content-type",
+              "content-length",
+              "content-encoding",
+              "cache-control",
+              "diffms",
+            ].includes(key.toLowerCase()),
+        ),
       ),
       apiSuccess: Boolean(apiResult?.success),
       claimed: null,
@@ -787,6 +835,9 @@ const handleSubmitReferral = (options) => async (patient) => {
         modalHandle,
         admissionDetails,
         departmentFilterText: specialty,
+        notes: description,
+        letterFilePath,
+        referralId,
       });
 
       // Captures whatever actually landed in the form (or didn't), for
@@ -910,10 +961,20 @@ const handleSubmitReferral = (options) => async (patient) => {
       "handleSubmitReferral",
     );
 
-    // Reject's modal also has a required "Rejection Reason" dropdown we
-    // don't fill yet, so its Confirm would stay disabled anyway - only
-    // wired up for accept for now.
-    if (isAcceptanceAction) {
+    if (!isAcceptanceAction) {
+      try {
+        await fillWaslaRejectionReason(page, modalHandle, REJECTION_REASON_ID);
+      } catch (error) {
+        await reportFailure(
+          page,
+          sendTelegramMessage,
+          "submit-referral-rejection-reason-failed",
+          `❌ Rejection reason selection failed for referralId=${referralId}: ${error.message}`,
+        );
+        return;
+      }
+    }
+    {
       const confirmButtonHandle = await page
         .waitForFunction(
           (dialogEl, selector) => {
@@ -954,19 +1015,33 @@ const handleSubmitReferral = (options) => async (patient) => {
         "handleSubmitReferral",
       );
 
-      // Clicking Confirm isn't proof of acceptance. Preserve the existing
+      // Clicking Confirm isn't proof of a recorded action. Preserve the existing
       // confirmation wait, then queue its status before optional reporting.
       await sleep(SLEEP_AFTER_CONFIRMATION_MS);
       patientsStore.addNonClaimableCase(referralId, referralEndTimestamp);
-      await notifyWatcherOfAcceptance({
-        sendTelegramMessage,
-        referralId,
-        patientName,
-        patientNationalId,
-        navigationId,
-        competitionPatient: await loadSubmissionCompetition(page, patient),
-        sendToUser: true,
-      });
+      if (isAcceptanceAction) {
+        await notifyWatcherOfAcceptance({
+          sendTelegramMessage,
+          referralId,
+          patientName,
+          patientNationalId,
+          navigationId,
+          competitionPatient: await loadSubmissionCompetition(page, patient),
+          sendToUser: true,
+        });
+      } else {
+        const message = `✅ *Submitted rejection via UI*\nReferral ID: \`${referralId}\`\nCase ID: \`${navigationId}\``;
+        await sendTelegramMessage?.(message);
+        if (process.env.VERIFICATION_CODE_WATCHER_CHAT_ID) {
+          await sendTelegramMessage?.(
+            message,
+            [],
+            undefined,
+            process.env.VERIFICATION_CODE_WATCHER_CHAT_ID,
+            true,
+          );
+        }
+      }
 
       await closePageSafely(page);
     }
