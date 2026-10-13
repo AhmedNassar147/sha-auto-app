@@ -192,6 +192,7 @@ export const WASLA_REFERRAL_VIEW_URL = `${WASLA_APP_URL}/facility-referrals/view
 // not page-scoped), so there's no need to pay for the heavier case-detail
 // page's own navigation/data-fetch cost before the boundary actually opens.
 export const WASLA_FACILITY_REFERRALS_PENDING_URL = `${WASLA_APP_URL}/facility-referrals?tab=1`;
+
 export const BASE_WASLA_API_URL = `${WASLA_APP_URL}/api`;
 export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;
 
@@ -301,8 +302,7 @@ export const LETTER_LAYOUT_NAMES = Object.values(LETTER_LAYOUT_TYPES);
 // Temporarily paused for new letters based on the observed outcome sample.
 // Template definitions remain available for historical records.
 export const ENABLED_LETTER_LAYOUT_NAMES = LETTER_LAYOUT_NAMES.filter(
-  (name) =>
-    ![LETTER_LAYOUT_TYPES.FORMAL, LETTER_LAYOUT_TYPES.STANDARD].includes(name),
+  (name) => ![LETTER_LAYOUT_TYPES.FORMAL].includes(name),
 );
 
 export const LETTER_LAYOUT_ABBREVIATIONS = {
