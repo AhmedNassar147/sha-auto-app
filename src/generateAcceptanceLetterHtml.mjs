@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { LETTER_LAYOUT_TYPES } from "./constants.mjs";
+import generateClinicalLetterHtml from "./generateClinicalLetterHtml.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,6 +24,13 @@ const ehalaFileUrl = toBase64(ehalaLogo);
 const providerFileUrl = toBase64(providerLogo);
 
 const htmlLayouts = {
+  [LETTER_LAYOUT_TYPES.CLINICAL]: (data) =>
+    generateClinicalLetterHtml({
+      ...data,
+      ministryFileUrl,
+      ehalaFileUrl,
+      providerFileUrl,
+    }),
   [LETTER_LAYOUT_TYPES.STANDARD]: ({
     patientNationalId,
     nationality,
@@ -74,7 +82,7 @@ const htmlLayouts = {
 
       .header-logos img {
         height: 65px;
-      
+
         width: 150px;
         object-fit: contain;
         flex-shrink: 0;}
@@ -345,7 +353,7 @@ const htmlLayouts = {
 
     .header-logo {
       height: 65px;
-    
+
         width: 150px;
         object-fit: contain;
         flex-shrink: 0;}
@@ -641,7 +649,7 @@ const htmlLayouts = {
               width: 150px;
               height: 65px;
               object-fit: contain;
-            
+
         flex-shrink: 0;}
 
             .header-content {
@@ -659,16 +667,6 @@ const htmlLayouts = {
               font-size: 20px;
               font-weight: bold;
               color: #000;
-            }
-
-            .reference-bar {
-              display: flex;
-              justify-content: space-between;
-              margin-top: 11px;
-              padding: 8px 10px;
-              background: #f1f7f9;
-              border: 1px solid #bdd1d8;
-              font-weight: bold;
             }
 
             .section {
@@ -857,25 +855,13 @@ const htmlLayouts = {
               />
             </header>
 
-            <div class="reference-bar">
-              <div>
-                رقم الحالة:
-                <span>${referralId || ""}</span>
-              </div>
-
-              <div>
-                التاريخ:
-                <span>${requestDate || ""}</span>
-              </div>
-            </div>
-
             <section class="section">
               <div class="section-title">بيانات المريض</div>
 
               <table class="details-table">
                 <tbody>
                   <tr>
-                    <td colspan="2">
+                    <td>
                       <span class="field-label">اسم المريض</span>
                       <div class="field-value">${patientName || ""}</div>
                     </td>
@@ -883,6 +869,10 @@ const htmlLayouts = {
                     <td>
                       <span class="field-label">رقم الإثبات</span>
                       <div class="field-value">${patientNationalId || ""}</div>
+                    </td>
+                    <td>
+                      <span class="field-label">رقم الحالة</span>
+                      <div class="field-value">${referralId || ""}</div>
                     </td>
                   </tr>
 
@@ -1188,7 +1178,7 @@ const htmlLayouts = {
               width: 150px;
               height: 65px;
               object-fit: contain;
-            
+
         flex-shrink: 0;}
 
             .header-center {
@@ -1206,23 +1196,6 @@ const htmlLayouts = {
               margin-top: 3px;
               color: #000;
               font-size: 21px;
-              font-weight: bold;
-            }
-
-            .document-meta {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
-              gap: 5px;
-              margin-top: 7px;
-            }
-
-            .meta-box {
-              padding: 4px 6px;
-              background: #f5f8f7;
-              border-right: 1px solid #356859;
-            }
-
-            .meta-label {
               font-weight: bold;
             }
 
@@ -1257,7 +1230,7 @@ const htmlLayouts = {
 
             .info-grid {
               display: grid;
-              grid-template-columns: repeat(2, 1fr);
+              grid-template-columns: repeat(3, 1fr);
               border: 1px solid #ccd6d2;
               border-radius: 7px;
               overflow: hidden;
@@ -1269,7 +1242,7 @@ const htmlLayouts = {
               border-bottom: 1px solid #dce4e1;
             }
 
-            .info-item:nth-child(odd) {
+            .info-item:not(:nth-child(3n)) {
               border-left: 1px solid #dce4e1;
             }
 
@@ -1449,18 +1422,6 @@ const htmlLayouts = {
               />
             </header>
 
-            <div class="document-meta">
-              <div class="meta-box">
-                <span class="meta-label">رقم الحالة:</span>
-                ${referralId || ""}
-              </div>
-
-              <div class="meta-box">
-                <span class="meta-label">تاريخ الطلب:</span>
-                ${requestDate || ""}
-              </div>
-            </div>
-
             <section class="section">
               <div class="section-heading">
                 <span class="heading-number">١</span>
@@ -1477,6 +1438,10 @@ const htmlLayouts = {
                   <span class="info-label">رقم الإثبات</span>
                   <span class="info-value">${patientNationalId || ""}</span>
                 </div>
+                <div class="info-item">
+                  <span class="info-label">رقم الحالة</span>
+                  <span class="info-value">${referralId || ""}</span>
+                </div>
 
                 <div class="info-item">
                   <span class="info-label">الجنسية</span>
@@ -1490,7 +1455,7 @@ const htmlLayouts = {
                   <span class="info-value">${mobileNumber || ""}</span>
                 </div>
 
-                <div class="info-item full-width">
+                <div class="info-item">
                   <span class="info-label">المستشفى المحيل</span>
                   <span class="info-value">${sourceProvider || ""}</span>
                 </div>
@@ -1562,6 +1527,7 @@ const htmlLayouts = {
                         <span class="info-label">التاريخ الهجري</span>
                         <span class="info-value"></span>
                       </div>
+                      <div class="info-item" aria-hidden="true"></div>
                     </div>
                   `
               }
@@ -1765,7 +1731,7 @@ const htmlLayouts = {
             width: 150px;
             height: 65px;
             object-fit: contain;
-          
+
         flex-shrink: 0;}
 
           .header-content {
@@ -1788,7 +1754,7 @@ const htmlLayouts = {
 
           .summary {
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-columns: repeat(2, 1fr);
             gap: 5px;
             margin-top: 6px;
           }
@@ -1855,25 +1821,19 @@ const htmlLayouts = {
             font-weight: bold;
           }
 
-          .section-subtitle {
-            margin-right: auto;
-            color: #000;
-            font-size: 12px;
-          }
-
           .data-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            border-right: 1px solid #d8e1e7;
-            border-bottom: 1px solid #d8e1e7;
+            border-right: 1px solid #666;
+            border-bottom: 1px solid #666;
           }
 
           .data-item {
             min-height: 36px;
             padding: 5px 6px;
             background: #ffffff;
-            border-left: 1px solid #d8e1e7;
-            border-top: 1px solid #d8e1e7;
+            border-left: 1px solid #666;
+            border-top: 1px solid #666;
           }
 
           .data-item.wide {
@@ -2079,40 +2039,13 @@ const htmlLayouts = {
             />
           </header>
 
-          <section class="summary">
-            <div class="summary-item">
-              <span class="summary-label">رقم الحالة</span>
-
-              <div class="summary-value">
-                ${referralId || ""}
-              </div>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">تاريخ الطلب</span>
-
-              <div class="summary-value">
-                ${requestDate || ""}
-              </div>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">حالة الإحالة</span>
-
-              <span class="status-badge ${statusClass}">
-                ${statusText}
-              </span>
-            </div>
-          </section>
-
           <section class="section">
             <div class="section-header">
               <span class="section-title">بيانات المريض</span>
-              <span class="section-subtitle">Patient Information</span>
             </div>
 
             <div class="data-grid">
-              <div class="data-item wide">
+              <div class="data-item">
                 <span class="data-label">اسم المريض</span>
 
                 <div class="data-value">
@@ -2151,6 +2084,11 @@ const htmlLayouts = {
                   ${sourceProvider || ""}
                 </div>
               </div>
+
+              <div class="data-item">
+                <span class="data-label">رقم الحالة</span>
+                <div class="data-value">${referralId || ""}</div>
+              </div>
             </div>
           </section>
 
@@ -2158,10 +2096,6 @@ const htmlLayouts = {
             <div class="section-header">
               <span class="section-title">
                 ${isRejection ? "بيانات رفض الإحالة" : "بيانات قبول الإحالة"}
-              </span>
-
-              <span class="section-subtitle">
-                ${isRejection ? "Rejection Details" : "Acceptance Details"}
               </span>
             </div>
 
@@ -2224,7 +2158,7 @@ const htmlLayouts = {
                       <div class="data-value"></div>
                     </div>
 
-                    <div class="data-item wide">
+                    <div class="data-item">
                       <span class="data-label">
                         التاريخ الميلادي
                       </span>
@@ -2241,6 +2175,7 @@ const htmlLayouts = {
 
                       <div class="data-value"></div>
                     </div>
+                    <div class="data-item" aria-hidden="true"></div>
                   </div>
                 `
             }
@@ -2474,7 +2409,7 @@ const htmlLayouts = {
             width: 150px;
             height: 65px;
             object-fit: contain;
-          
+
         flex-shrink: 0;}
 
           .header-content {
@@ -2494,13 +2429,6 @@ const htmlLayouts = {
             margin-top: 3px;
             font-size: 23px;
             font-weight: bold;
-          }
-
-          .document-subtitle {
-            margin-top: 3px;
-            color: #000;
-            font-size: 12px;
-            letter-spacing: 1px;
           }
 
           .overview {
@@ -2575,13 +2503,6 @@ const htmlLayouts = {
             font-weight: bold;
           }
 
-          .section-title-en {
-            margin-right: auto;
-            color: #000;
-            font-size: 11px;
-            font-weight: bold;
-          }
-
           .information-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -2590,7 +2511,10 @@ const htmlLayouts = {
           }
 
           .information-item {
-            min-height: 36px;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            min-height: 0;
             padding: 5px 6px;
             background: #ffffff;
             border-top: 1px solid #d5dfe5;
@@ -2606,15 +2530,22 @@ const htmlLayouts = {
           }
 
           .information-label {
-            display: block;
-            margin-bottom: 3px;
+            display: inline;
+            flex-shrink: 0;
+            margin-bottom: 0;
             color: #000;
             font-size: 11px;
             font-weight: bold;
           }
 
+          .information-label::after {
+            content: ":";
+          }
+
           .information-value {
-            min-height: 18px;
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
             color: #000;
             font-size: 14px;
             font-weight: bold;
@@ -2851,10 +2782,6 @@ const htmlLayouts = {
               <div class="document-title">
                 ${isRejection ? "خطاب رفض الإحالة" : "خطاب قبول الإحالة"}
               </div>
-
-              <div class="document-subtitle">
-                REFERRAL DECISION LETTER
-              </div>
             </div>
 
             <div class="header-logo-box">
@@ -2866,85 +2793,36 @@ const htmlLayouts = {
             </div>
           </header>
 
-          <section class="overview">
-            <div class="overview-card">
-              <span class="overview-label">رقم الحالة</span>
-
-              <div class="overview-value">
-                ${referralId || ""}
-              </div>
-            </div>
-
-            <div class="overview-card">
-              <span class="overview-label">تاريخ الطلب</span>
-
-              <div class="overview-value">
-                ${requestDate || ""}
-              </div>
-            </div>
-
-            <div class="overview-card">
-              <span class="overview-label">المستشفى المحيل</span>
-
-              <div class="overview-value">
-                ${sourceProvider || ""}
-              </div>
-            </div>
-
-            <div class="overview-card">
-              <span class="overview-label">حالة الإحالة</span>
-
-              <span class="status-chip ${statusClass}">
-                ${statusText}
-              </span>
-            </div>
-          </section>
 
           <section class="section">
             <div class="section-heading">
               <span class="section-title">بيانات المريض</span>
-              <span class="section-title-en">PATIENT PROFILE</span>
             </div>
 
             <div class="information-grid">
-              <div class="information-item wide">
-                <span class="information-label">اسم المريض</span>
-
-                <div class="information-value">
-                  ${patientName || ""}
-                </div>
+              <div class="information-item">
+                <span class="information-label">رقم الحالة</span>
+                <div class="information-value">${referralId || ""}</div>
               </div>
-
+              <div class="information-item">
+                <span class="information-label">اسم المريض</span>
+                <div class="information-value">${patientName || ""}</div>
+              </div>
               <div class="information-item">
                 <span class="information-label">رقم الإثبات</span>
-
-                <div class="information-value">
-                  ${patientNationalId || ""}
-                </div>
+                <div class="information-value">${patientNationalId || ""}</div>
               </div>
-
               <div class="information-item">
                 <span class="information-label">الجنسية</span>
-
-                <div class="information-value">
-                  ${nationality || "SAUDI"}
-                </div>
+                <div class="information-value">${nationality || "SAUDI"}</div>
               </div>
-
               <div class="information-item">
                 <span class="information-label">رقم التواصل</span>
-
-                <div class="information-value">
-                  ${mobileNumber || ""}
-                </div>
+                <div class="information-value">${mobileNumber || ""}</div>
               </div>
-
               <div class="information-item">
-                <span class="information-label">رقم الإحالة</span>
-
-                <div class="information-value">
-                  ${referralId || ""}
-                </div>
+                <span class="information-label">حالة الإحالة</span>
+                <span class="status-chip ${statusClass}">${statusText}</span>
               </div>
             </div>
           </section>
@@ -2953,10 +2831,6 @@ const htmlLayouts = {
             <div class="section-heading">
               <span class="section-title">
                 ${isRejection ? "بيانات رفض الإحالة" : "بيانات قبول الإحالة"}
-              </span>
-
-              <span class="section-title-en">
-                ${isRejection ? "REJECTION DETAILS" : "ACCEPTANCE DETAILS"}
               </span>
             </div>
 
@@ -3265,7 +3139,7 @@ const htmlLayouts = {
             width: 150px;
             height: 65px;
             object-fit: contain;
-          
+
         flex-shrink: 0;}
 
           .header-center {
@@ -3285,43 +3159,30 @@ const htmlLayouts = {
             font-weight: bold;
           }
 
-          .document-summary {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 5px;
-            margin-top: 6px;
-          }
-
-          .summary-item {
-            padding: 5px 6px;
-            background: #fff;
-            border: 1px solid #cad9dd;
-            border-radius: 8px;
-            text-align: center;
-          }
-
-          .summary-label {
-            display: block;
-            margin-bottom: 3px;
-            color: #000;
-            font-size: 12px;
-            font-weight: bold;
-          }
-
-          .summary-value {
-            font-size: 14px;
-            font-weight: bold;
-          }
-
           .section {
+            display: grid;
+            grid-template-columns: 32px minmax(0, 1fr);
+            align-items: stretch;
             margin-top: 6px;
           }
 
           .section-header {
             display: flex;
             align-items: center;
-            gap: 4px;
-            margin-bottom: 3px;
+            justify-content: center;
+            padding: 6px 3px;
+            background: transparent;
+            border: 0;
+            border-radius: 0;
+          }
+
+          .page .section > .section-header {
+            background: transparent;
+            border: 0;
+          }
+
+          .section-header .section-marker {
+            display: none;
           }
 
           .section-marker {
@@ -3332,6 +3193,9 @@ const htmlLayouts = {
           }
 
           .section-title {
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            white-space: nowrap;
             color: #000;
             font-size: 16px;
             font-weight: bold;
@@ -3345,7 +3209,7 @@ const htmlLayouts = {
 
           .data-grid {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
           }
 
           .data-item {
@@ -3354,7 +3218,7 @@ const htmlLayouts = {
             border-bottom: 1px solid #e1e8ea;
           }
 
-          .data-item:nth-child(odd) {
+          .data-item:not(:nth-child(3n)) {
             border-left: 1px solid #e1e8ea;
           }
 
@@ -3537,29 +3401,6 @@ const htmlLayouts = {
             />
           </header>
 
-          <div class="document-summary">
-            <div class="summary-item">
-              <span class="summary-label">رقم الحالة:</span>
-              <span class="summary-value">
-                ${referralId || ""}
-              </span>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">تاريخ الطلب</span>
-              <span class="summary-value">
-                ${requestDate || ""}
-              </span>
-            </div>
-
-            <div class="summary-item">
-              <span class="summary-label">حالة الإحالة</span>
-              <span class="summary-value">
-                ${isRejection ? "مرفوضة" : "مقبولة"}
-              </span>
-            </div>
-          </div>
-
           <section class="section">
             <div class="section-header">
               <span class="section-marker"></span>
@@ -3596,11 +3437,16 @@ const htmlLayouts = {
                   </span>
                 </div>
 
-                <div class="data-item full">
+                <div class="data-item">
                   <span class="data-label">المستشفى المحيل</span>
                   <span class="data-value">
                     ${sourceProvider || ""}
                   </span>
+                </div>
+
+                <div class="data-item">
+                  <span class="data-label">رقم الحالة</span>
+                  <span class="data-value">${referralId || ""}</span>
                 </div>
               </div>
             </div>
@@ -3815,6 +3661,9 @@ const htmlLayouts = {
 };
 
 const generateAcceptanceLetterHtml = ({
+  patientFileNumber,
+  roomNumber,
+  reservationDuration,
   patientNationalId,
   nationality,
   patientName,
@@ -3864,6 +3713,9 @@ const generateAcceptanceLetterHtml = ({
   const htmlCreator = htmlLayouts[_letterType];
 
   const html = htmlCreator({
+    patientFileNumber,
+    roomNumber,
+    reservationDuration,
     patientNationalId,
     nationality,
     patientName,
@@ -3883,7 +3735,9 @@ const generateAcceptanceLetterHtml = ({
     showLetterFinalFooter,
     __reasonName__,
   });
-  return html.replace("</head>", `<style>
+  return html.replace(
+    "</head>",
+    `<style>
     p { margin-top: 8px; margin-bottom: 8px; }
     ul { margin-top: 6px; margin-bottom: 6px; }
     body, body *, body *::before, body *::after {
@@ -3895,7 +3749,8 @@ const generateAcceptanceLetterHtml = ({
     .heading-number, .notes-header {
       background-color: #f1f5f9;
     }
-  </style></head>`);
+  </style></head>`,
+  );
 };
 
 export default generateAcceptanceLetterHtml;

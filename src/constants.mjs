@@ -296,13 +296,20 @@ export const LETTER_LAYOUT_TYPES = {
   ELEGANT: "ELEGANT",
   EXECUTIVE: "EXECUTIVE",
   PREMIUM: "PREMIUM",
+  CLINICAL: "CLINICAL",
 };
+
+export const IGNORED_LAYOUTS = [
+  LETTER_LAYOUT_TYPES.CORPORATE,
+  LETTER_LAYOUT_TYPES.ELEGANT,
+  LETTER_LAYOUT_TYPES.FORMAL,
+];
 
 export const LETTER_LAYOUT_NAMES = Object.values(LETTER_LAYOUT_TYPES);
 // Temporarily paused for new letters based on the observed outcome sample.
 // Template definitions remain available for historical records.
 export const ENABLED_LETTER_LAYOUT_NAMES = LETTER_LAYOUT_NAMES.filter(
-  (name) => ![LETTER_LAYOUT_TYPES.FORMAL].includes(name),
+  (name) => !IGNORED_LAYOUTS.includes(name),
 );
 
 export const LETTER_LAYOUT_ABBREVIATIONS = {
@@ -313,4 +320,5 @@ export const LETTER_LAYOUT_ABBREVIATIONS = {
   [LETTER_LAYOUT_TYPES.PREMIUM]: "PRM",
   [LETTER_LAYOUT_TYPES.EXECUTIVE]: "EXE",
   [LETTER_LAYOUT_TYPES.CORPORATE]: "COR",
+  [LETTER_LAYOUT_TYPES.CLINICAL]: "CLN",
 };

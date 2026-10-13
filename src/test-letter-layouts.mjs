@@ -1,5 +1,5 @@
 import generateAcceptancePdfLetters from "./generatePdfs.mjs";
-import { LETTER_LAYOUT_TYPES } from "./constants.mjs";
+import { LETTER_LAYOUT_TYPES, IGNORED_LAYOUTS } from "./constants.mjs";
 
 // Fictional patient data for previewing all letter layouts.
 const samplePatient = {
@@ -47,12 +47,13 @@ const testPdfGeneration = async (browser, patientsArray = patients) => {
 
   const generatedFiles = [];
   for (const patient of patientsArray) {
+    if (IGNORED_LAYOUTS.includes(patient.letterType)) continue;
     const files = await generateAcceptancePdfLetters(
       browser,
       [patient],
       !patient.isRejection,
       patient.letterType,
-      { allowAllLayouts: true },
+      { allowAllLayouts: false },
     );
     generatedFiles.push(...files);
   }
