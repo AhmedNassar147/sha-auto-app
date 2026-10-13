@@ -26,12 +26,13 @@ const COLUMN_LABELS = {
   referralId: "Referral ID",
   referralReferenceId: "Reference ID",
   patientName: "Patient Name",
+  dateOfBirth: "Date of Birth",
   patientNationalId: "National ID",
   status: "Status",
   winnerFacilityName: "Winning Facility",
-  ourAcceptedAt: "Our Acceptance Time (Saudi)",
-  fastestFirst: "1st Acceptance (Server Time)",
-  fastestSecond: "2nd Acceptance (Server Time)",
+  ourAcceptedAt: "Our Acceptance Time",
+  fastestFirst: "1st Acceptance Time",
+  fastestSecond: "2nd Acceptance Time",
   caseAttachmentId: "Case Attachment ID",
   letterType: "Letter Type",
   userActionName: "Action",
@@ -76,25 +77,26 @@ const COLUMNS = [
   // the row's navigationId (see below), ignoring row.openCase (undefined).
   "openCase",
   "facilityRes",
+  "referralDate",
   "status",
   "winnerFacilityName",
   "ourAcceptedAt",
   "fastestFirst",
   "fastestSecond",
+  "referralId",
+  "patientName",
+  "dateOfBirth",
+  "patientNationalId",
+  "referralReferenceId",
+  "navigationId",
   "claimed",
   "arrived",
   "letterType",
-  "caseAttachmentId",
   "paid",
-  "patientName",
-  "patientNationalId",
-  "navigationId",
-  "referralId",
-  "referralDate",
+  "caseAttachmentId",
   "tabName",
   "broadcastedAt",
   "referralEndDate",
-  "referralReferenceId",
   "referralType",
   "referralReason",
   "providerRegion",
@@ -274,7 +276,7 @@ const renderRows = (rows, selectedReferralId) => {
         .join(" ");
 
       return (
-        `<tr class="${rowClasses}">` +
+        `<tr class="${rowClasses}" data-case-row tabindex="0" aria-selected="${isSelected}">` +
         COLUMNS.map(
           (col) =>
             `<td${["winnerFacilityName", "fastestFirst", "fastestSecond"].includes(col) ? ' class="ranking-cell"' : ""}>${renderCell(col, row[col], row)}</td>`,
@@ -429,13 +431,14 @@ const renderDbPage = ({
     max-height: calc(100vh - 210px);
   }
   table { border-collapse: collapse; width: 100%; font-size: 12px; white-space: nowrap; }
+  .table-wrap thead th { white-space: normal; max-width: 180px; }
   thead th {
     position: sticky;
     top: 0;
     background: #1a2136;
     color: var(--text);
     text-align: left;
-    padding: 6px 8px;
+    padding: 5px 6px;
     font-weight: 600;
     text-transform: uppercase;
     font-size: 10px;
@@ -444,25 +447,26 @@ const renderDbPage = ({
     z-index: 1;
   }
   tbody td {
-    padding: 4px 8px;
+    padding: 4px 6px;
     border-bottom: 1px solid var(--panel-border);
-    max-width: 200px;
+    max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   tbody td.ranking-cell {
-    min-width: 210px;
-    max-width: 260px;
+    min-width: 180px;
+    max-width: 220px;
     white-space: normal;
     overflow: visible;
     text-overflow: clip;
-    padding: 10px 12px;
+    padding: 6px 8px;
     vertical-align: top;
   }
   .ranking-name { font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
   .ranking-time { white-space: nowrap; font-variant-numeric: tabular-nums; line-height: 1.5; }
   tbody tr:nth-child(even) { background: var(--row-alt); }
   tbody tr:hover { background: var(--row-hover); }
+  .table-wrap tbody tr[data-case-row] { cursor: pointer; }
   tbody tr.rejected-row,
   tbody tr.rejected-row:nth-child(even) {
     background: rgba(248, 113, 113, 0.14);
@@ -470,12 +474,15 @@ const renderDbPage = ({
   tbody tr.rejected-row:hover { background: rgba(248, 113, 113, 0.22); }
   tbody tr.selected-row,
   tbody tr.selected-row:nth-child(even) {
-    background: rgba(140, 180, 255, 0.4);
-    box-shadow: inset 3px 0 0 var(--accent);
+    background: #fde047;
+    color: #111827;
+    box-shadow: inset 5px 0 0 #f59e0b;
   }
-  tbody tr.selected-row:hover { background: rgba(140, 180, 255, 0.5); }
-  td .btn-link, td button { padding: 4px 10px; font-size: 12px; }
-  .badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  tbody tr.selected-row:hover { background: #facc15; }
+  tbody tr.selected-row .empty-cell { color: #475569; }
+  tbody tr.selected-row a:not(.btn-link) { color: #1e40af; }
+  td .btn-link, td button { padding: 4px 7px; font-size: 12px; }
+  .badge { display: inline-block; padding: 1px 5px; border-radius: 999px; font-size: 11px; font-weight: 600; }
   .badge-neutral { background: var(--badge-neutral-bg); color: var(--badge-neutral-text); }
   .badge-green { background: var(--badge-green-bg); color: var(--badge-green-text); }
   .badge-red { background: var(--badge-red-bg); color: var(--badge-red-text); }
@@ -593,6 +600,24 @@ const renderDbPage = ({
     </table>
   </div>
 <script>
+function selectCaseRow(row) {
+  document.querySelectorAll(".table-wrap tr[data-case-row]").forEach((item) => {
+    const selected = item === row;
+    item.classList.toggle("selected-row", selected);
+    item.setAttribute("aria-selected", String(selected));
+  });
+}
+document.addEventListener("click", (event) => {
+  const row = event.target.closest(".table-wrap tr[data-case-row]");
+  if (row) selectCaseRow(row);
+});
+document.addEventListener("keydown", (event) => {
+  if ((event.key === "Enter" || event.key === " ") &&
+      event.target.matches(".table-wrap tr[data-case-row]")) {
+    event.preventDefault();
+    selectCaseRow(event.target);
+  }
+});
 document.addEventListener("click", async (event) => {
   const button = event.target.closest("button[data-decision-url]");
   if (!button || button.disabled) return;

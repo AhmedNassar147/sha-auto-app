@@ -138,7 +138,8 @@ const rowsToProcess = requestedIds.length
       .filter(
         (row) =>
           row.navigationId &&
-          (row.nationality == null ||
+          (!row.dateOfBirth ||
+            row.nationality == null ||
             row.competitionCheckedAt == null ||
             row.caseAttachmentId == null ||
             row.specialtyId == null ||
@@ -318,6 +319,7 @@ try {
 
     const {
       nationality,
+      dateOfBirth,
       specialty,
       specialtyId,
       subSpecialty,
@@ -333,6 +335,7 @@ try {
     updatePatients({
       referralId,
       nationality,
+      dateOfBirth,
       specialty,
       specialtyId,
       subSpecialty,

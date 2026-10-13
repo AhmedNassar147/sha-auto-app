@@ -11,13 +11,12 @@ import { LETTER_LAYOUT_TYPES } from "./constants.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ministryLogo = path.resolve(__dirname, "../images/ministry.png");
+const ministryLogo = path.resolve(__dirname, "../images/ministry.jpeg");
 const ehalaLogo = path.resolve(__dirname, "../images/ehala.png");
-
 const providerLogo = path.resolve(__dirname, "../images/logo.jpeg");
 
 const toBase64 = (imgPath) =>
-  `data:image/png;base64,${fs.readFileSync(imgPath, { encoding: "base64" })}`;
+  `data:image/${/\.jpe?g$/i.test(imgPath) ? "jpeg" : "png"};base64,${fs.readFileSync(imgPath, { encoding: "base64" })}`;
 
 const ministryFileUrl = toBase64(ministryLogo);
 const ehalaFileUrl = toBase64(ehalaLogo);
@@ -29,7 +28,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -72,8 +73,11 @@ const htmlLayouts = {
       }
 
       .header-logos img {
-        height: 50px;
-      }
+        height: 65px;
+      
+        width: 150px;
+        object-fit: contain;
+        flex-shrink: 0;}
 
       .header-center-text {
         text-align: center;
@@ -191,6 +195,15 @@ const htmlLayouts = {
           <td><strong>الجنسية:</strong> ${nationality || "SAUDI"}</td>
           <td><strong>رقم التواصل:</strong> ${mobileNumber || ""}</td>
         </tr>
+        ${
+          isRejection
+            ? `
+        <tr>
+          <td colspan="4"><strong>رقم الحالة:</strong> ${referralId || ""}</td>
+        </tr>
+        `
+            : ""
+        }
 
         ${
           isRejection
@@ -205,17 +218,18 @@ const htmlLayouts = {
             : `
         <tr class="section-title"><td colspan="4">بيانات القبول</td></tr>
         <tr>
-          <td><strong>رقم الملف الطبي:</strong></td>
+          <td><strong>رقم الحالة:</strong> ${referralId || ""}</td>
           <td><strong>القسم:</strong> ${specialty || ""}</td>
           <td><strong>الطبيب المعالج:</strong>${subSpecialty || ""}</td>
           <td><strong>رقم الغرفة:</strong></td>
         </tr>
         <tr>
+          <td><strong>رقم الملف الطبي:</strong></td>
           <td><strong>نوع السرير:</strong>${requestedBedType}</td>
-          <td><strong>مدة الحجز:</strong> ٤٨ ساعة</td>
+          <td colspan="2"><strong>مدة الحجز:</strong> </td>
         </tr>
         <tr>
-          <td colspan="2"><strong>التاريخ الميلادي:</strong> ${requestDate}</td>
+          <td colspan="2"><strong>التاريخ الميلادي:</strong> ${gregorianDate}</td>
           <td colspan="2"><strong>التاريخ الهجري:</strong></td>
         </tr>
         `
@@ -226,7 +240,7 @@ const htmlLayouts = {
         <div>
           <p>سعادة مدير مستشفى / <strong>${sourceProvider}</strong> المحترم</p>
           <p>السلام عليكم ورحمة الله وبركاته،</p>
-          <p>إشارة لإحالة رقم <strong>${referralId}</strong> بتاريخ <strong>${requestDate}</strong> بشأن المريض الموضحة بياناته أعلاه،</p>
+          <p>إشارة لإحالة رقم <strong>${referralReferenceId}</strong> بتاريخ <strong>${requestDate}</strong> بشأن المريض الموضحة بياناته أعلاه،</p>
           <p>
             ${
               isRejection
@@ -286,7 +300,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -312,7 +328,7 @@ const htmlLayouts = {
       font-family: "Arial", sans-serif;
       direction: rtl;
       font-size: 15px;
-      color: #222;
+      color: #000;
     }
 
     .container {
@@ -328,8 +344,11 @@ const htmlLayouts = {
     }
 
     .header-logo {
-      height: 55px;
-    }
+      height: 65px;
+    
+        width: 150px;
+        object-fit: contain;
+        flex-shrink: 0;}
 
     .header-title {
       text-align: center;
@@ -350,7 +369,7 @@ const htmlLayouts = {
       font-weight: bold;
       font-size: 15px;
       margin-bottom: 12px;
-      color: #333;
+      color: #000;
     }
 
     .grid-2 {
@@ -361,7 +380,7 @@ const htmlLayouts = {
 
     .item-label {
       font-weight: bold;
-      color: #444;
+      color: #000;
     }
 
     .letter-body {
@@ -448,7 +467,7 @@ const htmlLayouts = {
 <body>
   <div class="container">
     <div class="header">
-      <img src="${ehalaFileUrl}" class="Referral Program" />
+      <img src="${ehalaFileUrl}" class="header-logo" alt="Referral Program" />
       <div class="header-title">
         المملكة العربية السعودية<br />
         وزارة الصحة<br />
@@ -465,6 +484,7 @@ const htmlLayouts = {
         <div><span class="item-label">رقم الإثبات:</span> ${patientNationalId}</div>
         <div><span class="item-label">الجنسية:</span> ${nationality}</div>
         <div><span class="item-label">رقم التواصل:</span> ${mobileNumber}</div>
+        <div><span class="item-label">رقم الحالة:</span> ${referralId || ""}</div>
       </div>
     </div>
 
@@ -482,8 +502,8 @@ const htmlLayouts = {
           <div><span class="item-label">الطبيب المعالج:</span> ${subSpecialty}</div>
           <div><span class="item-label">القسم:</span> ${specialty}</div>
           <div><span class="item-label">نوع السرير:</span> ${requestedBedType}</div>
-          <div><span class="item-label">مدة الحجز:</span> ٤٨ ساعة</div>
-          <div><span class="item-label">التاريخ الميلادي:</span> ${requestDate}</div>
+          <div><span class="item-label">مدة الحجز:</span> </div>
+          <div><span class="item-label">التاريخ الميلادي:</span> ${gregorianDate}</div>
         </div>
         `
     }
@@ -497,7 +517,7 @@ const htmlLayouts = {
         <p>السلام عليكم ورحمة الله وبركاته،</p>
 
         <p>
-          إشارة لإحالة رقم <strong>${referralId}</strong> بتاريخ
+          إشارة لإحالة رقم <strong>${referralReferenceId}</strong> بتاريخ
           <strong>${requestDate}</strong> بشأن المريض الموضحة بياناته أعلاه،
         </p>
 
@@ -560,7 +580,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -594,7 +616,7 @@ const htmlLayouts = {
               padding: 0;
               direction: rtl;
               background: #fff;
-              color: #1f2937;
+              color: #000;
               font-family: Arial, sans-serif;
               font-size: 14px;
             }
@@ -608,7 +630,7 @@ const htmlLayouts = {
 
             .header {
               display: grid;
-              grid-template-columns: 90px 1fr 90px;
+              grid-template-columns: 150px 1fr 150px;
               align-items: center;
               gap: 15px;
               padding-bottom: 15px;
@@ -616,10 +638,11 @@ const htmlLayouts = {
             }
 
             .header-logo {
-              width: 80px;
-              height: 70px;
+              width: 150px;
+              height: 65px;
               object-fit: contain;
-            }
+            
+        flex-shrink: 0;}
 
             .header-content {
               text-align: center;
@@ -635,7 +658,7 @@ const htmlLayouts = {
               margin-top: 6px;
               font-size: 20px;
               font-weight: bold;
-              color: #1e5f74;
+              color: #000;
             }
 
             .reference-bar {
@@ -656,7 +679,7 @@ const htmlLayouts = {
             .section-title {
               padding: 9px 12px;
               background: #1e5f74;
-              color: #fff;
+              color: #000;
               font-size: 15px;
               font-weight: bold;
               text-align: center;
@@ -670,6 +693,7 @@ const htmlLayouts = {
 
             .details-table td {
               padding: 10px;
+              color: #000;
               border: 1px solid #c8cdd2;
               vertical-align: top;
               word-break: break-word;
@@ -678,18 +702,19 @@ const htmlLayouts = {
             .field-label {
               display: block;
               margin-bottom: 4px;
-              color: #334155;
+              color: #000;
               font-weight: bold;
             }
 
             .field-value {
               min-height: 18px;
+              color: #000;
             }
 
             .reason {
               padding: 15px;
               background: #fff7f7;
-              color: #8a1c1c;
+              color: #000;
               font-size: 16px;
               font-weight: bold;
               text-align: center;
@@ -724,7 +749,7 @@ const htmlLayouts = {
             .client-name {
               font-size: 16px;
               font-weight: bold;
-              color: #1e5f74;
+              color: #000;
             }
 
             .notes {
@@ -770,7 +795,7 @@ const htmlLayouts = {
 
             .footer-label {
               font-weight: bold;
-              color: #475569;
+              color: #000;
             }
 
             @media print {
@@ -834,7 +859,7 @@ const htmlLayouts = {
 
             <div class="reference-bar">
               <div>
-                رقم الإحالة:
+                رقم الحالة:
                 <span>${referralId || ""}</span>
               </div>
 
@@ -938,7 +963,7 @@ const htmlLayouts = {
 
                           <td>
                             <span class="field-label">مدة الحجز</span>
-                            <div class="field-value">٤٨ ساعة</div>
+                            <div class="field-value"></div>
                           </td>
 
                           <td>
@@ -953,7 +978,7 @@ const htmlLayouts = {
                               التاريخ الميلادي
                             </span>
                             <div class="field-value">
-                              ${requestDate || ""}
+                              ${gregorianDate || ""}
                             </div>
                           </td>
 
@@ -982,7 +1007,7 @@ const htmlLayouts = {
 
                 <p>
                   إشارة إلى الإحالة رقم
-                  <strong>${referralId || ""}</strong>
+                  <strong>${referralReferenceId}</strong>
                   بتاريخ
                   <strong>${requestDate || ""}</strong>
                   بشأن المريض الموضحة بياناته أعلاه.
@@ -1102,7 +1127,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -1136,7 +1163,7 @@ const htmlLayouts = {
               padding: 0;
               direction: rtl;
               background: #fff;
-              color: #263238;
+              color: #000;
               font-family: Arial, sans-serif;
               font-size: 14px;
             }
@@ -1158,10 +1185,11 @@ const htmlLayouts = {
             }
 
             .logo {
-              width: 85px;
-              height: 70px;
+              width: 150px;
+              height: 65px;
               object-fit: contain;
-            }
+            
+        flex-shrink: 0;}
 
             .header-center {
               flex: 1;
@@ -1176,7 +1204,7 @@ const htmlLayouts = {
 
             .document-title {
               margin-top: 8px;
-              color: #356859;
+              color: #000;
               font-size: 21px;
               font-weight: bold;
             }
@@ -1216,13 +1244,13 @@ const htmlLayouts = {
               align-items: center;
               justify-content: center;
               background: #356859;
-              color: #fff;
+              color: #000;
               border-radius: 50%;
               font-weight: bold;
             }
 
             .heading-text {
-              color: #356859;
+              color: #000;
               font-size: 16px;
               font-weight: bold;
             }
@@ -1253,13 +1281,13 @@ const htmlLayouts = {
             .info-label {
               display: block;
               margin-bottom: 6px;
-              color: #5f6f68;
+              color: #000;
               font-size: 12px;
               font-weight: bold;
             }
 
             .info-value {
-              color: #1f2925;
+              color: #000;
               font-size: 15px;
               font-weight: bold;
             }
@@ -1269,7 +1297,7 @@ const htmlLayouts = {
               background: #fff4f4;
               border: 1px solid #ecc8c8;
               border-radius: 7px;
-              color: #8c2c2c;
+              color: #000;
               font-size: 16px;
               font-weight: bold;
               text-align: center;
@@ -1311,7 +1339,7 @@ const htmlLayouts = {
               margin-top: 5px;
               padding: 5px 20px;
               border-bottom: 2px solid #356859;
-              color: #356859;
+              color: #000;
               font-size: 16px;
               font-weight: bold;
             }
@@ -1326,7 +1354,7 @@ const htmlLayouts = {
 
             .notes-title {
               margin-bottom: 8px;
-              color: #356859;
+              color: #000;
               font-weight: bold;
             }
 
@@ -1354,7 +1382,7 @@ const htmlLayouts = {
             .coordination-label {
               display: block;
               margin-bottom: 3px;
-              color: #59645f;
+              color: #000;
               font-size: 12px;
               font-weight: bold;
             }
@@ -1423,7 +1451,7 @@ const htmlLayouts = {
 
             <div class="document-meta">
               <div class="meta-box">
-                <span class="meta-label">رقم الإحالة:</span>
+                <span class="meta-label">رقم الحالة:</span>
                 ${referralId || ""}
               </div>
 
@@ -1510,7 +1538,7 @@ const htmlLayouts = {
 
                       <div class="info-item">
                         <span class="info-label">مدة الحجز</span>
-                        <span class="info-value">٤٨ ساعة</span>
+                        <span class="info-value"></span>
                       </div>
 
                       <div class="info-item">
@@ -1526,7 +1554,7 @@ const htmlLayouts = {
                       <div class="info-item">
                         <span class="info-label">التاريخ الميلادي</span>
                         <span class="info-value">
-                          ${requestDate || ""}
+                          ${gregorianDate || ""}
                         </span>
                       </div>
 
@@ -1551,7 +1579,7 @@ const htmlLayouts = {
 
                 <p>
                   إشارة إلى الإحالة رقم
-                  <strong>${referralId || ""}</strong>
+                  <strong>${referralReferenceId}</strong>
                   بتاريخ
                   <strong>${requestDate || ""}</strong>
                   بشأن المريض الموضحة بياناته أعلاه.
@@ -1670,7 +1698,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -1707,7 +1737,7 @@ const htmlLayouts = {
             padding: 0;
             direction: rtl;
             background: #ffffff;
-            color: #263238;
+            color: #000;
             font-family: Arial, sans-serif;
             font-size: 14px;
           }
@@ -1723,7 +1753,7 @@ const htmlLayouts = {
 
           .header {
             display: grid;
-            grid-template-columns: 95px 1fr 95px;
+            grid-template-columns: 150px 1fr 150px;
             align-items: center;
             gap: 18px;
             padding: 17px 20px;
@@ -1732,10 +1762,11 @@ const htmlLayouts = {
           }
 
           .header-logo {
-            width: 85px;
-            height: 72px;
+            width: 150px;
+            height: 65px;
             object-fit: contain;
-          }
+          
+        flex-shrink: 0;}
 
           .header-content {
             text-align: center;
@@ -1743,14 +1774,14 @@ const htmlLayouts = {
           }
 
           .government-name {
-            color: #37474f;
+            color: #000;
             font-size: 15px;
             font-weight: bold;
           }
 
           .document-title {
             margin-top: 7px;
-            color: #005a9c;
+            color: #000;
             font-size: 22px;
             font-weight: bold;
           }
@@ -1773,13 +1804,13 @@ const htmlLayouts = {
           .summary-label {
             display: block;
             margin-bottom: 6px;
-            color: #607d8b;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
 
           .summary-value {
-            color: #263238;
+            color: #000;
             font-size: 15px;
             font-weight: bold;
           }
@@ -1796,13 +1827,13 @@ const htmlLayouts = {
 
           .status-accepted {
             background: #e8f5e9;
-            color: #237a39;
+            color: #000;
             border: 1px solid #b9ddc0;
           }
 
           .status-rejected {
             background: #ffebee;
-            color: #a72b35;
+            color: #000;
             border: 1px solid #efc1c6;
           }
 
@@ -1816,7 +1847,7 @@ const htmlLayouts = {
             min-height: 38px;
             padding: 8px 13px;
             background: #005a9c;
-            color: #ffffff;
+            color: #000;
           }
 
           .section-title {
@@ -1826,7 +1857,7 @@ const htmlLayouts = {
 
           .section-subtitle {
             margin-right: auto;
-            color: #dceefb;
+            color: #000;
             font-size: 12px;
           }
 
@@ -1856,14 +1887,14 @@ const htmlLayouts = {
           .data-label {
             display: block;
             margin-bottom: 6px;
-            color: #607d8b;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
 
           .data-value {
             min-height: 18px;
-            color: #263238;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
             word-break: break-word;
@@ -1874,7 +1905,7 @@ const htmlLayouts = {
             background: #fff6f7;
             border: 1px solid #efc9cd;
             border-right: 6px solid #c62828;
-            color: #922b32;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
             text-align: center;
@@ -1928,7 +1959,7 @@ const htmlLayouts = {
             min-width: 220px;
             margin-top: 5px;
             padding: 5px 20px;
-            color: #005a9c;
+            color: #000;
             border-bottom: 2px solid #005a9c;
             font-size: 16px;
             font-weight: bold;
@@ -1942,7 +1973,7 @@ const htmlLayouts = {
           .notes-header {
             padding: 9px 13px;
             background: #eaf4fd;
-            color: #005a9c;
+            color: #000;
             border-bottom: 1px solid #d4dfe5;
             font-size: 15px;
             font-weight: bold;
@@ -1980,7 +2011,7 @@ const htmlLayouts = {
           .coordination-label {
             display: block;
             margin-bottom: 3px;
-            color: #607d8b;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
@@ -2050,7 +2081,7 @@ const htmlLayouts = {
 
           <section class="summary">
             <div class="summary-item">
-              <span class="summary-label">رقم الإحالة</span>
+              <span class="summary-label">رقم الحالة</span>
 
               <div class="summary-value">
                 ${referralId || ""}
@@ -2184,7 +2215,6 @@ const htmlLayouts = {
                       <span class="data-label">مدة الحجز</span>
 
                       <div class="data-value">
-                        ٤٨ ساعة
                       </div>
                     </div>
 
@@ -2200,7 +2230,7 @@ const htmlLayouts = {
                       </span>
 
                       <div class="data-value">
-                        ${requestDate || ""}
+                        ${gregorianDate || ""}
                       </div>
                     </div>
 
@@ -2228,7 +2258,7 @@ const htmlLayouts = {
 
               <p>
                 إشارة إلى الإحالة رقم
-                <strong>${referralId || ""}</strong>
+                <strong>${referralReferenceId}</strong>
                 بتاريخ
                 <strong>${requestDate || ""}</strong>
                 بشأن المريض الموضحة بياناته أعلاه.
@@ -2354,7 +2384,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -2391,7 +2423,7 @@ const htmlLayouts = {
             padding: 0;
             direction: rtl;
             background: #ffffff;
-            color: #243443;
+            color: #000;
             font-family: Arial, sans-serif;
             font-size: 14px;
           }
@@ -2403,14 +2435,14 @@ const htmlLayouts = {
           .executive-header {
             position: relative;
             display: grid;
-            grid-template-columns: 100px 1fr 100px;
+            grid-template-columns: 150px 1fr 150px;
             align-items: center;
             gap: 20px;
             min-height: 120px;
             padding: 18px 22px;
             overflow: hidden;
             background: #153e5c;
-            color: #ffffff;
+            color: #000;
           }
 
           .executive-header::after {
@@ -2438,7 +2470,7 @@ const htmlLayouts = {
             position: relative;
             z-index: 1;
             display: flex;
-            width: 95px;
+            width: 150px;
             height: 88px;
             align-items: center;
             justify-content: center;
@@ -2446,12 +2478,14 @@ const htmlLayouts = {
             background: #ffffff;
             border-radius: 8px;
           }
+          .header-logo-box .header-logo { width: 136px; max-width: 100%; }
 
           .header-logo {
-            width: 82px;
-            height: 74px;
+            width: 150px;
+            height: 65px;
             object-fit: contain;
-          }
+          
+        flex-shrink: 0;}
 
           .header-content {
             position: relative;
@@ -2461,7 +2495,7 @@ const htmlLayouts = {
           }
 
           .government-title {
-            color: #dceaf2;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
           }
@@ -2474,7 +2508,7 @@ const htmlLayouts = {
 
           .document-subtitle {
             margin-top: 4px;
-            color: #bcd6e5;
+            color: #000;
             font-size: 12px;
             letter-spacing: 1px;
           }
@@ -2497,13 +2531,13 @@ const htmlLayouts = {
           .overview-label {
             display: block;
             margin-bottom: 7px;
-            color: #657988;
+            color: #000;
             font-size: 11px;
             font-weight: bold;
           }
 
           .overview-value {
-            color: #153e5c;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
             word-break: break-word;
@@ -2521,13 +2555,13 @@ const htmlLayouts = {
 
           .status-accepted {
             background: #e6f4eb;
-            color: #256a3c;
+            color: #000;
             border: 1px solid #b9d8c4;
           }
 
           .status-rejected {
             background: #fce9eb;
-            color: #9b2f3c;
+            color: #000;
             border: 1px solid #e7bbc1;
           }
 
@@ -2546,14 +2580,14 @@ const htmlLayouts = {
           }
 
           .section-title {
-            color: #153e5c;
+            color: #000;
             font-size: 15px;
             font-weight: bold;
           }
 
           .section-title-en {
             margin-right: auto;
-            color: #768a98;
+            color: #000;
             font-size: 11px;
             font-weight: bold;
           }
@@ -2584,14 +2618,14 @@ const htmlLayouts = {
           .information-label {
             display: block;
             margin-bottom: 6px;
-            color: #6d7f8c;
+            color: #000;
             font-size: 11px;
             font-weight: bold;
           }
 
           .information-value {
             min-height: 18px;
-            color: #263b4a;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
             word-break: break-word;
@@ -2638,7 +2672,7 @@ const htmlLayouts = {
 
           .decision-title {
             margin-bottom: 12px;
-            color: #153e5c;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
           }
@@ -2665,7 +2699,7 @@ const htmlLayouts = {
             background: #fff5f6;
             border: 1px solid #ebc7cc;
             border-right: 7px solid #b32638;
-            color: #912b37;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
             text-align: center;
@@ -2687,12 +2721,12 @@ const htmlLayouts = {
           }
 
           .signature-title {
-            color: #637783;
+            color: #000;
             font-size: 13px;
           }
 
           .signature-name {
-            color: #153e5c;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
           }
@@ -2706,7 +2740,7 @@ const htmlLayouts = {
           .notes-header {
             padding: 9px 14px;
             background: #2f6690;
-            color: #ffffff;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
           }
@@ -2742,13 +2776,13 @@ const htmlLayouts = {
           .coordination-label {
             display: block;
             margin-bottom: 4px;
-            color: #6d7e89;
+            color: #000;
             font-size: 11px;
             font-weight: bold;
           }
 
           .coordination-value {
-            color: #153e5c;
+            color: #000;
             font-size: 14px;
             font-weight: bold;
           }
@@ -2760,7 +2794,7 @@ const htmlLayouts = {
             margin-top: 12px;
             padding: 6px 12px;
             background: #153e5c;
-            color: #d9e7ef;
+            color: #000;
             font-size: 11px;
           }
 
@@ -2844,7 +2878,7 @@ const htmlLayouts = {
 
           <section class="overview">
             <div class="overview-card">
-              <span class="overview-label">رقم الإحالة</span>
+              <span class="overview-label">رقم الحالة</span>
 
               <div class="overview-value">
                 ${referralId || ""}
@@ -2986,7 +3020,6 @@ const htmlLayouts = {
                       <span class="information-label">مدة الحجز</span>
 
                       <div class="information-value">
-                        ٤٨ ساعة
                       </div>
                     </div>
 
@@ -3002,7 +3035,7 @@ const htmlLayouts = {
                       </span>
 
                       <div class="information-value">
-                        ${requestDate || ""}
+                        ${gregorianDate || ""}
                       </div>
                     </div>
 
@@ -3034,7 +3067,7 @@ const htmlLayouts = {
 
                 <p>
                   إشارة إلى الإحالة رقم
-                  <strong>${referralId || ""}</strong>
+                  <strong>${referralReferenceId || ""}</strong>
                   بتاريخ
                   <strong>${requestDate || ""}</strong>
                   بشأن المريض الموضحة بياناته أعلاه.
@@ -3171,7 +3204,9 @@ const htmlLayouts = {
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -3205,7 +3240,7 @@ const htmlLayouts = {
             padding: 0;
             direction: rtl;
             background: #fff;
-            color: #24323a;
+            color: #000;
             font-family: Arial, sans-serif;
             font-size: 14px;
           }
@@ -3217,7 +3252,7 @@ const htmlLayouts = {
           .header {
             position: relative;
             display: grid;
-            grid-template-columns: 95px 1fr 95px;
+            grid-template-columns: 150px 1fr 150px;
             align-items: center;
             gap: 15px;
             padding: 14px 18px 17px;
@@ -3237,10 +3272,11 @@ const htmlLayouts = {
           }
 
           .header-logo {
-            width: 85px;
-            height: 72px;
+            width: 150px;
+            height: 65px;
             object-fit: contain;
-          }
+          
+        flex-shrink: 0;}
 
           .header-center {
             text-align: center;
@@ -3254,7 +3290,7 @@ const htmlLayouts = {
 
           .document-title {
             margin-top: 7px;
-            color: #176b78;
+            color: #000;
             font-size: 22px;
             font-weight: bold;
           }
@@ -3277,7 +3313,7 @@ const htmlLayouts = {
           .summary-label {
             display: block;
             margin-bottom: 4px;
-            color: #60747c;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
@@ -3306,7 +3342,7 @@ const htmlLayouts = {
           }
 
           .section-title {
-            color: #176b78;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
           }
@@ -3340,13 +3376,13 @@ const htmlLayouts = {
           .data-label {
             display: block;
             margin-bottom: 5px;
-            color: #64767d;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
 
           .data-value {
-            color: #1f3037;
+            color: #000;
             font-size: 15px;
             font-weight: bold;
           }
@@ -3356,7 +3392,7 @@ const htmlLayouts = {
             background: #fff5f5;
             border: 1px solid #efcccc;
             border-radius: 10px;
-            color: #942f2f;
+            color: #000;
             font-size: 16px;
             font-weight: bold;
             text-align: center;
@@ -3399,7 +3435,7 @@ const htmlLayouts = {
             display: inline-block;
             margin-top: 4px;
             padding: 4px 18px;
-            color: #176b78;
+            color: #000;
             border-bottom: 2px solid #176b78;
             font-size: 16px;
             font-weight: bold;
@@ -3415,7 +3451,7 @@ const htmlLayouts = {
 
           .notes-title {
             margin-bottom: 8px;
-            color: #176b78;
+            color: #000;
             font-size: 15px;
             font-weight: bold;
           }
@@ -3445,7 +3481,7 @@ const htmlLayouts = {
           .coordination-label {
             display: block;
             margin-bottom: 3px;
-            color: #5b6b71;
+            color: #000;
             font-size: 12px;
             font-weight: bold;
           }
@@ -3513,7 +3549,7 @@ const htmlLayouts = {
 
           <div class="document-summary">
             <div class="summary-item">
-              <span class="summary-label">رقم الإحالة</span>
+              <span class="summary-label">رقم الحالة:</span>
               <span class="summary-value">
                 ${referralId || ""}
               </span>
@@ -3632,7 +3668,6 @@ const htmlLayouts = {
                       <div class="data-item">
                         <span class="data-label">مدة الحجز</span>
                         <span class="data-value">
-                          ٤٨ ساعة
                         </span>
                       </div>
 
@@ -3646,7 +3681,7 @@ const htmlLayouts = {
                           التاريخ الميلادي
                         </span>
                         <span class="data-value">
-                          ${requestDate || ""}
+                          ${gregorianDate || ""}
                         </span>
                       </div>
 
@@ -3674,7 +3709,7 @@ const htmlLayouts = {
 
               <p>
                 إشارة إلى الإحالة رقم
-                <strong>${referralId || ""}</strong>
+                <strong>${referralReferenceId}</strong>
                 بتاريخ
                 <strong>${requestDate || ""}</strong>
                 بشأن المريض الموضحة بياناته أعلاه.
@@ -3798,6 +3833,7 @@ const generateAcceptanceLetterHtml = ({
   // accessorKey "createdAt", header "referralDate"), so that's the closest
   // confirmed match for "the date this referral was requested".
   createdAt: _requestDate,
+  dateOfBirth,
   referralId,
   specialty,
   subSpecialty,
@@ -3809,6 +3845,7 @@ const generateAcceptanceLetterHtml = ({
   clientMangerName,
   clientManagerPhone,
   letterType,
+  referralReferenceId,
   __reasonName__,
 }) => {
   // createdAt comes back as "YYYY-MM-DD HH:mm:ss" (space-separated, no "T",
@@ -3824,18 +3861,26 @@ const generateAcceptanceLetterHtml = ({
   const date = requestDateSource.slice(0, 10);
   const [year, month, day] = date.split("-");
   const requestDate = `${day}/${month}/${year}`;
+  const birthDate = String(dateOfBirth ?? "")
+    .trim()
+    .slice(0, 10);
+  const gregorianDate = /^\d{4}-\d{2}-\d{2}$/.test(birthDate)
+    ? birthDate.split("-").reverse().join("/")
+    : requestDate;
 
   const showLetterFinalFooter = !!(clientMangerName || clientManagerPhone);
 
   const _letterType = letterType || LETTER_LAYOUT_TYPES.STANDARD;
   const htmlCreator = htmlLayouts[_letterType];
 
-  return htmlCreator({
+  const html = htmlCreator({
     patientNationalId,
     nationality,
     patientName,
     requestDate,
+    gregorianDate,
     referralId,
+    referralReferenceId: String(referralReferenceId ?? "").trim() || referralId,
     specialty,
     subSpecialty,
     sourceProvider,
@@ -3848,6 +3893,17 @@ const generateAcceptanceLetterHtml = ({
     showLetterFinalFooter,
     __reasonName__,
   });
+  return html.replace("</head>", `<style>
+    body, body *, body *::before, body *::after {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+      text-shadow: none !important;
+    }
+    .executive-header, .section-header, .section-title,
+    .heading-number, .notes-header {
+      background-color: #f1f5f9;
+    }
+  </style></head>`);
 };
 
 export default generateAcceptanceLetterHtml;

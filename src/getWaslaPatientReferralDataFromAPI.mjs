@@ -198,6 +198,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           firstNameAr,
           lastNameEn,
           lastNameAr,
+          dateOfBirth,
         } = patientInfo || {};
 
         const {
@@ -328,6 +329,7 @@ const getWaslaPatientReferralDataFromAPI = async (
           patientName,
           patientNationalId: idNumber,
           mobileNumber,
+          dateOfBirth,
           gender: genderLabel,
           nationality: nationality?.name,
           specialty: speciality?.name,
