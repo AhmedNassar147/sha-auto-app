@@ -13,7 +13,7 @@ import chooseEnabledLetterLayout from "./chooseEnabledLetterLayout.mjs";
 import generateRandomFileName from "./generateRandomFileName.mjs";
 import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
-import { cutoffTimeMs } from "./constants.mjs";
+import sleep from "./sleep.mjs";
 
 // Wasla gives an exact broadcastedAt timestamp directly on the facility/tabs
 // list row (confirmed against the real weslah.seha.sa bundle,
@@ -69,6 +69,7 @@ const processCollectingPatients = async ({
     } = await getWaslaDistributionWindows(frame);
 
     let index = 0;
+    let newPatientsSeen = 0;
 
     for (const patient of patients) {
       index++;
@@ -124,7 +125,18 @@ const processCollectingPatients = async ({
         continue;
       }
 
-      createConsoleMessage("info", patient, "patient");
+      // Breaks up the otherwise identical back-to-back API-call rhythm
+      // across different genuinely-new cases in the same batch - counted
+      // separately from the raw loop index so already-collected cases
+      // (skipped above) don't burn jitter time before ever reaching the
+      // real work, and skipped so the first new case in a batch isn't
+      // delayed either.
+      if (newPatientsSeen > 0) {
+        await sleep(150 + Math.random() * 300);
+      }
+      newPatientsSeen++;
+
+      // createConsoleMessage("info", patient, "patient");
 
       const receivedAtMs = patient.listReceiptTiming?.listReceivedAtMs;
       const broadcastedAtParsedMs = broadcastedAt
@@ -225,7 +237,14 @@ const processCollectingPatients = async ({
         patientName,
         referralId,
         letterType,
+        navigationId,
+        referralReferenceId,
       });
+
+      // Randomized per case (rather than one fixed constant for every
+      // case) - the same offset before every deadline, every time, is
+      // itself a mechanical/bot-like pattern.
+      const randomCutoffTimeMs = Math.ceil(6500 + Math.random() * 3500);
 
       const finalData = {
         referralId,
@@ -234,7 +253,7 @@ const processCollectingPatients = async ({
         randomFileName,
         ...getWaslaCaseWindow(
           broadcastedAt,
-          cutoffTimeMs,
+          randomCutoffTimeMs,
           facilityReviewWindowMinutes,
         ),
         facilityReviewWindowMinutes,
@@ -271,6 +290,8 @@ const processCollectingPatients = async ({
         generateAcceptancePdfLetters(browser, [finalData], true, letterType),
         generateAcceptancePdfLetters(browser, [finalData], false, letterType),
       ]);
+
+      await sleep(2000 + Math.random() * 2000 - 100);
     }
   } catch (err) {
     createConsoleMessage(

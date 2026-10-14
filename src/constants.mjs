@@ -112,33 +112,6 @@ export const PATIENT_SECTIONS_STATUS = {
 
 export const ALLOWED_MINUTES_TO_REVIEW_PATIENTS = 15;
 
-// Confirmed live (real 400 from Wasla: "Acceptance is not allowed before
-// the 15-minute review window has elapsed") and straight from Wasla's own
-// bundled source (scripts/ReviewWindowTimer-DAyGxrbR.js): the facility
-// review window is a MINIMUM WAIT, not a deadline to beat - the Accept
-// button itself only enables once Date.now() >= broadcastedAt +
-// facilityReviewWindowMinutes. So this is a deliberate HEAD START before
-// that boundary, not a safety margin subtracted from a deadline: it's how
-// much time getWaslaCaseWindow's scheduling (referralEndDateActionableAtMS
-// = referralEndTimestamp - cutoffTimeMs) gives handleSubmitReferral.mjs to
-// do prep work ahead of the boundary (open a page, pre-upload the letter)
-// before precisely sleeping out whatever time is actually left until the
-// boundary and only then submitting - see handleSubmitReferral.mjs's own
-// diff-based sleep for the part that actually guarantees landing on the
-// right side of it; this constant just needs to comfortably cover that
-// prep work's own duration so the diff is never negative.
-//
-// PatientStore.calculateCanStillProcessPatient computes lastTime =
-// referralEndDateActionableAtMS + (cutoffTimeMs -
-// searchIfAcceptacneButtonShownMS) - searchIfAcceptacneButtonShownMS
-// derives from cutoffTimeMs (rather than being a second independent
-// literal) so that difference stays structurally zero; two separately
-// -edited constants that merely happened to match would let a future
-// one-line change to just one of them silently shrink the "can still
-// process" window.
-export const cutoffTimeMs = 6600;
-export const searchIfAcceptacneButtonShownMS = cutoffTimeMs;
-
 export const USER_MESSAGES = {
   alreadyScheduledAccept: "Already scheduled for acceptance.",
   alreadyScheduledReject: "Already scheduled for rejection.",

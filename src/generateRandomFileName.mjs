@@ -63,10 +63,16 @@ const FILE_NAMES = [
 ];
 
 /**
- * @param {{ patientName?: string, referralId?: string, letterType?: string }} args
+ * @param {{ patientName?: string, referralId?: string, letterType?: string, navigationId: string, referralReferenceId?: number }} args
  * @returns {string} e.g. "John (ABC12) Letter File 352923.pdf"
  */
-const generateRandomFileName = ({ patientName, referralId, letterType }) => {
+const generateRandomFileName = ({
+  patientName,
+  referralId,
+  letterType,
+  navigationId,
+  referralReferenceId,
+}) => {
   const patientFileName =
     (patientName || "").trim().split(/\s+/)[0] || "Patient";
 
@@ -84,7 +90,12 @@ const generateRandomFileName = ({ patientName, referralId, letterType }) => {
     [formattedKey, abbreviation].filter(Boolean),
   ).join(attachmentSeparator);
 
-  const randomKey = Math.random() < 0.6 ? formattedAttachmentKey : abbreviation;
+  // abbreviation is itself undefined ~20% of the time (see above), so
+  // falling back to it unconditionally could silently drop the key
+  // entirely - formattedAttachmentKey is always a valid, non-empty string.
+  const randomKey =
+    (Math.random() < 0.6 ? formattedAttachmentKey : abbreviation) ??
+    formattedAttachmentKey;
 
   const shouldUseRandomKeyAsSeparatePart = Math.random() < 0.7;
   const documentName = randomArrayItem(FILE_NAMES);
@@ -96,14 +107,22 @@ const generateRandomFileName = ({ patientName, referralId, letterType }) => {
     .filter(Boolean)
     .join(" ");
 
+  // Fixed field order (name -> key -> document type -> id) rather than
+  // shuffled - varying the words/separators/which pieces appear already
+  // gives per-case variety; also randomizing which field comes first would
+  // make the name structurally incoherent (e.g. the id before the patient
+  // name), which reads as a different kind of obviously-generated rather
+  // than more human.
   const fileNameParts = [
     patientFileName,
     shouldUseRandomKeyAsSeparatePart ? randomKey : undefined,
     formattedDocumentName,
-    referralId,
+    randomArrayItem(
+      [referralReferenceId, navigationId, referralId].filter(Boolean),
+    ),
   ].filter(Boolean);
 
-  return `${shuffleArray(fileNameParts).join(" ")}.pdf`;
+  return `${fileNameParts.join(" ")}.pdf`;
 };
 
 export default generateRandomFileName;

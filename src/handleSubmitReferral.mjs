@@ -545,9 +545,8 @@ const handleSubmitReferral = (options) => async (patient) => {
       : null;
 
     const currentLeftTime = referralEndTimestamp - Date.now();
-    // Observed uploads reached 1460ms: a 1000ms lead delayed the action.
-    // Prepare earlier while keeping the final request's target unchanged.
-    const preUploadLeadMs = 1700;
+
+    const preUploadLeadMs = 1650 + Math.round(Math.random() * 350 - 150);
     const shouldSleep = currentLeftTime > preUploadLeadMs;
 
     if (shouldSleep) {
@@ -556,16 +555,35 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(timeToSleepMs);
     }
 
-    await cursor
-      .click("#gh-upload-trigger", {
-        moveDelay: shouldSleep ? 25 : 0,
-        scrollSpeed: shouldSleep ? 90 : 100,
-      })
-      .catch(() => {});
+    if (Math.random() < 0.58) {
+      await cursor
+        .click("#gh-upload-trigger", {
+          moveDelay: shouldSleep ? 30 : 0,
+          scrollSpeed: shouldSleep ? 90 : 100,
+        })
+        .catch(() => {});
+    } else {
+      // scroll() requires a delta - called with none it threw every time
+      // (silently, via the catch below), making this branch a no-op.
+      await cursor.scroll({ y: 200 + Math.random() * 200 }).catch(() => {});
+    }
 
     await page
       .evaluate(() => document.getElementById("gh-upload-trigger")?.remove())
       .catch(() => {});
+
+    // A reject isn't racing anything (unlike accept, which competes against
+    // other facilities for the case), so there's no timing-precision cost
+    // to adding extra, more generous human-like delay here.
+    if (!isAcceptanceAction) {
+      await sleep(1400 + Math.random() * 400);
+      await cursor
+        .moveTo({
+          x: 180 + Math.random(),
+          y: 250 + Math.random() * 30,
+        })
+        .catch(() => {});
+    }
 
     // The current bundle requires notes and a letter for Inpatient too.
     const uploadStartTime = Date.now();
@@ -1351,4 +1369,61 @@ export default handleSubmitReferral;
 //             "name": "Other"
 //         }
 //     ]
+// }
+
+// results\special-bundle\7I8XAGEYJXQS108-1792011233720\c6fe3c69fd1e-ViewReferralCasePage-DGnWWJG5.js
+// {
+//     id: "actions",
+//     header: e("actions"),
+//     cell: ({ row: C }) => {
+//     const x = C.original;
+
+//     const canDecide =
+//         !x.isDeleted && d && a &&
+//         Number(x.status) === F.WaitingAcceptance &&
+//         (c === k.PendingAcceptance || c === k.PendingEscalation);
+
+//     const canReassign =
+//         !x.isDeleted && d && a &&
+//         Number(x.status) === F.AnotherFacilityApproved &&
+//         c !== k.Closed && c !== k.ConfirmedArrival && f;
+
+//     const T = m
+//         ? e("awaitingAcceptanceWindowTooltip")
+//         : e("tpaApprovalLockedNote", {
+//             reviewMinutes: u,
+//             acceptanceMinutes: p
+//         });
+
+//     return t.jsxs("div", {
+//         className: "flex gap-2",
+//         children: [
+//             t.jsx(bt, {
+//                 facility: x,
+//                 isLocked: false,
+//                 lockedTooltip: canDecide ? T : "",
+//                 approveLabel: e("approve"),
+//                 rejectLabel: e("reject"),
+//                 onApprove: r,
+//                 onReject: n
+//             }),
+//             t.jsx(P, {
+//                 variant: "contained",
+//                 size: "small",
+//                 color: "success",
+//                 disabled: !canReassign,
+//                 startIcon: t.jsx(Fs, {
+//                     size: 14
+//                 }),
+//                 sx: {
+//                     boxShadow: "none",
+//                     minWidth: "auto",
+//                     fontWeight: "600",
+//                     padding: "4px 12px"
+//                 },
+//                 onClick: () => o(x),
+//                 children: e("reassignReferral")
+//             })
+//         ]
+//     });
 // }

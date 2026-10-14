@@ -32,6 +32,8 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "puppeteer": "^25.9.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "sqlite3": "^6.0.1",
     "ws": "^8.21.3"
   }

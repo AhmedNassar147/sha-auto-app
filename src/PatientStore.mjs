@@ -15,8 +15,6 @@ import {
   COLLECTD_PATIENTS_FILE_NAME,
   USER_MESSAGES,
   USER_ACTION_TYPES,
-  searchIfAcceptacneButtonShownMS,
-  cutoffTimeMs,
   generatedPdfsPathForAcceptance,
   generatedPdfsPathForRejection,
   FAKE_REJECT_PROBE,
@@ -256,11 +254,9 @@ class PatientStore extends EventEmitter {
       return false;
 
     const now = Date.now();
-    const lastTime =
-      referralEndDateActionableAtMS +
-      (cutoffTimeMs - searchIfAcceptacneButtonShownMS);
+    const lastTime = referralEndDateActionableAtMS;
 
-    return now < lastTime;
+    return now <= lastTime;
   }
 
   canStillProcessPatient(referralId) {

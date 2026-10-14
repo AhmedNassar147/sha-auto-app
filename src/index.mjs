@@ -7,8 +7,11 @@ import express from "express";
 import cors from "cors";
 import { WebSocketServer } from "ws";
 
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import cron from "node-cron";
+
+puppeteer.use(StealthPlugin());
 
 import PatientStore from "./PatientStore.mjs";
 import readJsonFile from "./readJsonFile.mjs";
