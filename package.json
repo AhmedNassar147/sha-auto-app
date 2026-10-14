@@ -13,7 +13,8 @@
     "clear-claimed": "node ./src/clearClaimedStatus.mjs",
     "calibrate-clock": "node ./src/calibrateServerClockDrift.mjs",
     "collect-bundles": "node ./src/collectWaslaBundles.mjs",
-    "explore-facility-cases": "yarn collect-bundles --explore-f"
+    "explore-facility-cases": "yarn collect-bundles --explore-f",
+    "explore-claimed-null-case": "node ./src/exploreClaimedNullCase.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
