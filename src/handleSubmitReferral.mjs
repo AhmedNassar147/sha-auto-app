@@ -14,6 +14,7 @@
  *
  */
 import { writeFile } from "fs/promises";
+import { GhostCursor } from "ghost-cursor";
 import {
   classifySubmissionResult,
   describeClockSample,
@@ -33,6 +34,7 @@ import submitWaslaReferralViaApi from "./submitWaslaReferralViaApi.mjs";
 import submitWaslaAction from "./submitWaslaAction.mjs";
 import buildAdmissionDetails from "./buildAdmissionDetails.mjs";
 import fillWaslaRejectionReason from "./fillWaslaRejectionReason.mjs";
+import waitForWaslaReferralReady from "./waitForWaslaReferralReady.mjs";
 import closePageSafely from "./closePageSafely.mjs";
 import showPageSnackbar from "./showPageSnackbar.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
@@ -56,15 +58,6 @@ const { ACCEPT, REJECT } = USER_ACTION_TYPES;
 const ACCEPT_BUTTON_TEXTS = ["قبول الإحالة", "Accept Referral"];
 const REJECT_BUTTON_TEXTS = ["رفض الإحالة", "Reject Referral"];
 const ACTION_BUTTON_TIMEOUT_MS = 10_000;
-
-// Confirmed live (html/details/details-page-with-review-timer.html): the
-// "In Review - Ends in M:SS" badge has no id/data-testid either - matched
-// by this text substring the same way the accept/reject buttons are. Used
-// as a second, independent "is the review window over" signal to compare
-// against the button's own disabled state - they're driven by separate
-// code in Wasla's bundle and aren't guaranteed to resolve at the exact
-// same instant.
-const REVIEW_BADGE_TEXT_MARKER = "In Review";
 
 // The confirmation popup after clicking accept/reject (html/details/
 // rejection-modal.html, html/details/accept-modal.html) - stable MUI base
@@ -474,6 +467,30 @@ const handleSubmitReferral = (options) => async (patient) => {
         ),
       ]);
 
+    // shortcut: injects a plain MUI-styled button rather than finding a
+    // real one to click - good enough to give ghost-cursor a visible,
+    // human-like scroll+click before the upload; upgrade if Wasla ever
+    // flags file inputs attached with no preceding on-page interaction.
+    await page.evaluate(() => {
+      const btn = document.createElement("button");
+      btn.id = "gh-upload-trigger";
+      btn.textContent = "Upload";
+      btn.style.cssText =
+        "background-color:#1976d2;color:#fff;border:none;border-radius:4px;" +
+        "padding:6px 16px;font-family:Roboto,Arial,sans-serif;font-weight:500;" +
+        "text-transform:uppercase;cursor:pointer;display:block;margin:40px auto;";
+      // Plain document flow (no position:fixed) - appended as the last
+      // element in body, below the fold on this page, so ghost-cursor
+      // actually has to scroll to reach it instead of clicking in place.
+      document.body.appendChild(btn);
+    });
+
+    const cursor = new GhostCursor(page, {
+      performRandomMoves: false,
+      visible: false,
+      start: { x: 180 + Math.random(), y: 250 + Math.random() * 30 },
+    });
+
     const description = isAcceptanceAction
       ? randomArrayItem(ACCEPTANCE_DESCRIPTION_TEMPLATES)(navigationId)
       : undefined;
@@ -481,6 +498,29 @@ const handleSubmitReferral = (options) => async (patient) => {
     const targetButtonTexts = isAcceptanceAction
       ? ACCEPT_BUTTON_TEXTS
       : REJECT_BUTTON_TEXTS;
+
+    const readinessStartedAtMs = Date.now();
+    const readinessStartedMonotonicMs = performance.now();
+    let readinessSucceeded = false;
+    let referralReadyTiming;
+    try {
+      await waitForWaslaReferralReady(page, targetButtonTexts, 2_000);
+      readinessSucceeded = true;
+    } finally {
+      referralReadyTiming = {
+        startedAtMs: readinessStartedAtMs,
+        finishedAtMs: Date.now(),
+        durationMs: Math.round(performance.now() - readinessStartedMonotonicMs),
+        success: readinessSucceeded,
+      };
+      await writeReferralTimingEvent({
+        type: "page-readiness",
+        referralId,
+        navigationId,
+        actionType,
+        ...referralReadyTiming,
+      });
+    }
 
     // The 🔴 "inpatient, needs manual review" heads-up now lives on the
     // initial new-case notification (formatPatientToTelegramOrWA.mjs), so
@@ -508,9 +548,24 @@ const handleSubmitReferral = (options) => async (patient) => {
     // Observed uploads reached 1460ms: a 1000ms lead delayed the action.
     // Prepare earlier while keeping the final request's target unchanged.
     const preUploadLeadMs = 1700;
-    if (currentLeftTime > preUploadLeadMs) {
-      await sleep(currentLeftTime - preUploadLeadMs);
+    const shouldSleep = currentLeftTime > preUploadLeadMs;
+
+    if (shouldSleep) {
+      const timeToSleep = currentLeftTime - preUploadLeadMs;
+      const timeToSleepMs = (timeToSleep * 3.95) / 4;
+      await sleep(timeToSleepMs);
     }
+
+    await cursor
+      .click("#gh-upload-trigger", {
+        moveDelay: shouldSleep ? 50 : 0,
+        scrollSpeed: shouldSleep ? 85 : 100,
+      })
+      .catch(() => {});
+
+    await page
+      .evaluate(() => document.getElementById("gh-upload-trigger")?.remove())
+      .catch(() => {});
 
     // The current bundle requires notes and a letter for Inpatient too.
     const uploadStartTime = Date.now();
@@ -520,6 +575,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       fileName: randomFileName,
       postStepLabel: "accept-json",
     });
+
     const uploadDurationMs = Date.now() - uploadStartTime;
     if (uploadResult.attachmentId != null) {
       updatePatients({
@@ -549,6 +605,7 @@ const handleSubmitReferral = (options) => async (patient) => {
       detailsClockSample: detailsClockSample ?? null,
       receiptTiming: receiptTiming ?? null,
       referralWindowSnapshot: referralWindowSnapshot ?? null,
+      referralReadyTiming,
       preUpload: {
         success: uploadResult.success,
         uploadIgnored: Boolean(uploadResult.uploadIgnored),
@@ -578,7 +635,8 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(sleepMS);
     }
 
-    let apiResult = uploadResult.errorType === "cloudflare-block" ? uploadResult : null;
+    let apiResult =
+      uploadResult.errorType === "cloudflare-block" ? uploadResult : null;
 
     const realFireDelayFromBoundaryMs = Date.now() - referralEndTimestamp;
 
@@ -589,7 +647,10 @@ const handleSubmitReferral = (options) => async (patient) => {
     // the backend cancels older requests, so keep sequential submission.
     let attemptCount = 0;
 
-    while (attemptCount < MAX_ACTION_RETRIES && uploadResult.errorType !== "cloudflare-block") {
+    while (
+      attemptCount < MAX_ACTION_RETRIES &&
+      uploadResult.errorType !== "cloudflare-block"
+    ) {
       attemptCount++;
       const attemptStart = Date.now();
 

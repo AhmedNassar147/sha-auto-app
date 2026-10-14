@@ -9,5 +9,5 @@ export default function chooseEnabledLetterLayout(preferred) {
   if (!preferred) return randomArrayItem(ENABLED_LETTER_LAYOUT_NAMES);
   return ENABLED_LETTER_LAYOUT_NAMES.includes(preferred)
     ? preferred
-    : LETTER_LAYOUT_TYPES.ELEGANT;
+    : LETTER_LAYOUT_TYPES.CLINICAL;
 }
