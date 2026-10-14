@@ -10,6 +10,8 @@ export default function buildDirectApiTelegramMessage({
   apiResult,
   attemptsMade,
   competitionPatient,
+  sleepMS,
+  preUploadInteractionMs,
 }) {
   const code = (value) =>
     "`" + String(value ?? "").replace(/[`\r\n]/g, " ") + "`";
@@ -22,7 +24,9 @@ export default function buildDirectApiTelegramMessage({
           "Submission recorded; final assignment is checked separately."
       : apiResult.errorType === "cloudflare-block"
         ? `Cloudflare blocked the ${apiResult.step?.includes("upload") ? "attachment upload" : "submission"} (HTTP 403).` +
-          (apiResult.responseHeaders?.["cf-ray"] ? ` Ray ID: ${apiResult.responseHeaders["cf-ray"]}` : "")
+          (apiResult.responseHeaders?.["cf-ray"]
+            ? ` Ray ID: ${apiResult.responseHeaders["cf-ray"]}`
+            : "")
         : apiResult.error || "No response details",
   ).slice(0, 600);
   return (
@@ -32,9 +36,13 @@ export default function buildDirectApiTelegramMessage({
     (patientNationalId ? `National ID: ${code(patientNationalId)}\n` : "") +
     `${resultText.replace(/[`*_\[\]]/g, " ")}\n` +
     `Attempts: ${attemptsMade}\n` +
+    `PreUploadInteractionMs: ${preUploadInteractionMs}\n` +
+    `Sleep: ${sleepMS}ms\n` +
     formatWatcherCompetition(competitionPatient) +
-    (apiResult.success ? "" : apiResult.errorType === "cloudflare-block"
-      ? "\n\nAutomatic submission stopped. The case tab remains open for manual review."
-      : "\n\nFalling back to the UI.")
+    (apiResult.success
+      ? ""
+      : apiResult.errorType === "cloudflare-block"
+        ? "\n\nAutomatic submission stopped. The case tab remains open for manual review."
+        : "\n\nFalling back to the UI.")
   );
 }

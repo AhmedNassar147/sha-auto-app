@@ -546,7 +546,7 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     const currentLeftTime = referralEndTimestamp - Date.now();
 
-    const preUploadLeadMs = 1650 + Math.round(Math.random() * 350 - 150);
+    const preUploadLeadMs = 1650 + Math.round(Math.random() * 300 - 150);
     const shouldSleep = currentLeftTime > preUploadLeadMs;
 
     if (shouldSleep) {
@@ -555,17 +555,46 @@ const handleSubmitReferral = (options) => async (patient) => {
       await sleep(timeToSleepMs);
     }
 
-    if (Math.random() < 0.58) {
+    const moveDelay = shouldSleep ? 30 : 0;
+
+    const movementStartTime = Date.now();
+    if (Math.random() < 0.58 && !isAcceptanceAction) {
+      if (Math.random() < 0.35) {
+        await cursor
+          .moveTo(
+            {
+              x: 120 + Math.random() + 50,
+              y: 180 + Math.random() * 80,
+            },
+            { moveDelay: moveDelay },
+          )
+          .catch(() => {});
+      }
       await cursor
         .click("#gh-upload-trigger", {
-          moveDelay: shouldSleep ? 30 : 0,
+          moveDelay: moveDelay,
           scrollSpeed: shouldSleep ? 90 : 100,
         })
         .catch(() => {});
     } else {
       // scroll() requires a delta - called with none it threw every time
       // (silently, via the catch below), making this branch a no-op.
-      await cursor.scroll({ y: 200 + Math.random() * 200 }).catch(() => {});
+
+      if (Math.random() < 0.85) {
+        await cursor
+          .scroll({ y: 200 + Math.random() * 200, x: 150 + Math.random() })
+          .catch(() => {});
+      } else {
+        await cursor
+          .moveTo(
+            {
+              x: 180 + Math.random(),
+              y: 250 + Math.random() * 40,
+            },
+            { moveDelay: moveDelay },
+          )
+          .catch(() => {});
+      }
     }
 
     await page
@@ -585,7 +614,6 @@ const handleSubmitReferral = (options) => async (patient) => {
         .catch(() => {});
     }
 
-    // The current bundle requires notes and a letter for Inpatient too.
     const uploadStartTime = Date.now();
     const uploadResult = await submitWaslaAction({
       page,
@@ -804,6 +832,8 @@ const handleSubmitReferral = (options) => async (patient) => {
         competitionPatient,
         patientName,
         patientNationalId,
+        sleepMS,
+        preUploadInteractionMs: uploadStartTime - movementStartTime,
       });
       await sendTelegramMessage?.(directMessage);
       // Acceptance has its watcher notification below. Rejection sends
