@@ -558,7 +558,7 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     await cursor
       .click("#gh-upload-trigger", {
-        moveDelay: shouldSleep ? 50 : 0,
+        moveDelay: shouldSleep ? 25 : 0,
         scrollSpeed: shouldSleep ? 85 : 100,
       })
       .catch(() => {});
