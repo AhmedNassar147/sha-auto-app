@@ -552,7 +552,7 @@ const handleSubmitReferral = (options) => async (patient) => {
 
     if (shouldSleep) {
       const timeToSleep = currentLeftTime - preUploadLeadMs;
-      const timeToSleepMs = (timeToSleep * 3.95) / 4;
+      const timeToSleepMs = (timeToSleep * 3.8) / 4;
       await sleep(timeToSleepMs);
     }
 
