@@ -244,7 +244,7 @@ const processCollectingPatients = async ({
       // Randomized per case (rather than one fixed constant for every
       // case) - the same offset before every deadline, every time, is
       // itself a mechanical/bot-like pattern.
-      const randomCutoffTimeMs = Math.ceil(7300 + Math.random() * 4500);
+      const randomCutoffTimeMs = Math.ceil(7800 + Math.random() * 4400);
 
       const finalData = {
         referralId,
