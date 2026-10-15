@@ -12,10 +12,10 @@ import {
   getCaseFile,
   upsertCaseFile,
   buildCaseFileKey,
-  getPatient,
   updatePatients,
   getCasesForReport,
   searchPatients,
+  getPatientById,
 } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
@@ -89,7 +89,7 @@ const COMMANDS = {
   getReferralLetter: {
     value: /\/letter (.+)/,
     description:
-      "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI OR /letter r 5AW0BELHL51HPFI reason",
+      "Long press → get letter, Example: /letter a 5AW0BELHL51HPFI OR /letter r 13941 OR /letter r 115225225 reason",
     command: "letter",
   },
   f_accept: {
@@ -1217,7 +1217,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
   });
 
   safeOnText(COMMANDS.getReferralLetter.value, async (msg, match) => {
-    const { unAuthorizedMessage, chatId, fromName, msgId } =
+    const { unAuthorizedMessage, chatId, msgId } =
       getIfNotAuthorizedMessage(msg);
 
     if (unAuthorizedMessage) {
@@ -1229,7 +1229,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
     const parts = raw.split(/\s+/); // split by spaces
     const action = parts[0]?.toLowerCase(); // "a" or "r"
-    const referralId = parts[1]; // "5AW0BELHL51HPFI"
+    const idArg = parts[1]; // "5AW0BELHL51HPFI" | nationalid or navigationId
     const reason = (parts.slice(2) || []).join(" "); // "some reason" or ""
 
     if (!["a", "r"].includes(action)) {
@@ -1238,6 +1238,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         `⛔ Invalid action \`${action}\`.\nUse *a* for accept or *r* for reject.\nExample: \`/letter a 5AW0BELHL51HPFI\``,
       );
     }
+
+    const { referralId } = getPatientById(idArg) || {};
 
     // Wasla referral ids are alphanumeric (e.g. "5AW0BELHL51HPFI"), unlike
     // the old GlobeMed system's purely numeric ones this check used to
@@ -1289,7 +1291,7 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       // persisted columns, see db.mjs) still lives in the DB row - no need
       // to open a new tab and re-fetch from the live Wasla API for data we
       // already saved at collection time.
-      const storedPatient = getPatient(referralId);
+      const storedPatient = getPatientById(referralId);
 
       if (!storedPatient) {
         return await sendBotMessage(

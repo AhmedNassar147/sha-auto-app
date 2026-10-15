@@ -19,11 +19,7 @@
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
-import {
-  getPatientByNavigationId,
-  getPatient,
-  updatePatients,
-} from "../db.mjs";
+import { updatePatients, getPatientById } from "../db.mjs";
 import { USER_ACTION_TYPES, WASLA_REFERRAL_VIEW_URL } from "../constants.mjs";
 import submitWithdrawalViaApi from "../submitWithdrawalViaApi.mjs";
 import closePageSafely from "../closePageSafely.mjs";
@@ -47,7 +43,8 @@ const performWithdrawal = async ({ browser, idArg, notes }) => {
     return { success: false, message: `⛔ Invalid ID \`${idArg}\`.` };
   }
 
-  const storedPatient = getPatientByNavigationId(idArg) || getPatient(idArg);
+  // Accepts either id - navigationId or  referralId || patientNationalId
+  const storedPatient = getPatientById(idArg);
 
   if (!storedPatient) {
     return {

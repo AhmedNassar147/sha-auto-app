@@ -14,11 +14,7 @@
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
-import {
-  getPatientByNavigationId,
-  getPatient,
-  updatePatients,
-} from "../db.mjs";
+import { updatePatients, getPatientById } from "../db.mjs";
 import { WASLA_STATUS_TYPES, WASLA_REFERRAL_VIEW_URL } from "../constants.mjs";
 import submitArrivalConfirmationViaApi from "../submitArrivalConfirmationViaApi.mjs";
 import closePageSafely from "../closePageSafely.mjs";
@@ -76,10 +72,8 @@ const performArrivalConfirmation = async ({
     }
   }
 
-  // Accepts either id - navigationId (Wasla's internal numeric case id)
-  // or referralId (the alphanumeric id shown everywhere else, e.g. in
-  // Telegram notifications and the /db page) - whichever is found first.
-  const storedPatient = getPatientByNavigationId(idArg) || getPatient(idArg);
+  // Accepts either id - navigationId or  referralId || patientNationalId
+  const storedPatient = getPatientById(idArg);
 
   if (!storedPatient) {
     return {

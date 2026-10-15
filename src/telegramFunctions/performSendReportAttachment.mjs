@@ -18,7 +18,7 @@
  *
  */
 import createConsoleMessage from "../createConsoleMessage.mjs";
-import { getPatientByNavigationId, getPatient } from "../db.mjs";
+import { getPatientById } from "../db.mjs";
 
 /**
  * @param {object} params
@@ -33,9 +33,9 @@ const performSendReportAttachment = async ({ bot, idArg, chatId, msgId }) => {
     return { success: false, message: `⛔ Invalid ID \`${idArg}\`.` };
   }
 
-  // Accepts either id - navigationId or referralId, same lookup as
+  // Accepts either id - navigationId or referralId or patientNationalId, same lookup as
   // /arrived and /withdraw.
-  const storedPatient = getPatientByNavigationId(idArg) || getPatient(idArg);
+  const storedPatient = getPatientById(idArg);
 
   if (!storedPatient) {
     return {
