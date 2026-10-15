@@ -504,7 +504,7 @@ const handleSubmitReferral = (options) => async (patient) => {
     let readinessSucceeded = false;
     let referralReadyTiming;
     try {
-      await waitForWaslaReferralReady(page, targetButtonTexts, 2_000);
+      await waitForWaslaReferralReady(page, targetButtonTexts, 3_000);
       readinessSucceeded = true;
     } finally {
       referralReadyTiming = {
