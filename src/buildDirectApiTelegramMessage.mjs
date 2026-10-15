@@ -12,6 +12,7 @@ export default function buildDirectApiTelegramMessage({
   competitionPatient,
   sleepMS,
   preUploadInteractionMs,
+  uploadDurationMs,
 }) {
   const code = (value) =>
     "`" + String(value ?? "").replace(/[`\r\n]/g, " ") + "`";
@@ -37,6 +38,7 @@ export default function buildDirectApiTelegramMessage({
     `${resultText.replace(/[`*_\[\]]/g, " ")}\n` +
     `Attempts: ${attemptsMade}\n` +
     `PreUploadInteractionMs: ${preUploadInteractionMs}\n` +
+    `UploadDurationMs: ${uploadDurationMs}\n` +
     `Sleep: ${sleepMS}ms\n` +
     formatWatcherCompetition(competitionPatient) +
     (apiResult.success

@@ -832,6 +832,7 @@ const handleSubmitReferral = (options) => async (patient) => {
         competitionPatient,
         patientName,
         patientNationalId,
+        uploadDurationMs,
         sleepMS,
         preUploadInteractionMs: uploadStartTime - movementStartTime,
       });
