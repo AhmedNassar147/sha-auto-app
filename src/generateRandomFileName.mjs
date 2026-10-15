@@ -79,7 +79,7 @@ const generateRandomFileName = ({
   const attachmentKey = createRandomAttachmentKey();
 
   const abbreviation =
-    Math.random() < 0.8 ? LETTER_LAYOUT_ABBREVIATIONS[letterType] : undefined;
+    Math.random() < 0.35 ? LETTER_LAYOUT_ABBREVIATIONS[letterType] : undefined;
 
   const formattedKey =
     Math.random() < 0.67 ? `(${attachmentKey})` : attachmentKey;

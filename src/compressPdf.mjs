@@ -19,9 +19,9 @@ const compressPdf = (input, output) => {
     // pdfwrite keeps text/vector content sharp rather than flattening
     // the entire page into a low-resolution image.
     const args = [
-      // "-sDEVICE=pdfimage8",
-      "-sDEVICE=pdfwrite",
-      "-r5",
+      "-sDEVICE=pdfimage8",
+      // "-sDEVICE=pdfwrite",
+      "-r130",
       "-dCompatibilityLevel=1.4",
       "-dPDFSETTINGS=/ebook",
       "-dEmbedAllFonts=true",
