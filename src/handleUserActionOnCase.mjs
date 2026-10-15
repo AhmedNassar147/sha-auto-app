@@ -93,7 +93,15 @@ const handleUserActionOnCase = async ({
       ...new Set([storedPatient?.providerAction, "no reply"].filter(Boolean)),
     ].join(" then ");
 
-    await patientsStore.scheduleFakeRejectProbe(referralId, false);
+    // Cancels any accept/reject schedule still pending from an earlier
+    // click (and reschedules the fake-reject probe itself) - without this,
+    // a prior accept/reject timer kept firing untouched, since
+    // scheduleFakeRejectProbe alone silently no-ops whenever userActionName
+    // is still set from that earlier click.
+    const cancelResult = await patientsStore.cancelPatient(referralId);
+    if (!cancelResult.success) {
+      await patientsStore.scheduleFakeRejectProbe(referralId, false);
+    }
 
     updatePatients({
       ...patient,
