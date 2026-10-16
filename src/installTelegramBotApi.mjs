@@ -79,7 +79,7 @@ const COMMANDS = {
   needArrive: {
     value: /\/need_arrive$/,
     description:
-      "List confirmed cases from the last 2 days that haven't arrived yet",
+      "List confirmed cases from the last 4 days that haven't arrived yet",
     command: "need_arrive",
   },
   confirmArrival: {
@@ -1223,14 +1223,14 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
     if (!cases.length) {
       return await sendBotMessage(
         chatId,
-        `📭 No confirmed cases from the last 2 days still need arrival.`,
+        `📭 No confirmed cases from the last 4 days still need arrival.`,
       );
     }
 
     const caseBlocks = cases.map((patient, index) =>
       formatCaseBlock(patient, index, { skipCompetition: true }),
     );
-    const header = `🚑 *Confirmed, not yet arrived (last 2 days)* (${cases.length})\n────────────────────────\n\n`;
+    const header = `🚑 *Confirmed, not yet arrived (last 4 days)* (${cases.length})\n────────────────────────\n\n`;
 
     await sendChunkedCaseList(chatId, header, caseBlocks);
   });

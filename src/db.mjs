@@ -917,7 +917,7 @@ const getArrivedUnpaidCount = () =>
     .get().count;
 
 // Backs the Telegram /need_arrive command - confirmed (claimed = 'Yes')
-// cases from the last 2 days that haven't had arrival confirmed yet, same
+// cases from the last 4 days that haven't had arrival confirmed yet, same
 // +3 hours Saudi-day shift as getCasesForReport above.
 const getNeedArriveCases = () =>
   db
@@ -925,7 +925,7 @@ const getNeedArriveCases = () =>
       `SELECT * FROM patients
        WHERE claimed = 'Yes'
          AND (arrived IS NULL OR arrived <> 'Yes')
-         AND date(createdAt, '+3 hours') >= date('now', '+3 hours', '-2 day')
+         AND date(createdAt, '+3 hours') >= date('now', '+3 hours', '-4 day')
        ORDER BY id DESC`,
     )
     .all();
