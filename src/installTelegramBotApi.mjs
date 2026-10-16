@@ -16,6 +16,8 @@ import {
   getCasesForReport,
   searchPatients,
   getPatientById,
+  getArrivedUnpaidCount,
+  getNeedArriveCases,
 } from "./db.mjs";
 import updateEnvFile from "./updateEnvFile.mjs";
 import mergeAllToPdf from "./mergeFilesToOne.mjs";
@@ -34,6 +36,7 @@ import getOrgLabel from "./getOrgLabel.mjs";
 import performArrivalConfirmation from "./telegramFunctions/performArrivalConfirmation.mjs";
 import performWithdrawal from "./telegramFunctions/performWithdrawal.mjs";
 import performSendReportAttachment from "./telegramFunctions/performSendReportAttachment.mjs";
+import formatWatcherCompetition from "./formatWatcherCompetition.mjs";
 
 const execAsync = promisify(exec);
 
@@ -67,6 +70,17 @@ const COMMANDS = {
     description:
       "Search a case by referralId, navigationId, or national ID. Example: /search 5AW0BELHL51HPFI",
     command: "search",
+  },
+  caseArrived: {
+    value: /\/case_arrived$/,
+    description: "Count arrived cases that are still unpaid",
+    command: "case_arrived",
+  },
+  needArrive: {
+    value: /\/need_arrive$/,
+    description:
+      "List confirmed cases from the last 2 days that haven't arrived yet",
+    command: "need_arrive",
   },
   confirmArrival: {
     value: /\/arrived (.+)/,
@@ -154,7 +168,8 @@ const formatCaseBlock = (patient, index) => {
     `NationalId: \`${patient.patientNationalId || "-"}\`\n` +
     `ReferralDate: ${patient.referralDate || "-"}\n` +
     `EndDate: ${patient.referralEndDate || "-"}\n` +
-    `${statusLabel} — Claimed: ${claimedBadge}`
+    `${statusLabel} — Claimed: ${claimedBadge}` +
+    formatWatcherCompetition(patient)
   );
 };
 
@@ -1178,6 +1193,42 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
 
     const caseBlocks = results.map(formatCaseBlock);
     const header = `🔎 *Search results for* \`${query}\` (${results.length})\n────────────────────────\n\n`;
+
+    await sendChunkedCaseList(chatId, header, caseBlocks);
+  });
+
+  safeOnText(COMMANDS.caseArrived.value, async (msg) => {
+    const { chatId, unAuthorizedMessage } = getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
+    }
+
+    const count = getArrivedUnpaidCount();
+
+    await sendBotMessage(chatId, `💰 Arrived but unpaid cases: *${count}*`);
+  });
+
+  safeOnText(COMMANDS.needArrive.value, async (msg) => {
+    const { chatId, unAuthorizedMessage } = getIfNotAuthorizedMessage(msg);
+
+    if (unAuthorizedMessage) {
+      await sendBotMessage(chatId, unAuthorizedMessage);
+      return;
+    }
+
+    const cases = getNeedArriveCases();
+
+    if (!cases.length) {
+      return await sendBotMessage(
+        chatId,
+        `📭 No confirmed cases from the last 2 days still need arrival.`,
+      );
+    }
+
+    const caseBlocks = cases.map(formatCaseBlock);
+    const header = `🚑 *Confirmed, not yet arrived (last 2 days)* (${cases.length})\n────────────────────────\n\n`;
 
     await sendChunkedCaseList(chatId, header, caseBlocks);
   });

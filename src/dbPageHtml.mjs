@@ -309,6 +309,7 @@ const renderStatusOptions = (selectedStatus) =>
  *   "Referral Date" in the UI.
  * @param {string} [params.filters.paid] - "1" (Yes) or "0" (No).
  * @param {string} [params.filters.claimed] - "Yes" or "No".
+ * @param {string} [params.filters.region] - providerRegion, exact match.
  * @returns {string}
  */
 const renderDbPage = ({
@@ -318,6 +319,7 @@ const renderDbPage = ({
   letterStatistics = null,
   specialties = [],
   hospitals = [],
+  regions = [],
 }) => {
   const {
     referralId = "",
@@ -325,6 +327,7 @@ const renderDbPage = ({
     navigationId = "",
     specialty = "",
     hospital = "",
+    region = "",
     status = "",
     referralDate = "",
     paid = "",
@@ -525,6 +528,13 @@ const renderDbPage = ({
       <select id="f-hospital" name="hospital" onchange="this.form.submit()">
         <option value="">All hospitals</option>
         ${hospitals.map((item) => `<option value="${escapeHtml(item.value)}"${String(item.value) === String(hospital) ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
+      </select>
+    </div>
+    <div class="field">
+      <label for="f-region">Region</label>
+      <select id="f-region" name="region" onchange="this.form.submit()">
+        <option value="">All regions</option>
+        ${regions.map((item) => `<option value="${escapeHtml(item.value)}"${item.value === region ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
       </select>
     </div>
     <div class="field">

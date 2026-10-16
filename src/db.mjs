@@ -643,6 +643,7 @@ const FILTERABLE_LIKE_COLUMNS = [
  *   own `createdAt` column, which is just row-insertion bookkeeping.
  * @param {string} [filters.paid] - "1" (Yes) or "0" (No). Exact match.
  * @param {string} [filters.claimed] - "Yes" or "No". Exact match.
+ * @param {string} [filters.region] - providerRegion, exact match.
  * @param {number} [filters.limit=500] - Clamped to [1, 2000].
  * @returns {object[]}
  */
@@ -652,6 +653,7 @@ const getPatientsFiltered = ({
   navigationId,
   specialty,
   hospital,
+  region,
   status,
   referralDate,
   paid,
@@ -700,6 +702,11 @@ const getPatientsFiltered = ({
   if (hospital) {
     clauses.push(`winnerFacilityId = @hospital`);
     params.hospital = String(hospital);
+  }
+
+  if (region) {
+    clauses.push(`providerRegion = @region`);
+    params.region = String(region);
   }
 
   if (status) {
@@ -887,6 +894,42 @@ const getDistinctHospitals = () =>
     )
     .all();
 
+const getDistinctRegions = () =>
+  db
+    .prepare(
+      `
+  SELECT DISTINCT TRIM(providerRegion) AS value FROM patients
+  WHERE TRIM(COALESCE(providerRegion, '')) <> ''
+  ORDER BY value COLLATE NOCASE
+`,
+    )
+    .all()
+    .map((row) => ({ value: row.value, label: row.value }));
+
+// Backs the Telegram /case_arrived command - arrived is only ever written
+// "Yes" (performArrivalConfirmation.mjs), never a plain truthy flag, and
+// paid is the real 0/1 INTEGER column (see the patients table schema above).
+const getArrivedUnpaidCount = () =>
+  db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM patients WHERE arrived = 'Yes' AND paid = 0`,
+    )
+    .get().count;
+
+// Backs the Telegram /need_arrive command - confirmed (claimed = 'Yes')
+// cases from the last 2 days that haven't had arrival confirmed yet, same
+// +3 hours Saudi-day shift as getCasesForReport above.
+const getNeedArriveCases = () =>
+  db
+    .prepare(
+      `SELECT * FROM patients
+       WHERE claimed = 'Yes'
+         AND (arrived IS NULL OR arrived <> 'Yes')
+         AND date(createdAt, '+3 hours') >= date('now', '+3 hours', '-2 day')
+       ORDER BY id DESC`,
+    )
+    .all();
+
 const getDistinctSpecialties = () =>
   db
     .prepare(
@@ -919,6 +962,9 @@ export {
   getPatientsFiltered,
   getDistinctSpecialties,
   getDistinctHospitals,
+  getDistinctRegions,
+  getArrivedUnpaidCount,
+  getNeedArriveCases,
   getCasesForReport,
   searchPatients,
   getOldestPatient,
