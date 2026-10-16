@@ -149,10 +149,10 @@ const COMMANDS = {
   },
 };
 
-// Shared by /cases and /search - both list patients rows and want the same
-// pretty, numbered block per row, so the format only needs to change in
-// one place.
-const formatCaseBlock = (patient, index) => {
+// Shared by /cases, /search and /need_arrive - all three list patients rows
+// and want the same pretty, numbered block per row, so the format only
+// needs to change in one place.
+const formatCaseBlock = (patient, index, { skipCompetition = false } = {}) => {
   const statusLabel =
     WASLA_STATUS_TYPES[Number(patient.status)] || patient.status || "-";
   const claimedBadge =
@@ -169,7 +169,7 @@ const formatCaseBlock = (patient, index) => {
     `ReferralDate: ${patient.referralDate || "-"}\n` +
     `EndDate: ${patient.referralEndDate || "-"}\n` +
     `${statusLabel} — Claimed: ${claimedBadge}` +
-    formatWatcherCompetition(patient)
+    (skipCompetition ? "" : formatWatcherCompetition(patient))
   );
 };
 
@@ -1227,7 +1227,9 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
       );
     }
 
-    const caseBlocks = cases.map(formatCaseBlock);
+    const caseBlocks = cases.map((patient, index) =>
+      formatCaseBlock(patient, index, { skipCompetition: true }),
+    );
     const header = `🚑 *Confirmed, not yet arrived (last 2 days)* (${cases.length})\n────────────────────────\n\n`;
 
     await sendChunkedCaseList(chatId, header, caseBlocks);
