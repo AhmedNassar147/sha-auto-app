@@ -21,7 +21,7 @@ const compressPdf = (input, output) => {
     const args = [
       "-sDEVICE=pdfimage8",
       // "-sDEVICE=pdfwrite",
-      "-r130",
+      "-r135",
       "-dCompatibilityLevel=1.4",
       "-dPDFSETTINGS=/ebook",
       "-dEmbedAllFonts=true",
