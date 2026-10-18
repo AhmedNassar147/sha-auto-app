@@ -405,6 +405,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           navigationId,
           specialty,
           hospital,
+          winningOnly,
+          winningOnlySubmitted,
           region,
           status,
           referralDate,
@@ -413,12 +415,25 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
 
           ignoreRejected,
         } = req.query;
+        // Unchecked checkboxes aren't submitted at all - winningOnlySubmitted
+        // is a plain hidden field, always present, so its absence (a fresh
+        // /db load or an old bookmarked ?hospital= link) is the only way to
+        // tell "never touched the checkbox" apart from "explicitly unchecked
+        // it", and only the former should fall back to the old default-on
+        // behavior.
+        const resolvedWinningOnly =
+          winningOnlySubmitted === "1"
+            ? winningOnly === "1"
+              ? "1"
+              : "0"
+            : "1";
         const rows = getPatientsFiltered({
           referralId,
           patientNationalId,
           navigationId,
           specialty,
           hospital,
+          winningOnly: resolvedWinningOnly,
           region,
           status,
           referralDate,
@@ -442,6 +457,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
                       navigationId,
                       specialty,
                       hospital,
+                      winningOnly: resolvedWinningOnly,
                       region,
                       status,
                       referralDate,
@@ -461,6 +477,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
                       navigationId,
                       specialty,
                       hospital,
+                      winningOnly: resolvedWinningOnly,
                       region,
                       status,
                       referralDate,
@@ -478,6 +495,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
               navigationId,
               specialty,
               hospital,
+              winningOnly: resolvedWinningOnly,
               region,
               status,
               referralDate,
@@ -510,6 +528,8 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           navigationId,
           specialty,
           hospital,
+          winningOnly,
+          winningOnlySubmitted,
           region,
           status,
           referralDate,
@@ -518,6 +538,12 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
 
           ignoreRejected,
         } = req.body;
+        const resolvedWinningOnly =
+          winningOnlySubmitted === "1"
+            ? winningOnly === "1"
+              ? "1"
+              : "0"
+            : "1";
 
         const rows = getPatientsFiltered({
           referralId,
@@ -525,6 +551,7 @@ import handleSubmitReferral from "./handleSubmitReferral.mjs";
           navigationId,
           specialty,
           hospital,
+          winningOnly: resolvedWinningOnly,
           region,
           status,
           referralDate,

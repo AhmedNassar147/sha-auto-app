@@ -644,6 +644,9 @@ const FILTERABLE_LIKE_COLUMNS = [
  * @param {string} [filters.paid] - "1" (Yes) or "0" (No). Exact match.
  * @param {string} [filters.claimed] - "Yes" or "No". Exact match.
  * @param {string} [filters.region] - providerRegion, exact match.
+ * @param {string} [filters.winningOnly="1"] - "1" (default) matches only
+ *   cases `hospital` won; anything else widens it to cases where `hospital`
+ *   was also a top-2 competitor (see the fastestTwo LIKE match above).
  * @param {number} [filters.limit=500] - Clamped to [1, 2000].
  * @returns {object[]}
  */
@@ -653,6 +656,7 @@ const getPatientsFiltered = ({
   navigationId,
   specialty,
   hospital,
+  winningOnly = "1",
   region,
   status,
   referralDate,
@@ -700,8 +704,21 @@ const getPatientsFiltered = ({
   }
 
   if (hospital) {
-    clauses.push(`winnerFacilityId = @hospital`);
-    params.hospital = String(hospital);
+    // winningOnly=1 (default, matches the old behavior) means this hospital
+    // won the case; unchecked widens it to any case this hospital was also
+    // a top competitor in - there's no "all competing facilities" column,
+    // only the winner and the stored fastestTwo top-2 JSON, so that's the
+    // only other place a hospital's id can show up at all.
+    if (winningOnly === "1") {
+      clauses.push(`winnerFacilityId = @hospital`);
+      params.hospital = String(hospital);
+    } else {
+      clauses.push(
+        `(winnerFacilityId = @hospital OR fastestTwo LIKE @hospitalLike)`,
+      );
+      params.hospital = String(hospital);
+      params.hospitalLike = `%"facilityId":"${String(hospital)}"%`;
+    }
   }
 
   if (region) {

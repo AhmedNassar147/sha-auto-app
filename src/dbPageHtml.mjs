@@ -310,6 +310,9 @@ const renderStatusOptions = (selectedStatus) =>
  * @param {string} [params.filters.paid] - "1" (Yes) or "0" (No).
  * @param {string} [params.filters.claimed] - "Yes" or "No".
  * @param {string} [params.filters.region] - providerRegion, exact match.
+ * @param {string} [params.filters.winningOnly="1"] - "1" (checked, default)
+ *   = hospital must have won; "0" = hospital just needs to be a top-2
+ *   competitor.
  * @returns {string}
  */
 const renderDbPage = ({
@@ -327,6 +330,7 @@ const renderDbPage = ({
     navigationId = "",
     specialty = "",
     hospital = "",
+    winningOnly = "1",
     region = "",
     status = "",
     referralDate = "",
@@ -524,11 +528,18 @@ const renderDbPage = ({
       </select>
     </div>
     <div class="field">
-      <label for="f-hospital">Winning hospital</label>
+      <label for="f-hospital">Hospitals</label>
       <select id="f-hospital" name="hospital" onchange="this.form.submit()">
         <option value="">All hospitals</option>
         ${hospitals.map((item) => `<option value="${escapeHtml(item.value)}"${String(item.value) === String(hospital) ? " selected" : ""}>${escapeHtml(item.label)}</option>`).join("")}
       </select>
+    </div>
+    <div class="field checkbox-field">
+      <label for="f-winningOnly">
+        <input id="f-winningOnly" name="winningOnly" type="checkbox" value="1"${winningOnly !== "0" ? " checked" : ""} onchange="this.form.submit()" />
+        Winning Only
+      </label>
+      <input type="hidden" name="winningOnlySubmitted" value="1" />
     </div>
     <div class="field">
       <label for="f-region">Region</label>
