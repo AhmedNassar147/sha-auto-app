@@ -15,22 +15,24 @@ const processSendPatientsToClient =
 
     const validPatients = addedPatients.filter(Boolean);
 
-    const tasks = validPatients.flatMap((patient) => {
-      const { message, files, referralId } = formatPatientToTelegramOrWA(
-        patient,
-        true,
-      );
+    const perPatientTasks = await Promise.all(
+      validPatients.map(async (patient) => {
+        const { message, files, referralId } =
+          await formatPatientToTelegramOrWA(patient, true);
 
-      const patientTasks = [sendTelegramMessage(message, files, referralId)];
+        const patientTasks = [sendTelegramMessage(message, files, referralId)];
 
-      if (referralId && fakeRejectionEnabled) {
-        patientTasks.unshift(
-          patientsStore.scheduleFakeRejectProbe(referralId, false),
-        );
-      }
+        if (referralId && fakeRejectionEnabled) {
+          patientTasks.unshift(
+            patientsStore.scheduleFakeRejectProbe(referralId, false),
+          );
+        }
 
-      return patientTasks;
-    });
+        return patientTasks;
+      }),
+    );
+
+    const tasks = perPatientTasks.flat();
 
     const results = await Promise.allSettled(tasks);
 

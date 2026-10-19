@@ -166,6 +166,7 @@ const formatCaseBlock = (patient, index, { skipCompetition = false } = {}) => {
     `(${index + 1})- \`${patient.navigationId || "-"}\` · ID: \`${patient.referralId}\`\n` +
     `${patient.patientName || "-"}\n` +
     `NationalId: \`${patient.patientNationalId || "-"}\`\n` +
+    `Specialty: ${patient.specialty || patient.subSpecialty || "-"}\n` +
     `ReferralDate: ${patient.referralDate || "-"}\n` +
     `EndDate: ${patient.referralEndDate || "-"}\n` +
     `${statusLabel} — Claimed: ${claimedBadge}` +
@@ -848,8 +849,10 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         (patient) => patient?.referralEndTimestamp >= Date.now(),
       );
 
-      const formatedPatients = applicablePatients.map((patient) =>
-        formatPatientToTelegramOrWA(patient, true),
+      const formatedPatients = await Promise.all(
+        applicablePatients.map((patient) =>
+          formatPatientToTelegramOrWA(patient, true),
+        ),
       );
 
       await Promise.all(

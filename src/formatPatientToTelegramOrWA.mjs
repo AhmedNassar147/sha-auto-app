@@ -5,8 +5,9 @@
  */
 import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
+import { getEarliestReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 
-const formatPatientToTelegramOrWA = (patient, forTelegram) => {
+const formatPatientToTelegramOrWA = async (patient, forTelegram) => {
   const {
     referralId,
     navigationId,
@@ -22,6 +23,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     facilityReviewWindowMinutes,
     acceptanceWindowMinutes,
     extendScopeWindowMinutes,
+    receiptTiming,
     // requestDate,
     // Not on the Wasla list-row shape - still unconfirmed whether/where the
     // per-case details API (getWaslaPatientReferralDataFromAPI, not wired
@@ -67,6 +69,28 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
     label = `${nf.format(cutoffTimeMs / 1000)} s`; // e.g., "6.125 s"
   }
 
+  // The hidden-dashboard poll (pollHiddenWaslaDashboardForTiming.mjs) runs
+  // independently of this facility-scoped collection, so its own sighting
+  // (if any) of this referralId lives in events.jsonl, not on `patient`
+  // itself - looked up here to show both side by side.
+  const hiddenEvent = referralId
+    ? await getEarliestReferralTimingEvent(referralId, "hidden-dashboard-poll")
+    : null;
+
+  const facilityMs = receiptTiming?.receivedAfterBroadcastMs;
+  const hiddenMs = hiddenEvent?.receivedAfterBroadcastMs;
+
+  const timingLineHtml =
+    facilityMs != null || hiddenMs != null
+      ? `⏱ <b>Facility poll:</b> <code>${facilityMs != null ? facilityMs + "ms after broadcast" : "n/a"}</code>\n` +
+        `⏱ <b>Hidden dashboard:</b> <code>${hiddenMs != null ? hiddenMs + "ms after broadcast" : "n/a"}</code>\n`
+      : "";
+  const timingLineMarkdown =
+    facilityMs != null || hiddenMs != null
+      ? `⏱ *Facility poll:* \`${facilityMs != null ? facilityMs + "ms after broadcast" : "n/a"}\`\n` +
+        `⏱ *Hidden dashboard:* \`${hiddenMs != null ? hiddenMs + "ms after broadcast" : "n/a"}\`\n`
+      : "";
+
   let message = undefined;
 
   const caseUrl = navigationId
@@ -91,6 +115,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `🪟 <b>Review Window:</b> ${facilityReviewWindowMinutes ?? ""} min\n` +
       `🪟 <b>Acceptance Window:</b> ${acceptanceWindowMinutes ?? ""} min\n` +
       `🪟 <b>Extend Scope Window:</b> ${extendScopeWindowMinutes ?? ""} min\n` +
+      timingLineHtml +
       `────────────────────────\n\n` +
       (caseUrl ? `🔗 <b>Case Link:</b> <a href="${caseUrl}">Open</a>\n` : "") +
       `🔢 <b>Referral ID:</b> <code>${referralId}</code>\n` +
@@ -121,6 +146,7 @@ const formatPatientToTelegramOrWA = (patient, forTelegram) => {
       `🪟 *Review Window*: ${facilityReviewWindowMinutes ?? ""} min\n` +
       `🪟 *Acceptance Window*: ${acceptanceWindowMinutes ?? ""} min\n` +
       `🪟 *Extend Scope Window*: ${extendScopeWindowMinutes ?? ""} min\n` +
+      timingLineMarkdown +
       `────────────────────────\n\n` +
       (caseUrl ? `🔗 *Case Link:* ${caseUrl}\n` : "") +
       `🔢 *Referral ID:* \`${referralId}\`\n` +

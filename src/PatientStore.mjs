@@ -20,6 +20,7 @@ import {
   FAKE_REJECT_PROBE,
 } from "./constants.mjs";
 import { getPatient, insertPatients, updatePatients } from "./db.mjs";
+import { removeReferralTimingEvents } from "./referralTimingDiagnostics.mjs";
 
 async function safeWritePatientData(data, retries = 3, delay = 200) {
   for (let attempt = 0; attempt <= retries; attempt++) {
@@ -223,6 +224,7 @@ class PatientStore extends EventEmitter {
         checkPathExists(rejectionFilePath).then(
           (exists) => exists && unlink(rejectionFilePath),
         ),
+        removeReferralTimingEvents(referralId),
       ]);
     } catch (error) {
       return {

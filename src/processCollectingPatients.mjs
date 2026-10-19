@@ -173,6 +173,7 @@ const processCollectingPatients = async ({
       };
       await writeReferralTimingEvent({
         type: "case-received",
+        source: "facility-tabs-poll",
         referralId,
         navigationId,
         ...receiptTiming,

@@ -8,6 +8,7 @@ import processCollectingPatients from "./processCollectingPatients.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import getWaslaCasesFromAPI from "./getWaslaCasesFromAPI.mjs";
 import getWaslaReferralFrame from "./getWaslaReferralFrame.mjs";
+import startHiddenDashboardTimingPoll from "./pollHiddenWaslaDashboardForTiming.mjs";
 import cacheWaslaOrganizationId from "./cacheWaslaOrganizationId.mjs";
 import openWaslaReferralWidget from "./openWaslaReferralWidget.mjs";
 import speakText from "./speakText.mjs";
@@ -51,6 +52,8 @@ const waitForWaitingCountWithInterval = async ({
 
   let apiHadData = false;
   let lastPageRefreshAt = Date.now();
+  const sharedFrameRef = { current: null };
+  let hiddenDashboardPollStarted = false;
 
   const { targetText, tab } = PATIENT_SECTIONS_STATUS[collectionTabType];
 
@@ -201,6 +204,15 @@ const waitForWaitingCountWithInterval = async ({
             error.message,
             "cacheWaslaOrganizationId",
           );
+        });
+      }
+
+      sharedFrameRef.current = frame;
+
+      if (!hiddenDashboardPollStarted) {
+        hiddenDashboardPollStarted = true;
+        startHiddenDashboardTimingPoll({
+          getFrame: () => sharedFrameRef.current,
         });
       }
 

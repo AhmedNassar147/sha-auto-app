@@ -171,6 +171,14 @@ export const baseReferraAPiUrl = `${BASE_WASLA_API_URL}/referrals`;
 
 export const API_URLS = {
   CASES_LIST: `${baseReferraAPiUrl}/facility/tabs`,
+  // The "hidden dashboard" endpoint - same body shape as CASES_LIST but not
+  // scoped to this facility, confirmed live: POST
+  // https://weslah.seha.sa/api/referrals/tabs with
+  // {pageNumber,pageSize,sortField,sortDirection,tab}. Used only by
+  // pollHiddenWaslaDashboardForTiming.mjs to cross-check broadcastedAt
+  // sub-second timing against the facility-scoped list, not for anything
+  // that drives accept/reject.
+  ALL_REFERRALS_TABS: `${baseReferraAPiUrl}/tabs`,
   DISTRIBUTION_WINDOWS_URL: `${BASE_WASLA_API_URL}/lookup/distribution-windows`,
   NOTIFICATIONS_LIST: `${BASE_WASLA_API_URL}/notifications`,
   UPLOAD_ATTACHMENT: `${BASE_WASLA_API_URL}/attachments/upload`,
