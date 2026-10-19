@@ -166,7 +166,7 @@ const formatCaseBlock = (patient, index, { skipCompetition = false } = {}) => {
     `(${index + 1})- \`${patient.navigationId || "-"}\` · ID: \`${patient.referralId}\`\n` +
     `${patient.patientName || "-"}\n` +
     `NationalId: \`${patient.patientNationalId || "-"}\`\n` +
-    `Specialty: ${patient.specialty || patient.subSpecialty || "-"}\n` +
+    `Specialty: ${[patient.specialty, patient.subSpecialty].filter(Boolean).join(" / ") || "-"}\n` +
     `ReferralDate: ${patient.referralDate || "-"}\n` +
     `EndDate: ${patient.referralEndDate || "-"}\n` +
     `${statusLabel} — Claimed: ${claimedBadge}` +
