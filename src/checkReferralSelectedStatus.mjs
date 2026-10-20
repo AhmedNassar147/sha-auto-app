@@ -165,7 +165,7 @@ const updateAndNotifyUser = async ({
   const statusEmoji = isClaimed ? "✅" : "❌";
   const statusText = isClaimed
     ? `We have been selected (${statusID})`
-    : statusID || "We have NOT been selected";
+    : `NOT selected ${statusID || ""}`;
 
   const hintsLine = hints?.length ? `\n⚠️ *Hints:* ${hints.join("\n\n")}` : "";
 
