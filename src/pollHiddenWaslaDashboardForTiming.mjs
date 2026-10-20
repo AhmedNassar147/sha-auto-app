@@ -14,9 +14,13 @@
  *
  */
 import getAllWaslaCasesFromHiddenDashboard from "./getAllWaslaCasesFromHiddenDashboard.mjs";
-import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
+import {
+  writeReferralTimingEvent,
+  describeClockSample,
+} from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
 import sleep from "./sleep.mjs";
+import { isHiddenDashboardPollPaused } from "./hiddenDashboardPollGate.mjs";
 
 /**
  * @param {{ getFrame: () => import("puppeteer").Frame | null }} params
@@ -34,15 +38,36 @@ const startHiddenDashboardTimingPoll = ({ getFrame }) => {
       await sleep(intervalMs);
 
       try {
+        // Sits out entirely while a submission is in flight (see
+        // handleSubmitReferral.mjs) - no reason for diagnostics-only
+        // traffic to run during a time-critical accept/reject.
+        if (isHiddenDashboardPollPaused()) continue;
+
         const frame = getFrame?.();
         if (!frame || frame.detached) continue;
 
-        const { success, patients } =
-          await getAllWaslaCasesFromHiddenDashboard(frame);
+        const {
+          success,
+          patients,
+          requestStartedAtMs,
+          headersReceivedAtMs,
+          serverDate,
+        } = await getAllWaslaCasesFromHiddenDashboard(frame);
 
         if (!success || !patients?.length) {
           continue;
         }
+
+        // Local-vs-server clock diff for this specific poll, same shape as
+        // the facility-tabs-poll's own clock samples - without this, every
+        // "Xms after broadcast" number here assumes our clock is correct,
+        // with no way to tell if it's actually drifted.
+        const clockSample = describeClockSample({
+          requestStartedAtMs,
+          headersReceivedAtMs,
+          headersElapsedMs: headersReceivedAtMs - requestStartedAtMs,
+          serverDate,
+        });
 
         const currentReferralIds = new Set();
 
@@ -69,6 +94,7 @@ const startHiddenDashboardTimingPoll = ({ getFrame }) => {
               broadcastedAtParsedMs != null
                 ? seenAtMs - broadcastedAtParsedMs
                 : null,
+            clockSample,
           });
         }
 

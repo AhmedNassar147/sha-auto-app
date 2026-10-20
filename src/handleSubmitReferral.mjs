@@ -21,6 +21,10 @@ import {
   writeReferralTimingEvent,
 } from "./referralTimingDiagnostics.mjs";
 import createConsoleMessage from "./createConsoleMessage.mjs";
+import {
+  pauseHiddenDashboardPoll,
+  resumeHiddenDashboardPoll,
+} from "./hiddenDashboardPollGate.mjs";
 import getCurrentActionLetterFile from "./getCurrentActionLetterFile.mjs";
 import captureFailureArtifacts from "./captureFailureArtifacts.mjs";
 import randomArrayItem from "./randomArrayItem.mjs";
@@ -447,6 +451,8 @@ const handleSubmitReferral = (options) => async (patient) => {
   const url = `${WASLA_REFERRAL_VIEW_URL}/${navigationId}`;
 
   let page;
+
+  pauseHiddenDashboardPoll();
 
   try {
     page = await browser.newPage();
@@ -1175,6 +1181,8 @@ const handleSubmitReferral = (options) => async (patient) => {
       "submit-referral-unexpected-error",
       `❌ Failed to open referral view for referralId=${referralId} (navigationId=${navigationId}): ${error.message}`,
     );
+  } finally {
+    resumeHiddenDashboardPoll();
   }
 };
 

@@ -22,6 +22,9 @@ import { API_URLS, baseWaslaHeaders } from "./constants.mjs";
  *   patients: object[],
  *   totalRowsCount: number,
  *   message?: string,
+ *   requestStartedAtMs?: number,
+ *   headersReceivedAtMs?: number,
+ *   serverDate?: string | null,
  * }>}
  */
 const getAllWaslaCasesFromHiddenDashboard = async (frame, options = {}) => {
@@ -60,6 +63,8 @@ const getAllWaslaCasesFromHiddenDashboard = async (frame, options = {}) => {
         }
       };
 
+      const requestStartedAtMs = Date.now();
+
       try {
         const res = await fetch(url, {
           method: "POST",
@@ -68,12 +73,18 @@ const getAllWaslaCasesFromHiddenDashboard = async (frame, options = {}) => {
           body: body,
         });
 
+        const headersReceivedAtMs = Date.now();
+        const serverDate = res.headers.get("Date");
+
         if (!res.ok) {
           return {
             success: false,
             patients: [],
             totalRowsCount: 0,
             message: `Status ${res.status}`,
+            requestStartedAtMs,
+            headersReceivedAtMs,
+            serverDate,
           };
         }
 
@@ -85,6 +96,9 @@ const getAllWaslaCasesFromHiddenDashboard = async (frame, options = {}) => {
           patients: isSuccess ? json?.data || [] : [],
           totalRowsCount: json?.totalRowsCount ?? 0,
           message: json?.message,
+          requestStartedAtMs,
+          headersReceivedAtMs,
+          serverDate,
         };
       } catch (error) {
         return {
@@ -92,6 +106,9 @@ const getAllWaslaCasesFromHiddenDashboard = async (frame, options = {}) => {
           patients: [],
           totalRowsCount: 0,
           message: error?.message || String(error),
+          requestStartedAtMs,
+          headersReceivedAtMs: null,
+          serverDate: null,
         };
       }
     },
