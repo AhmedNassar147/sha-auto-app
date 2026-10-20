@@ -21,6 +21,12 @@ export function summarizeFacilities(facilities, organizationId) {
       : facilities.find((f) => String(f.facilityId) === String(organizationId));
   // Rejected and withdrawn rows may also carry acceptedAt; exclude them
   // when ranking acceptance submissions. Equal timestamps remain ties.
+  // Kept as the full list, not just the top 2 - needed to spot cases where
+  // we land in a later "wave" alongside other facilities rather than
+  // genuinely being outraced (see handleSubmitReferral.mjs timing
+  // investigation), and the winningOnly=false hospital filter in
+  // db.mjs's getPatientsFiltered (fastestTwo LIKE match) only works for
+  // facilities actually present in this list.
   const fastest = facilities
     .filter(
       (f) =>
@@ -28,7 +34,6 @@ export function summarizeFacilities(facilities, organizationId) {
         Number.isFinite(parseSaudiTime(f.acceptedAt)),
     )
     .sort((a, b) => parseSaudiTime(a.acceptedAt) - parseSaudiTime(b.acceptedAt))
-    .slice(0, 2)
     .map((f) => ({
       facilityId: String(f.facilityId),
       facilityName: f.facilityName,

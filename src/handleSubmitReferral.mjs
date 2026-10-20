@@ -829,6 +829,7 @@ const handleSubmitReferral = (options) => async (patient) => {
         navigationId,
         apiResult,
         attemptsMade,
+        attempts,
         competitionPatient,
         patientName,
         patientNationalId,

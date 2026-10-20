@@ -9,14 +9,14 @@ export default function formatWatcherCompetition(patient) {
   let fastest = [];
   try {
     const parsed = JSON.parse(patient.fastestTwo || "[]");
-    if (Array.isArray(parsed)) fastest = parsed.slice(0, 2);
+    if (Array.isArray(parsed)) fastest = parsed;
   } catch {}
   return (
     "\n\n⏱ *Acceptance times — Saudi server timestamps*\n" +
     `🏥 Our acceptance: ${code(patient.ourAcceptedAt)}\n` +
     `🏆 Winner: ${code(patient.winnerFacilityName)}\n` +
     `🕒 Winner acceptance: ${code(patient.winnerAcceptedAt)}\n` +
-    "🏁 *Fastest two recorded acceptances:*\n" +
+    "🏁 *All recorded acceptances (fastest to slowest):*\n" +
     (fastest.length
       ? fastest
           .map(

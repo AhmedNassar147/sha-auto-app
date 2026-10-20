@@ -9,6 +9,7 @@ export default function buildDirectApiTelegramMessage({
   patientNationalId,
   apiResult,
   attemptsMade,
+  attempts,
   competitionPatient,
   sleepMS,
   preUploadInteractionMs,
@@ -16,6 +17,22 @@ export default function buildDirectApiTelegramMessage({
 }) {
   const code = (value) =>
     "`" + String(value ?? "").replace(/[`\r\n]/g, " ") + "`";
+  const saudiTime = (ms) =>
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Asia/Riyadh",
+      hour12: false,
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      fractionalSecondDigits: 3,
+    }).format(ms);
+  // [start-time, tookMs, start-time, tookMs, ...] per attempt - lets the
+  // operator see each retry's pacing inline without opening events.jsonl.
+  const attemptsBreakdown = Array.isArray(attempts)
+    ? attempts
+        .map((a) => `${saudiTime(a.startedAtMs)}, ${a.durationMs}ms`)
+        .join(", ")
+    : "";
   const action = isAcceptanceAction ? "acceptance" : "rejection";
   // The error body can be a large HTML response. Keep the complete value
   // in diagnostics and bound the operator copy.
@@ -36,7 +53,7 @@ export default function buildDirectApiTelegramMessage({
     (patientName ? `Patient: ${code(patientName)}\n` : "") +
     (patientNationalId ? `National ID: ${code(patientNationalId)}\n` : "") +
     `${resultText.replace(/[`*_\[\]]/g, " ")}\n` +
-    `Attempts: ${attemptsMade}\n` +
+    `Attempts: ${attemptsMade}${attemptsBreakdown ? ` [${attemptsBreakdown}]` : ""}\n` +
     `PreUploadInteractionMs: ${preUploadInteractionMs}\n` +
     `UploadDurationMs: ${uploadDurationMs}\n` +
     `Sleep: ${sleepMS}ms\n` +
