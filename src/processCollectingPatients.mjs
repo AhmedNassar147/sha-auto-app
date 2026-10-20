@@ -11,7 +11,10 @@ import createConsoleMessage from "./createConsoleMessage.mjs";
 import uploadToTransferIt from "./uploadToTransferIt.mjs";
 import chooseEnabledLetterLayout from "./chooseEnabledLetterLayout.mjs";
 import generateRandomFileName from "./generateRandomFileName.mjs";
-import { writeReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
+import {
+  writeReferralTimingEvent,
+  getEarliestReferralTimingEvent,
+} from "./referralTimingDiagnostics.mjs";
 import getWaslaDistributionWindows from "./getWaslaDistributionWindows.mjs";
 import sleep from "./sleep.mjs";
 
@@ -142,6 +145,19 @@ const processCollectingPatients = async ({
       const broadcastedAtParsedMs = broadcastedAt
         ? new Date(broadcastedAt).getTime()
         : NaN;
+
+      // Confirms this referralId is actually targeted at us (it just came
+      // back on our own facility-scoped list) and, if the hidden-dashboard
+      // poll (pollHiddenWaslaDashboardForTiming.mjs) already spotted it
+      // nationwide, pulls in how much earlier that was - the hidden feed's
+      // own response can't tell us which facilities a case targets, so this
+      // is the only safe place to correlate the two: once we're here, this
+      // case is confirmed ours.
+      const hiddenEvent = await getEarliestReferralTimingEvent(
+        referralId,
+        "hidden-dashboard-poll",
+      );
+
       const receiptTiming = {
         ...patient.listReceiptTiming,
         broadcastedAtRaw: broadcastedAt ?? null,
@@ -170,6 +186,9 @@ const processCollectingPatients = async ({
         collectionStartedAtMs: Date.now(),
         measurement:
           "list body received locally; includes polling/network delay",
+        hiddenDashboardReceivedAtMs: hiddenEvent?.receivedAtMs ?? null,
+        hiddenDashboardReceivedAfterBroadcastMs:
+          hiddenEvent?.receivedAfterBroadcastMs ?? null,
       };
       await writeReferralTimingEvent({
         type: "case-received",

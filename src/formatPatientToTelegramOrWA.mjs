@@ -5,9 +5,8 @@
  */
 import { WASLA_REFERRAL_VIEW_URL } from "./constants.mjs";
 import getOrgLabel from "./getOrgLabel.mjs";
-import { getEarliestReferralTimingEvent } from "./referralTimingDiagnostics.mjs";
 
-const formatPatientToTelegramOrWA = async (patient, forTelegram) => {
+const formatPatientToTelegramOrWA = (patient, forTelegram) => {
   const {
     referralId,
     navigationId,
@@ -69,16 +68,11 @@ const formatPatientToTelegramOrWA = async (patient, forTelegram) => {
     label = `${nf.format(cutoffTimeMs / 1000)} s`; // e.g., "6.125 s"
   }
 
-  // The hidden-dashboard poll (pollHiddenWaslaDashboardForTiming.mjs) runs
-  // independently of this facility-scoped collection, so its own sighting
-  // (if any) of this referralId lives in events.jsonl, not on `patient`
-  // itself - looked up here to show both side by side.
-  const hiddenEvent = referralId
-    ? await getEarliestReferralTimingEvent(referralId, "hidden-dashboard-poll")
-    : null;
-
+  // hiddenDashboardReceivedAfterBroadcastMs is merged onto receiptTiming by
+  // processCollectingPatients.mjs (the one place that's already confirmed
+  // this referralId is actually ours), not looked up here.
   const facilityMs = receiptTiming?.receivedAfterBroadcastMs;
-  const hiddenMs = hiddenEvent?.receivedAfterBroadcastMs;
+  const hiddenMs = receiptTiming?.hiddenDashboardReceivedAfterBroadcastMs;
 
   const timingLineHtml =
     facilityMs != null || hiddenMs != null

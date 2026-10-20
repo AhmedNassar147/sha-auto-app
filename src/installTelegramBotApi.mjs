@@ -849,10 +849,8 @@ const installTelegramBotApi = async (TG_TOKEN, patientsStore, browser) => {
         (patient) => patient?.referralEndTimestamp >= Date.now(),
       );
 
-      const formatedPatients = await Promise.all(
-        applicablePatients.map((patient) =>
-          formatPatientToTelegramOrWA(patient, true),
-        ),
+      const formatedPatients = applicablePatients.map((patient) =>
+        formatPatientToTelegramOrWA(patient, true),
       );
 
       await Promise.all(
