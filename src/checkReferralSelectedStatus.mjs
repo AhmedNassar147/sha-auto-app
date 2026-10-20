@@ -75,6 +75,8 @@ const fetchCase = async (waslaFrame, referralId) => {
       patientName,
       patientNationalId,
       id: navigationId,
+      speciality,
+      subSpeciality,
     } = foundPatient;
     // Confirmed live: the myOrders/tab-2 API returns status as a STRING
     // (e.g. "status": "3"), while WAITING_ACCEPTANCE_STATUS_CODES/
@@ -156,11 +158,14 @@ const updateAndNotifyUser = async ({
   // doesn't (they already know which deployment they're looking at).
   const { VERIFICATION_CODE_WATCHER_CHAT_ID } = process.env;
 
+  const fullPatient = getPatient(referralId);
+  const { specialty, subSpecialty } = fullPatient;
+
   const isClaimed = claimed === "Yes";
   const statusEmoji = isClaimed ? "✅" : "❌";
   const statusText = isClaimed
     ? `We have been selected (${statusID})`
-    : `We have NOT been selected${statusID ? ` (${statusID})` : ""}`;
+    : statusID || "We have NOT been selected";
 
   const hintsLine = hints?.length ? `\n⚠️ *Hints:* ${hints.join("\n\n")}` : "";
 
@@ -171,14 +176,14 @@ const updateAndNotifyUser = async ({
     (patientName ? `👤 *Patient:* ${patientName}\n` : "") +
     (patientNationalId ? `🪪 *National ID:* \`${patientNationalId}\`\n` : "") +
     (navigationId ? `🔢 Case ID: ${code(navigationId)}\n` : "") +
+    `Specialty: ${[specialty, subSpecialty].filter(Boolean).join(" / ") || "-"}\n` +
     `📋 *Status:* ${statusText}` +
     hintsLine;
 
   const updates = { referralId, status, claimed, tabName };
 
   updatePatients(updates);
-  const fullMessage =
-    message + formatWatcherCompetition(getPatient(referralId));
+  const fullMessage = message + formatWatcherCompetition(fullPatient);
   await writeReferralTimingEvent({
     type: "claim-outcome",
     referralId,
